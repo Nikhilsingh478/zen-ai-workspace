@@ -1,0 +1,196 @@
+Remove all GitHub API integration and replace the entire persistence system with localStorage. Do NOT redesign the UI or desktop system. Only simplify data storage.
+
+---
+
+# 🎯 GOAL
+
+* Remove GitHub dependency completely
+* Store all data locally in browser (localStorage)
+* Keep app fully functional:
+
+  * drag & layout
+  * folders
+  * prompts
+* No backend calls
+* No environment variables required
+
+---
+
+# 🚨 STEP 1: REMOVE GITHUB COMPLETELY
+
+Delete / remove:
+
+* /api/github route
+* Any fetch calls to /api/github
+* Any GitHub token usage
+* Any environment variable usage (GITHUB_*)
+* SyncIndicator logic related to GitHub
+
+---
+
+# 🚨 STEP 2: CREATE LOCAL STORAGE DATA LAYER
+
+Create a simple storage utility:
+
+---
+
+## storage.ts
+
+```js
+const STORAGE_KEY = "ai_matrix_data";
+
+export function loadData() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return getDefaultData();
+    return JSON.parse(raw);
+  } catch {
+    return getDefaultData();
+  }
+}
+
+export function saveData(data) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+function getDefaultData() {
+  return {
+    items: [],
+    desktop: {
+      layout: [],
+      folders: []
+    }
+  };
+}
+```
+
+---
+
+# 🚨 STEP 3: INITIALIZE STATE PROPERLY
+
+In your store:
+
+---
+
+## IMPORTANT RULE
+
+DO NOT read localStorage during initial render (causes hydration issues)
+
+---
+
+## FIX:
+
+```js
+const [data, setData] = useState(null);
+
+useEffect(() => {
+  const stored = loadData();
+  setData(stored);
+}, []);
+```
+
+---
+
+## Render guard:
+
+```js
+if (!data) return null;
+```
+
+---
+
+# 🚨 STEP 4: SAVE ON EVERY CHANGE
+
+Whenever:
+
+* drag ends
+* folder changes
+* item added/removed
+
+---
+
+## Call:
+
+```js
+saveData(updatedData);
+setData(updatedData);
+```
+
+---
+
+## IMPORTANT:
+
+* Update UI immediately (optimistic)
+* Then persist
+
+---
+
+# 🚨 STEP 5: REMOVE ALL ASYNC LOGIC
+
+Replace:
+
+```js
+await saveToGitHub(data)
+```
+
+with:
+
+```js
+saveData(data)
+```
+
+---
+
+# 🚨 STEP 6: FIX HYDRATION SIMPLY
+
+Since we now rely on localStorage:
+
+Wrap main app or desktop:
+
+```js
+const [mounted, setMounted] = useState(false);
+
+useEffect(() => {
+  setMounted(true);
+}, []);
+
+if (!mounted) return null;
+```
+
+---
+
+# 🚨 STEP 7: KEEP EVERYTHING ELSE SAME
+
+DO NOT CHANGE:
+
+* drag system
+* folder logic
+* UI
+* animations
+
+Only change persistence layer
+
+---
+
+# 🚫 DO NOT:
+
+* add backend
+* add GitHub again
+* overcomplicate storage
+* break existing UI
+
+---
+
+# 🎯 FINAL RESULT
+
+The app must:
+
+* work fully offline
+* persist data locally
+* reload with saved state intact
+* have no API errors
+* have no GitHub dependency
+
+---
+
+Deliver a clean, stable local-only version.

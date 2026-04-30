@@ -15,25 +15,22 @@ export type { AppDataItem, AppStorage, DesktopFolder, DesktopLayoutEntry, Prompt
 export type WebsiteInput = Omit<Website, "id" | "type" | "createdAt" | "updatedAt">;
 export type PromptInput = Omit<Prompt, "id" | "type" | "tags" | "createdAt" | "updatedAt">;
 
-type SyncStatus = "loading" | "syncing" | "synced" | "offline";
+// ─── External store ────────────────────────────────────────────────────────────
+// Server / initial client render always starts with SEED_DATA so SSR HTML
+// and the first client render match (no hydration mismatch). After the
+// component mounts its useEffect fires and replaces SEED_DATA with whatever
+// is actually in localStorage.
 
 type StoreState = {
   storage: AppStorage;
-  status: SyncStatus;
-  error: string | null;
+  loaded: boolean;
 };
 
 const listeners = new Set<() => void>();
-let state: StoreState = {
-  storage: SEED_DATA,
-  status: "loading",
-  error: null,
-};
-let loadPromise: Promise<void> | null = null;
-let savePromise = Promise.resolve();
+let state: StoreState = { storage: SEED_DATA, loaded: false };
 
 function emit() {
-  listeners.forEach((listener) => listener());
+  listeners.forEach((fn) => fn());
 }
 
 function setState(next: Partial<StoreState>) {
@@ -46,63 +43,45 @@ function subscribe(listener: () => void) {
   return () => listeners.delete(listener);
 }
 
-function getSnapshot() {
+function getSnapshot(): StoreState {
   return state;
 }
 
-function ensureLoaded() {
-  if (loadPromise) return loadPromise;
-
-  loadPromise = fetchData()
-    .then((storage) => {
-      setState({ storage, status: "synced", error: null });
-    })
-    .catch(() => {
-      setState({ status: "offline", error: "Using local fallback data." });
-    });
-
-  return loadPromise;
+/** Called once on first client mount. Reads localStorage and replaces SEED_DATA. */
+let clientLoaded = false;
+function ensureClientLoaded() {
+  if (clientLoaded) return;
+  clientLoaded = true;
+  const stored = fetchData();
+  setState({ storage: stored, loaded: true });
 }
 
-function updateStorage(updater: (storage: AppStorage) => AppStorage) {
-  const nextStorage = updater(state.storage);
-  setState({ storage: nextStorage, status: "syncing", error: null });
-
-  savePromise = savePromise
-    .catch(() => undefined)
-    .then(() => saveData(nextStorage))
-    .then(() => {
-      if (state.storage === nextStorage) {
-        setState({ status: "synced", error: null });
-      }
-    })
-    .catch(() => {
-      if (state.storage === nextStorage) {
-        setState({
-          status: "offline",
-          error: "Saved locally. GitHub sync will retry on the next change.",
-        });
-      }
-    });
+/** Synchronously mutate storage + persist to localStorage. */
+function updateStorage(updater: (s: AppStorage) => AppStorage) {
+  const next = updater(state.storage);
+  setState({ storage: next });
+  saveData(next);
 }
 
 function now() {
   return new Date().toISOString();
 }
 
-function useDataStore() {
-  const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+// ─── Base hook ─────────────────────────────────────────────────────────────────
 
+function useDataStore(): StoreState {
+  const snap = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   useEffect(() => {
-    void ensureLoaded();
+    ensureClientLoaded();
   }, []);
-
-  return snapshot;
+  return snap;
 }
 
+// ─── Public hooks ──────────────────────────────────────────────────────────────
+
 export function useSyncStatus() {
-  const { status, error } = useDataStore();
-  return { status, error };
+  const { loaded } = useDataStore();
+  return { status: loaded ? ("synced" as const) : ("loading" as const), error: null };
 }
 
 export function useWebsites() {
@@ -193,55 +172,7 @@ export function useDesktopStorage() {
   const { storage } = useDataStore();
 
   const updateLayout = (layout: DesktopLayoutEntry[]) => {
-    updateStorage((prev) => ({
-      ...prev,
-      desktop: {
-        ...prev.desktop,
-        layout,
-      },
-    }));
-  };
-
-  const createFolder = (sourceId: string, targetId: string) => {
-    if (sourceId === targetId) return;
-
-    updateStorage((prev) => {
-      const targetItem = prev.items.find((item) => item.id === targetId);
-      const name = targetItem && "name" in targetItem ? String(targetItem.name) : "Folder";
-      const folderId = crypto.randomUUID();
-      const targetEntry = prev.desktop.layout.find((entry) => entry.id === targetId);
-
-      return {
-        ...prev,
-        desktop: {
-          layout: [
-            ...prev.desktop.layout.filter(
-              (entry) => entry.id !== sourceId && entry.id !== targetId,
-            ),
-            {
-              id: folderId,
-              x: targetEntry?.x ?? 0,
-              y: targetEntry?.y ?? 0,
-            },
-          ],
-          folders: [
-            ...prev.desktop.folders
-              .map((folder) => ({
-                ...folder,
-                children: folder.children.filter(
-                  (child) => child !== sourceId && child !== targetId,
-                ),
-              }))
-              .filter((folder) => folder.children.length > 0),
-            {
-              id: folderId,
-              name: `${name} Folder`,
-              children: [targetId, sourceId],
-            },
-          ],
-        },
-      };
-    });
+    updateStorage((prev) => ({ ...prev, desktop: { ...prev.desktop, layout } }));
   };
 
   const removeFromFolder = (folderId: string, childId: string) => {
@@ -250,12 +181,12 @@ export function useDesktopStorage() {
       desktop: {
         layout: [...prev.desktop.layout, { id: childId, x: 0, y: 0 }],
         folders: prev.desktop.folders
-          .map((folder) =>
-            folder.id === folderId
-              ? { ...folder, children: folder.children.filter((child) => child !== childId) }
-              : folder,
+          .map((f) =>
+            f.id === folderId
+              ? { ...f, children: f.children.filter((c) => c !== childId) }
+              : f,
           )
-          .filter((folder) => folder.children.length > 0),
+          .filter((f) => f.children.length > 0),
       },
     }));
   };
@@ -304,9 +235,7 @@ export function useDesktopStorage() {
       ...prev,
       desktop: {
         ...prev.desktop,
-        folders: prev.desktop.folders.map((f) =>
-          f.id === folderId ? { ...f, name } : f,
-        ),
+        folders: prev.desktop.folders.map((f) => (f.id === folderId ? { ...f, name } : f)),
       },
     }));
   };
@@ -318,25 +247,30 @@ export function useDesktopStorage() {
       const folderEntry = prev.desktop.layout.find((e) => e.id === folderId);
       const baseX = folderEntry?.x ?? 0;
       const baseY = folderEntry?.y ?? 0;
-      const existingOccupied = new Set(
+      const occupied = new Set(
         prev.desktop.layout.filter((e) => e.id !== folderId).map((e) => `${e.x}:${e.y}`),
       );
       const childEntries: DesktopLayoutEntry[] = [];
       let slot = 0;
       for (const childId of folder.children) {
-        while (existingOccupied.has(`${(baseX + slot) % 8}:${baseY + Math.floor((baseX + slot) / 8)}`)) {
+        while (
+          occupied.has(`${(baseX + slot) % 8}:${baseY + Math.floor((baseX + slot) / 8)}`)
+        ) {
           slot++;
         }
         const cx = (baseX + slot) % 8;
         const cy = baseY + Math.floor((baseX + slot) / 8);
-        existingOccupied.add(`${cx}:${cy}`);
+        occupied.add(`${cx}:${cy}`);
         childEntries.push({ id: childId, x: cx, y: cy });
         slot++;
       }
       return {
         ...prev,
         desktop: {
-          layout: [...prev.desktop.layout.filter((e) => e.id !== folderId), ...childEntries],
+          layout: [
+            ...prev.desktop.layout.filter((e) => e.id !== folderId),
+            ...childEntries,
+          ],
           folders: prev.desktop.folders.filter((f) => f.id !== folderId),
         },
       };
@@ -347,7 +281,6 @@ export function useDesktopStorage() {
     items: storage.items,
     desktop: storage.desktop,
     updateLayout,
-    createFolder,
     removeFromFolder,
     createEmptyFolder,
     addToFolder,

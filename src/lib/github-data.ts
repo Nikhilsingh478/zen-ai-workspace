@@ -1,3 +1,5 @@
+// ─── Types ────────────────────────────────────────────────────────────────────
+
 export type DataType = "prompt" | "website" | "folder" | "layout";
 
 export type DataItemBase = {
@@ -48,11 +50,7 @@ export type AppStorage = {
   };
 };
 
-const LOCAL_DATA_KEY = "ai-matrix:data";
-const LEGACY_KEYS = {
-  websites: "ai-matrix:websites",
-  prompts: "ai-matrix:prompts",
-} as const;
+// ─── Seed data ────────────────────────────────────────────────────────────────
 
 const seedDate = "2026-04-30T00:00:00.000Z";
 
@@ -205,27 +203,14 @@ export const SEED_DATA: AppStorage = {
   },
 };
 
-let memoryCache: AppStorage | null = null;
+// ─── localStorage key ─────────────────────────────────────────────────────────
 
-function readJson<T>(key: string): T | null {
-  if (typeof window === "undefined") return null;
+const STORAGE_KEY = "ai-matrix:data";
 
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeJson(key: string, value: unknown) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(key, JSON.stringify(value));
-}
+// ─── Normalizers (validate shape before use) ──────────────────────────────────
 
 function normalizeItems(data: unknown): AppDataItem[] {
   if (!Array.isArray(data)) return [];
-
   return data
     .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
     .filter((item) => typeof item.id === "string" && typeof item.type === "string")
@@ -233,7 +218,7 @@ function normalizeItems(data: unknown): AppDataItem[] {
       const now = new Date().toISOString();
       return {
         ...item,
-        tags: Array.isArray(item.tags) ? item.tags.filter((tag) => typeof tag === "string") : [],
+        tags: Array.isArray(item.tags) ? item.tags.filter((t) => typeof t === "string") : [],
         createdAt: typeof item.createdAt === "string" ? item.createdAt : now,
         updatedAt: typeof item.updatedAt === "string" ? item.updatedAt : now,
       } as AppDataItem;
@@ -242,150 +227,75 @@ function normalizeItems(data: unknown): AppDataItem[] {
 
 function normalizeLayout(data: unknown): DesktopLayoutEntry[] {
   if (!Array.isArray(data)) return [];
-
   return data
+    .filter((e): e is Record<string, unknown> => Boolean(e) && typeof e === "object")
     .filter(
-      (entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === "object",
+      (e) =>
+        typeof e.id === "string" &&
+        typeof e.x === "number" &&
+        Number.isFinite(e.x) &&
+        typeof e.y === "number" &&
+        Number.isFinite(e.y),
     )
-    .filter(
-      (entry) =>
-        typeof entry.id === "string" &&
-        typeof entry.x === "number" &&
-        Number.isFinite(entry.x) &&
-        typeof entry.y === "number" &&
-        Number.isFinite(entry.y),
-    )
-    .map((entry) => ({
-      id: entry.id as string,
-      x: Math.max(0, Math.floor(entry.x as number)),
-      y: Math.max(0, Math.floor(entry.y as number)),
+    .map((e) => ({
+      id: e.id as string,
+      x: Math.max(0, Math.floor(e.x as number)),
+      y: Math.max(0, Math.floor(e.y as number)),
     }));
 }
 
 function normalizeFolders(data: unknown): DesktopFolder[] {
   if (!Array.isArray(data)) return [];
-
   return data
-    .filter(
-      (folder): folder is Record<string, unknown> => Boolean(folder) && typeof folder === "object",
-    )
-    .filter((folder) => typeof folder.id === "string" && typeof folder.name === "string")
-    .map((folder) => ({
-      id: folder.id as string,
-      name: folder.name as string,
-      children: Array.isArray(folder.children)
-        ? folder.children.filter((child): child is string => typeof child === "string")
+    .filter((f): f is Record<string, unknown> => Boolean(f) && typeof f === "object")
+    .filter((f) => typeof f.id === "string" && typeof f.name === "string")
+    .map((f) => ({
+      id: f.id as string,
+      name: f.name as string,
+      children: Array.isArray(f.children)
+        ? f.children.filter((c): c is string => typeof c === "string")
         : [],
-    }))
-    ;
+    }));
 }
 
-function normalizeStorage(data: unknown): AppStorage {
-  if (Array.isArray(data)) {
-    return {
-      items: normalizeItems(data),
-      desktop: { layout: [], folders: [] },
-    };
-  }
-
-  if (!data || typeof data !== "object") return SEED_DATA;
-
-  const record = data as Record<string, unknown>;
+function normalizeStorage(raw: unknown): AppStorage {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return SEED_DATA;
+  const r = raw as Record<string, unknown>;
+  const desktop = r.desktop as Record<string, unknown> | undefined;
   return {
-    items: normalizeItems(record.items),
+    items: normalizeItems(r.items),
     desktop: {
-      layout: normalizeLayout((record.desktop as Record<string, unknown> | undefined)?.layout),
-      folders: normalizeFolders((record.desktop as Record<string, unknown> | undefined)?.folders),
+      layout: normalizeLayout(desktop?.layout),
+      folders: normalizeFolders(desktop?.folders),
     },
   };
 }
 
-function readLegacyData(): AppStorage {
-  const now = new Date().toISOString();
-  const websites =
-    readJson<Array<Omit<Website, "type" | "createdAt" | "updatedAt">>>(LEGACY_KEYS.websites) ?? [];
-  const prompts =
-    readJson<Array<Omit<Prompt, "type" | "tags" | "createdAt" | "updatedAt">>>(
-      LEGACY_KEYS.prompts,
-    ) ?? [];
+// ─── Public API (synchronous, localStorage only) ──────────────────────────────
 
-  const items: AppDataItem[] = [
-    ...websites.map((website) => ({
-      ...website,
-      type: "website" as const,
-      tags: Array.isArray(website.tags) ? website.tags : [],
-      createdAt: now,
-      updatedAt: now,
-    })),
-    ...prompts.map((prompt) => ({
-      ...prompt,
-      type: "prompt" as const,
-      tags: [],
-      createdAt: now,
-      updatedAt: now,
-    })),
-  ];
-
-  return {
-    items,
-    desktop: {
-      layout: items
-        .filter((item) => item.type === "website")
-        .map((item, index) => ({
-          id: item.id,
-          x: index % 8,
-          y: Math.floor(index / 8),
-        })),
-      folders: [],
-    },
-  };
-}
-
-export function readFallbackData() {
-  const localData = normalizeStorage(readJson<AppStorage | AppDataItem[]>(LOCAL_DATA_KEY));
-  if (localData.items.length > 0) return localData;
-
-  const legacyData = readLegacyData();
-  if (legacyData.items.length > 0) {
-    writeJson(LOCAL_DATA_KEY, legacyData);
-    return legacyData;
-  }
-
-  return SEED_DATA;
-}
-
-export function writeFallbackData(data: AppStorage) {
-  writeJson(LOCAL_DATA_KEY, data);
-}
-
-export async function fetchData(): Promise<AppStorage> {
-  if (memoryCache) return memoryCache;
-
+/**
+ * Load data from localStorage. Falls back to SEED_DATA if nothing is stored.
+ * Must only be called on the client (inside useEffect or event handler).
+ */
+export function fetchData(): AppStorage {
   try {
-    const response = await fetch("/api/github", { method: "GET" });
-    if (!response.ok) throw new Error("GitHub data fetch failed.");
-    const data = normalizeStorage(await response.json());
-    memoryCache = data.items.length > 0 ? data : SEED_DATA;
-    writeFallbackData(memoryCache);
-    return memoryCache;
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return SEED_DATA;
+    const parsed = normalizeStorage(JSON.parse(raw));
+    return parsed.items.length > 0 ? parsed : SEED_DATA;
   } catch {
-    memoryCache = readFallbackData();
-    return memoryCache;
+    return SEED_DATA;
   }
 }
 
-export async function saveData(data: AppStorage) {
-  const nextData = normalizeStorage(data);
-  memoryCache = nextData;
-  writeFallbackData(nextData);
-
-  const response = await fetch("/api/github", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(nextData),
-  });
-
-  if (!response.ok) {
-    throw new Error("GitHub data save failed.");
+/**
+ * Persist data to localStorage. Synchronous. Safe to call on every change.
+ */
+export function saveData(data: AppStorage): void {
+  try {
+    const normalized = normalizeStorage(data);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+  } catch {
+    // Ignore storage quota errors
   }
 }
