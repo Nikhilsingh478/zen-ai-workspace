@@ -9,9 +9,15 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as PromptsRouteImport } from './routes/prompts'
 import { Route as DesktopRouteImport } from './routes/desktop'
 import { Route as IndexRouteImport } from './routes/index'
 
+const PromptsRoute = PromptsRouteImport.update({
+  id: '/prompts',
+  path: '/prompts',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DesktopRoute = DesktopRouteImport.update({
   id: '/desktop',
   path: '/desktop',
@@ -26,31 +32,42 @@ const IndexRoute = IndexRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/desktop': typeof DesktopRoute
+  '/prompts': typeof PromptsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/desktop': typeof DesktopRoute
+  '/prompts': typeof PromptsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/desktop': typeof DesktopRoute
+  '/prompts': typeof PromptsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/desktop'
+  fullPaths: '/' | '/desktop' | '/prompts'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/desktop'
-  id: '__root__' | '/' | '/desktop'
+  to: '/' | '/desktop' | '/prompts'
+  id: '__root__' | '/' | '/desktop' | '/prompts'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DesktopRoute: typeof DesktopRoute
+  PromptsRoute: typeof PromptsRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/prompts': {
+      id: '/prompts'
+      path: '/prompts'
+      fullPath: '/prompts'
+      preLoaderRoute: typeof PromptsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/desktop': {
       id: '/desktop'
       path: '/desktop'
@@ -71,7 +88,17 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DesktopRoute: DesktopRoute,
+  PromptsRoute: PromptsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}
