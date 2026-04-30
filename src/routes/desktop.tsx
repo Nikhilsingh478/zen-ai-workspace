@@ -50,8 +50,6 @@ function DesktopPage() {
       <motion.div
         style={{ x: px, y: py }}
         className="grid gap-y-10 gap-x-6"
-        // eslint-disable-next-line react/forbid-dom-props
-        css={undefined as never}
       >
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-y-10 gap-x-4 sm:gap-x-6">
           {websites.map((w, i) => (
