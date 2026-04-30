@@ -66,7 +66,7 @@ function AskPage() {
         <div className="max-w-3xl mx-auto px-5 md:px-8 pt-12 pb-32">
           {empty ? (
             <motion.div
-              initial={{ opacity: 0, y: 8 }}
+              initial={{ opacity: 0.88, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4 }}
               className="min-h-[60vh] flex flex-col items-center justify-center text-center"
@@ -97,9 +97,9 @@ function AskPage() {
                 {thinking && (
                   <motion.div
                     key="thinking"
-                    initial={{ opacity: 0, y: 6 }}
+                    initial={{ opacity: 0.88, y: 6 }}
                     animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
+                    exit={{ opacity: 0.88 }}
                     className="flex"
                   >
                     <div className="rounded-2xl bg-[var(--surface-2)] border border-border px-4 py-3 flex items-center gap-1.5">
@@ -154,7 +154,7 @@ function Bubble({ message }: { message: Message }) {
   const isUser = message.role === "user";
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8 }}
+      initial={{ opacity: 0.88, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
       className={`flex ${isUser ? "justify-end" : "justify-start"}`}

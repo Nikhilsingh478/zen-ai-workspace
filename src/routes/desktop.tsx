@@ -78,7 +78,7 @@ function Tile({
       href={website.url}
       target="_blank"
       rel="noreferrer"
-      initial={{ opacity: 0, y: 12, scale: 0.96 }}
+      initial={{ opacity: 0.88, y: 12, scale: 0.96 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{
         duration: 0.45,
