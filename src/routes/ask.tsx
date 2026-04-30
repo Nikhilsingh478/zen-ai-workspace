@@ -162,8 +162,8 @@ function Bubble({ message }: { message: Message }) {
       <div
         className={
           isUser
-            ? "max-w-[85%] rounded-2xl rounded-br-md bg-[var(--surface-3)] border border-border/60 px-4 py-3 text-[14.5px] leading-relaxed text-foreground whitespace-pre-wrap"
-            : "max-w-[90%] rounded-2xl rounded-bl-md bg-[var(--surface-1)] border border-border/60 px-4 py-3 text-[14.5px] leading-relaxed text-copy-secondary whitespace-pre-wrap"
+            ? "max-w-[85%] rounded-2xl rounded-br-md bg-[var(--surface-3)] border border-border px-4 py-3 text-[14.5px] leading-relaxed text-foreground whitespace-pre-wrap"
+            : "max-w-[90%] rounded-2xl rounded-bl-md bg-[var(--surface-2)] border border-border px-4 py-3 text-[14.5px] leading-relaxed text-copy-secondary whitespace-pre-wrap"
         }
       >
         {message.content}
@@ -175,8 +175,8 @@ function Bubble({ message }: { message: Message }) {
 function Dot({ delay }: { delay: number }) {
   return (
     <motion.span
-      className="h-1.5 w-1.5 rounded-full bg-secondary"
-      animate={{ opacity: [0.3, 1, 0.3], y: [0, -2, 0] }}
+      className="h-1.5 w-1.5 rounded-full bg-copy-secondary"
+      animate={{ scale: [1, 1.35, 1], y: [0, -2, 0] }}
       transition={{ duration: 1, repeat: Infinity, delay, ease: "easeInOut" }}
     />
   );
