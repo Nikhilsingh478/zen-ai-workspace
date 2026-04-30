@@ -66,22 +66,22 @@ function AskPage() {
         <div className="max-w-3xl mx-auto px-5 md:px-8 pt-12 pb-32">
           {empty ? (
             <motion.div
-              initial={{ opacity: 0, y: 8 }}
+              initial={{ opacity: 0.88, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4 }}
               className="min-h-[60vh] flex flex-col items-center justify-center text-center"
             >
-              <div className="h-12 w-12 rounded-2xl bg-[var(--surface-2)] border border-border/60 grid place-items-center mb-5">
-                <Sparkles className="h-5 w-5 text-secondary" strokeWidth={1.75} />
+              <div className="h-12 w-12 rounded-2xl bg-[var(--surface-2)] border border-border grid place-items-center mb-5">
+                <Sparkles className="h-5 w-5 text-copy-secondary" strokeWidth={1.75} />
               </div>
               <h1 className="text-2xl md:text-[28px] font-semibold tracking-tight">What's on your mind?</h1>
-              <p className="text-sm text-secondary mt-2">A calm space to think, draft, and explore.</p>
+              <p className="text-sm text-copy-secondary mt-2">A calm space to think, draft, and explore.</p>
               <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-md">
                 {STARTERS.map((s) => (
                   <button
                     key={s}
                     onClick={() => send(s)}
-                    className="text-left text-sm text-secondary hover:text-foreground rounded-xl border border-border/60 bg-[var(--surface-1)] hover:bg-[var(--surface-2)] px-4 py-3 transition"
+                    className="text-left text-sm text-copy-secondary hover:text-foreground rounded-xl border border-border bg-[var(--surface-2)] hover:bg-[var(--surface-3)] px-4 py-3 transition"
                   >
                     {s}
                   </button>
@@ -97,12 +97,12 @@ function AskPage() {
                 {thinking && (
                   <motion.div
                     key="thinking"
-                    initial={{ opacity: 0, y: 6 }}
+                    initial={{ opacity: 0.88, y: 6 }}
                     animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
+                    exit={{ opacity: 0.88 }}
                     className="flex"
                   >
-                    <div className="rounded-2xl bg-[var(--surface-2)] border border-border/60 px-4 py-3 flex items-center gap-1.5">
+                    <div className="rounded-2xl bg-[var(--surface-2)] border border-border px-4 py-3 flex items-center gap-1.5">
                       <Dot delay={0} />
                       <Dot delay={0.15} />
                       <Dot delay={0.3} />
@@ -117,7 +117,7 @@ function AskPage() {
 
       <div className="sticky bottom-0 left-0 right-0 bg-gradient-to-t from-background via-background to-transparent pt-6 pb-6 md:pb-8">
         <form onSubmit={onSubmit} className="max-w-3xl mx-auto px-5 md:px-8">
-          <div className="flex items-end gap-2 rounded-2xl border border-border/70 bg-[var(--surface-2)] px-3 py-2.5 focus-within:border-white/20 transition shadow-[0_10px_40px_-20px_rgba(0,0,0,0.6)]">
+          <div className="flex items-end gap-2 rounded-2xl border border-border bg-[var(--surface-2)] px-3 py-2.5 focus-within:border-white/20 transition shadow-[0_10px_40px_-20px_rgba(0,0,0,0.6)]">
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -129,19 +129,19 @@ function AskPage() {
               }}
               rows={1}
               placeholder="Ask anything…"
-              className="flex-1 bg-transparent resize-none outline-none text-[14.5px] leading-relaxed py-1.5 px-2 max-h-40 text-foreground placeholder:text-muted-foreground"
+              className="flex-1 bg-transparent resize-none outline-none text-[14.5px] leading-relaxed py-1.5 px-2 max-h-40 text-foreground placeholder:text-copy-muted"
             />
             <motion.button
               type="submit"
               whileTap={{ scale: 0.94 }}
               disabled={!input.trim()}
-              className="h-9 w-9 shrink-0 grid place-items-center rounded-xl bg-foreground text-background disabled:opacity-30 disabled:cursor-not-allowed transition"
+              className="h-9 w-9 shrink-0 grid place-items-center rounded-xl bg-foreground text-background disabled:bg-[var(--surface-3)] disabled:text-copy-muted disabled:cursor-not-allowed transition"
               aria-label="Send"
             >
               <ArrowUp className="h-4 w-4" />
             </motion.button>
           </div>
-          <p className="text-[11px] text-muted-foreground text-center mt-2">
+          <p className="text-[11px] text-copy-muted text-center mt-2">
             Press Enter to send · Shift+Enter for newline
           </p>
         </form>
@@ -154,7 +154,7 @@ function Bubble({ message }: { message: Message }) {
   const isUser = message.role === "user";
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8 }}
+      initial={{ opacity: 0.88, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
       className={`flex ${isUser ? "justify-end" : "justify-start"}`}
@@ -162,8 +162,8 @@ function Bubble({ message }: { message: Message }) {
       <div
         className={
           isUser
-            ? "max-w-[85%] rounded-2xl rounded-br-md bg-[var(--surface-3)] border border-border/60 px-4 py-3 text-[14.5px] leading-relaxed text-foreground whitespace-pre-wrap"
-            : "max-w-[90%] rounded-2xl rounded-bl-md bg-[var(--surface-1)] border border-border/60 px-4 py-3 text-[14.5px] leading-relaxed text-secondary whitespace-pre-wrap"
+            ? "max-w-[85%] rounded-2xl rounded-br-md bg-[var(--surface-3)] border border-border px-4 py-3 text-[14.5px] leading-relaxed text-foreground whitespace-pre-wrap"
+            : "max-w-[90%] rounded-2xl rounded-bl-md bg-[var(--surface-2)] border border-border px-4 py-3 text-[14.5px] leading-relaxed text-copy-secondary whitespace-pre-wrap"
         }
       >
         {message.content}
@@ -175,8 +175,8 @@ function Bubble({ message }: { message: Message }) {
 function Dot({ delay }: { delay: number }) {
   return (
     <motion.span
-      className="h-1.5 w-1.5 rounded-full bg-secondary"
-      animate={{ opacity: [0.3, 1, 0.3], y: [0, -2, 0] }}
+      className="h-1.5 w-1.5 rounded-full bg-copy-secondary"
+      animate={{ scale: [1, 1.35, 1], y: [0, -2, 0] }}
       transition={{ duration: 1, repeat: Infinity, delay, ease: "easeInOut" }}
     />
   );

@@ -17,7 +17,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen flex bg-background text-foreground">
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex flex-col w-56 shrink-0 border-r border-border/60 bg-[var(--surface-1)]/40 backdrop-blur-sm">
+      <aside className="hidden md:flex flex-col w-56 shrink-0 border-r border-border bg-[var(--surface-1)]">
         <div className="px-6 pt-7 pb-10">
           <Link to="/" className="flex items-center gap-2.5 group">
             <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-white/90 to-white/40 grid place-items-center">
@@ -37,8 +37,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                 className={cn(
                   "relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all duration-200",
                   active
-                    ? "bg-white/[0.06] text-foreground"
-                    : "text-secondary hover:text-foreground hover:bg-white/[0.04]",
+                    ? "bg-white/[0.07] text-foreground"
+                    : "text-copy-secondary hover:text-foreground hover:bg-white/[0.04]",
                 )}
               >
                 <Icon className="h-[18px] w-[18px]" strokeWidth={1.75} />
@@ -54,7 +54,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             );
           })}
         </nav>
-        <div className="mt-auto px-6 pb-6 text-[11px] text-muted-foreground">
+        <div className="mt-auto px-6 pb-6 text-[11px] text-copy-muted">
           <div className="flex items-center gap-2">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400/80" />
             <span>Workspace synced</span>
@@ -67,9 +67,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         <AnimatePresence mode="wait">
           <motion.main
             key={pathname}
-            initial={{ opacity: 0, y: 8 }}
+            initial={{ opacity: 0.88, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }}
+            exit={{ opacity: 0.88, y: -4 }}
             transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
             className="flex-1 min-w-0"
           >
@@ -79,7 +79,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </div>
 
       {/* Mobile bottom nav */}
-      <nav className="md:hidden fixed bottom-3 left-3 right-3 z-50 rounded-2xl border border-border/60 bg-[var(--surface-2)]/90 backdrop-blur-xl shadow-[0_8px_30px_rgba(0,0,0,0.4)]">
+      <nav className="md:hidden fixed bottom-3 left-3 right-3 z-50 rounded-2xl border border-border bg-[var(--surface-2)] shadow-[0_8px_30px_rgba(0,0,0,0.4)]">
         <div className="grid grid-cols-4">
           {NAV.map((item) => {
             const active = item.to === "/" ? pathname === "/" : pathname.startsWith(item.to);
@@ -90,7 +90,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 to={item.to}
                 className={cn(
                   "relative flex flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium",
-                  active ? "text-foreground" : "text-muted-foreground",
+                  active ? "text-foreground" : "text-copy-secondary",
                 )}
               >
                 <Icon className="h-5 w-5" strokeWidth={1.75} />
