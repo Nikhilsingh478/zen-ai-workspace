@@ -99,7 +99,7 @@ function PromptCard({
           </button>
         </div>
       </div>
-      <p className="mt-3 text-[13px] leading-relaxed text-secondary whitespace-pre-wrap line-clamp-6">
+      <p className="mt-3 text-[13px] leading-relaxed text-copy-secondary whitespace-pre-wrap line-clamp-6">
         {prompt.body}
       </p>
     </motion.div>

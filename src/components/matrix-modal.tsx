@@ -54,7 +54,7 @@ export function MatrixModal({
               <h2 className="text-[15px] font-semibold tracking-tight">{title}</h2>
               <button
                 onClick={onClose}
-                className="h-8 w-8 grid place-items-center rounded-lg text-secondary hover:text-foreground hover:bg-white/[0.05] transition"
+                className="h-8 w-8 grid place-items-center rounded-lg text-copy-secondary hover:text-foreground hover:bg-white/[0.05] transition"
                 aria-label="Close"
               >
                 <X className="h-4 w-4" />
@@ -77,4 +77,4 @@ export const primaryButtonClass =
   "inline-flex items-center justify-center gap-1.5 rounded-xl bg-foreground text-background px-4 py-2.5 text-sm font-medium hover:opacity-90 active:scale-[0.97] transition";
 
 export const ghostButtonClass =
-  "inline-flex items-center justify-center gap-1.5 rounded-xl bg-transparent text-secondary hover:text-foreground px-4 py-2.5 text-sm font-medium hover:bg-white/[0.04] transition";
+  "inline-flex items-center justify-center gap-1.5 rounded-xl bg-transparent text-copy-secondary hover:text-foreground px-4 py-2.5 text-sm font-medium hover:bg-white/[0.04] transition";

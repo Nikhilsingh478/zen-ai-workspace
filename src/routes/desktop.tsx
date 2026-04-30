@@ -58,7 +58,7 @@ function DesktopPage() {
       </motion.div>
 
       {websites.length === 0 && (
-        <p className="text-center text-secondary py-20 text-sm">
+        <p className="text-center text-copy-secondary py-20 text-sm">
           Add some websites to populate your launcher.
         </p>
       )}
@@ -98,7 +98,7 @@ function Tile({
           loading="lazy"
         />
       </div>
-      <span className="text-[11.5px] sm:text-xs text-secondary group-hover:text-foreground transition text-center leading-tight max-w-[88px] line-clamp-2">
+      <span className="text-[11.5px] sm:text-xs text-copy-secondary group-hover:text-foreground transition text-center leading-tight max-w-[88px] line-clamp-2">
         {website.name}
       </span>
     </motion.a>

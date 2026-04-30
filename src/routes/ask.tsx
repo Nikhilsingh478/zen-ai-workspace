@@ -72,16 +72,16 @@ function AskPage() {
               className="min-h-[60vh] flex flex-col items-center justify-center text-center"
             >
               <div className="h-12 w-12 rounded-2xl bg-[var(--surface-2)] border border-border/60 grid place-items-center mb-5">
-                <Sparkles className="h-5 w-5 text-secondary" strokeWidth={1.75} />
+                <Sparkles className="h-5 w-5 text-copy-secondary" strokeWidth={1.75} />
               </div>
               <h1 className="text-2xl md:text-[28px] font-semibold tracking-tight">What's on your mind?</h1>
-              <p className="text-sm text-secondary mt-2">A calm space to think, draft, and explore.</p>
+              <p className="text-sm text-copy-secondary mt-2">A calm space to think, draft, and explore.</p>
               <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-md">
                 {STARTERS.map((s) => (
                   <button
                     key={s}
                     onClick={() => send(s)}
-                    className="text-left text-sm text-secondary hover:text-foreground rounded-xl border border-border/60 bg-[var(--surface-1)] hover:bg-[var(--surface-2)] px-4 py-3 transition"
+                    className="text-left text-sm text-copy-secondary hover:text-foreground rounded-xl border border-border/60 bg-[var(--surface-1)] hover:bg-[var(--surface-2)] px-4 py-3 transition"
                   >
                     {s}
                   </button>
@@ -163,7 +163,7 @@ function Bubble({ message }: { message: Message }) {
         className={
           isUser
             ? "max-w-[85%] rounded-2xl rounded-br-md bg-[var(--surface-3)] border border-border/60 px-4 py-3 text-[14.5px] leading-relaxed text-foreground whitespace-pre-wrap"
-            : "max-w-[90%] rounded-2xl rounded-bl-md bg-[var(--surface-1)] border border-border/60 px-4 py-3 text-[14.5px] leading-relaxed text-secondary whitespace-pre-wrap"
+            : "max-w-[90%] rounded-2xl rounded-bl-md bg-[var(--surface-1)] border border-border/60 px-4 py-3 text-[14.5px] leading-relaxed text-copy-secondary whitespace-pre-wrap"
         }
       >
         {message.content}

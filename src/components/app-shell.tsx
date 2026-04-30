@@ -38,7 +38,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                   "relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all duration-200",
                   active
                     ? "bg-white/[0.06] text-foreground"
-                    : "text-secondary hover:text-foreground hover:bg-white/[0.04]",
+                    : "text-copy-secondary hover:text-foreground hover:bg-white/[0.04]",
                 )}
               >
                 <Icon className="h-[18px] w-[18px]" strokeWidth={1.75} />

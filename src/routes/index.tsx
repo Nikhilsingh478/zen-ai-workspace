@@ -65,7 +65,7 @@ function Index() {
           <WebsiteCard key={w.id} website={w} index={i} onRemove={() => remove(w.id)} />
         ))}
         {filtered.length === 0 && (
-          <div className="col-span-full text-center text-secondary py-20 text-sm">
+          <div className="col-span-full text-center text-copy-secondary py-20 text-sm">
             Nothing matches "{query}".
           </div>
         )}
@@ -110,7 +110,7 @@ function WebsiteCard({
             <h3 className="text-[15px] font-semibold tracking-tight truncate text-foreground">{website.name}</h3>
             <ExternalLink className="h-3.5 w-3.5 text-muted-foreground/70 group-hover:text-foreground transition" />
           </div>
-          <p className="text-xs text-secondary mt-0.5 truncate">{getDomain(website.url)}</p>
+          <p className="text-xs text-copy-secondary mt-0.5 truncate">{getDomain(website.url)}</p>
         </div>
         <button
           onClick={(e) => {
@@ -125,7 +125,7 @@ function WebsiteCard({
         </button>
       </div>
 
-      <p className="mt-4 text-[13px] leading-relaxed text-secondary line-clamp-3">
+      <p className="mt-4 text-[13px] leading-relaxed text-copy-secondary line-clamp-3">
         {website.description}
       </p>
 
@@ -134,7 +134,7 @@ function WebsiteCard({
           {website.tags.map((t) => (
             <span
               key={t}
-              className="text-[10px] uppercase tracking-wider text-secondary px-2 py-1 rounded-md bg-white/[0.04] border border-white/[0.06]"
+              className="text-[10px] uppercase tracking-wider text-copy-secondary px-2 py-1 rounded-md bg-white/[0.04] border border-white/[0.06]"
             >
               {t}
             </span>

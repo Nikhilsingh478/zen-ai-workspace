@@ -16,7 +16,7 @@ export function PageHeader({
           {title}
         </h1>
         {subtitle && (
-          <p className="mt-2 text-sm text-secondary">{subtitle}</p>
+          <p className="mt-2 text-sm text-copy-secondary">{subtitle}</p>
         )}
       </div>
       {action}
