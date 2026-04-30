@@ -40,6 +40,8 @@
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
+  --color-copy-secondary: var(--text-secondary);
+  --color-copy-muted: var(--text-muted);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
@@ -102,6 +104,8 @@
 
   /* #A1A1AA — secondary text */
   --text-secondary: oklch(0.71 0.005 286);
+  /* #71717A — tertiary/muted text */
+  --text-muted: oklch(0.54 0.005 286);
 
   /* #141416, #18181B, #1F1F23 */
   --surface-1: oklch(0.175 0 0);
@@ -159,9 +163,6 @@ html {
 }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.12); }
 
-@utility text-secondary {
-  color: var(--text-secondary);
-}
 @utility surface-1 {
   background-color: var(--surface-1);
 }
