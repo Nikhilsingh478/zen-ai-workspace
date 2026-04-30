@@ -277,7 +277,7 @@ function normalizeFolders(data: unknown): DesktopFolder[] {
         ? folder.children.filter((child): child is string => typeof child === "string")
         : [],
     }))
-    .filter((folder) => folder.children.length > 0);
+    ;
 }
 
 function normalizeStorage(data: unknown): AppStorage {

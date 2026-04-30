@@ -20,21 +20,20 @@ export type PositionedLauncherEntry = LauncherEntry & {
 };
 
 export const DESKTOP_COLUMNS = 8;
+export const DESKTOP_COLUMNS_MOBILE = 4;
+export const GRID_GAP = 16;
 
 export function buildLauncherEntries(items: Website[], folders: DesktopFolder[]): LauncherEntry[] {
   const itemById = new Map(items.map((item) => [item.id, item]));
   const folderChildIds = new Set(folders.flatMap((folder) => folder.children));
 
   const folderEntries = folders
-    .map((folder): LauncherEntry | null => {
+    .map((folder): LauncherEntry => {
       const children = folder.children
         .map((childId) => itemById.get(childId))
         .filter((item): item is Website => Boolean(item));
-
-      if (children.length === 0) return null;
       return { kind: "folder", id: folder.id, folder, children };
-    })
-    .filter((entry): entry is LauncherEntry => Boolean(entry));
+    });
 
   const itemEntries = items
     .filter((item) => !folderChildIds.has(item.id))

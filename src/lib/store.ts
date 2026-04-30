@@ -260,12 +260,99 @@ export function useDesktopStorage() {
     }));
   };
 
+  const createEmptyFolder = (x: number, y: number) => {
+    const folderId = crypto.randomUUID();
+    updateStorage((prev) => {
+      const occupied = new Set(prev.desktop.layout.map((e) => `${e.x}:${e.y}`));
+      let fx = x;
+      let fy = y;
+      if (occupied.has(`${fx}:${fy}`)) {
+        let idx = 0;
+        while (occupied.has(`${idx % 8}:${Math.floor(idx / 8)}`)) idx++;
+        fx = idx % 8;
+        fy = Math.floor(idx / 8);
+      }
+      return {
+        ...prev,
+        desktop: {
+          layout: [...prev.desktop.layout, { id: folderId, x: fx, y: fy }],
+          folders: [...prev.desktop.folders, { id: folderId, name: "New Folder", children: [] }],
+        },
+      };
+    });
+    return folderId;
+  };
+
+  const addToFolder = (folderId: string, itemId: string) => {
+    updateStorage((prev) => {
+      const folder = prev.desktop.folders.find((f) => f.id === folderId);
+      if (!folder || folder.children.includes(itemId)) return prev;
+      return {
+        ...prev,
+        desktop: {
+          layout: prev.desktop.layout.filter((e) => e.id !== itemId),
+          folders: prev.desktop.folders.map((f) =>
+            f.id === folderId ? { ...f, children: [...f.children, itemId] } : f,
+          ),
+        },
+      };
+    });
+  };
+
+  const renameFolder = (folderId: string, name: string) => {
+    updateStorage((prev) => ({
+      ...prev,
+      desktop: {
+        ...prev.desktop,
+        folders: prev.desktop.folders.map((f) =>
+          f.id === folderId ? { ...f, name } : f,
+        ),
+      },
+    }));
+  };
+
+  const deleteFolder = (folderId: string) => {
+    updateStorage((prev) => {
+      const folder = prev.desktop.folders.find((f) => f.id === folderId);
+      if (!folder) return prev;
+      const folderEntry = prev.desktop.layout.find((e) => e.id === folderId);
+      const baseX = folderEntry?.x ?? 0;
+      const baseY = folderEntry?.y ?? 0;
+      const existingOccupied = new Set(
+        prev.desktop.layout.filter((e) => e.id !== folderId).map((e) => `${e.x}:${e.y}`),
+      );
+      const childEntries: DesktopLayoutEntry[] = [];
+      let slot = 0;
+      for (const childId of folder.children) {
+        while (existingOccupied.has(`${(baseX + slot) % 8}:${baseY + Math.floor((baseX + slot) / 8)}`)) {
+          slot++;
+        }
+        const cx = (baseX + slot) % 8;
+        const cy = baseY + Math.floor((baseX + slot) / 8);
+        existingOccupied.add(`${cx}:${cy}`);
+        childEntries.push({ id: childId, x: cx, y: cy });
+        slot++;
+      }
+      return {
+        ...prev,
+        desktop: {
+          layout: [...prev.desktop.layout.filter((e) => e.id !== folderId), ...childEntries],
+          folders: prev.desktop.folders.filter((f) => f.id !== folderId),
+        },
+      };
+    });
+  };
+
   return {
     items: storage.items,
     desktop: storage.desktop,
     updateLayout,
     createFolder,
     removeFromFolder,
+    createEmptyFolder,
+    addToFolder,
+    renameFolder,
+    deleteFolder,
   };
 }
 

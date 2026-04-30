@@ -1,0 +1,273 @@
+Implement an advanced **Desktop Launcher System** for a web app (React-based) that behaves like a simplified operating system desktop.
+
+The system must be smooth, responsive, and production-quality. Avoid overengineering. Focus on correctness, performance, and clean UX.
+
+---
+
+# 🎯 CORE FEATURES (STRICT REQUIREMENTS)
+
+You must implement:
+
+1. Drag & rearrange icons
+2. Persistent grid layout (saved to backend JSON)
+3. Manual folder creation (RIGHT CLICK on desktop)
+4. Drag icons INTO folders
+5. Drag icons OUT of folders
+6. Remove icon from folder via button
+7. Mobile-compatible version (with folder button)
+8. Smooth animations (no lag, no jitter)
+9. Optimistic UI updates
+10. Layout persistence (CRITICAL)
+
+---
+
+# 📦 DATA STRUCTURE (IMPORTANT)
+
+Use this structure:
+
+{
+"items": [...],
+"desktop": {
+"layout": [
+{ "id": "item-id", "x": 0, "y": 0 }
+],
+"folders": [
+{
+"id": "folder-id",
+"name": "New Folder",
+"children": ["item-id"]
+}
+]
+}
+}
+
+IMPORTANT RULES:
+
+* Do NOT mix layout into items
+* Folder children must only store item IDs
+* Layout must update when dragging
+
+---
+
+# 🖥️ DESKTOP GRID SYSTEM
+
+## Layout
+
+* Grid-based layout (NOT absolute free positioning)
+* Maintain consistent spacing
+* Prevent overlapping
+* Each item must snap into grid positions
+
+---
+
+## Rendering
+
+* Render items based on layout positions
+* If item has no layout → auto-place it
+
+---
+
+# 🧲 DRAG & DROP SYSTEM (CRITICAL)
+
+Use:
+@dnd-kit/core
+
+---
+
+## Behavior
+
+* Drag icon → move across grid
+* Drop → update position
+* Swap positions if needed
+* No overlap allowed
+
+---
+
+## Folder Interaction
+
+* Drag icon onto folder → add to folder
+* Drag icon out of folder → remove from folder
+* Update folder children array
+
+---
+
+## Persistence
+
+On drag end:
+
+* Update layout immediately (optimistic UI)
+* Send updated layout to backend JSON
+
+---
+
+## Performance
+
+* NO jitter
+* NO layout flicker
+* Smooth animation
+
+---
+
+# 📁 FOLDER SYSTEM (STRICT IMPLEMENTATION)
+
+## Creation (DESKTOP ONLY)
+
+* Right-click on empty desktop space
+* Show context menu
+* Option: "New Folder"
+* Create folder at clicked grid position
+
+---
+
+## Folder Behavior
+
+* Folder appears as icon in grid
+* Click → opens folder overlay
+
+---
+
+## Folder Overlay
+
+* Centered modal / panel
+* Shows child icons in grid layout
+* Smooth open/close animation
+
+---
+
+## Inside Folder
+
+Each item must support:
+
+* Click → open link
+* Remove button → removes from folder
+* Drag out → returns to desktop
+
+---
+
+# 📱 MOBILE BEHAVIOR
+
+## No right-click on mobile
+
+Instead:
+
+* Add visible "Create Folder" button (top or floating)
+* On tap → creates folder
+
+---
+
+## Mobile interactions
+
+* Tap → open item
+* Drag → optional (only if smooth)
+* Long press → optional menu (edit/remove)
+
+---
+
+# 🎞️ ANIMATION SYSTEM
+
+Use Framer Motion
+
+---
+
+## Required animations
+
+* Icons load:
+  staggered fade + scale
+
+* Drag:
+  smooth movement
+
+* Folder open:
+  zoom + fade
+
+* Hover:
+  slight lift (translateY -2px)
+
+---
+
+## STRICT RULE
+
+* No laggy animations
+* No excessive motion
+
+---
+
+# ⚡ OPTIMISTIC UI
+
+* On drag → UI updates instantly
+* Backend sync happens after
+* If API fails → revert gracefully
+
+---
+
+# 💾 BACKEND SYNC
+
+* Send updated layout + folders to backend (GitHub API)
+* Keep API calls minimal
+* Do not spam requests
+
+---
+
+# 🧠 REMOVE THESE FEATURES (DO NOT IMPLEMENT)
+
+* Command palette
+* Focus mode
+* Complex nested folders
+* Overengineered state systems
+
+---
+
+# 🎨 UI RULES
+
+* Dark theme:
+  background: #0B0B0C
+  surface: #141416 / #18181B
+
+* All labels must be visible (no hover-only text)
+
+* Folder icon must look distinct from normal icons
+
+---
+
+# 🚫 AVOID THESE MISTAKES
+
+* Drag causing flicker
+* Layout breaking after drop
+* Items disappearing
+* Folder losing children
+* Overlapping grid items
+* Slow re-renders
+
+---
+
+# 🧱 CODE STRUCTURE (MANDATORY)
+
+Split into:
+
+* DesktopGrid
+* DesktopItem
+* FolderIcon
+* FolderOverlay
+* DragLayer / DragLogic
+* LayoutUtils
+
+---
+
+# 🎯 FINAL RESULT
+
+The system must:
+
+* Feel like a real desktop
+* Be smooth and responsive
+* Persist layout reliably
+* Work on both desktop and mobile
+
+NOT:
+
+* a buggy drag system
+* a static grid
+* a laggy UI
+
+---
+
+Deliver clean, maintainable code.
