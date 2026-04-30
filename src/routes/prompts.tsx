@@ -78,21 +78,21 @@ function PromptCard({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay: Math.min(index * 0.04, 0.3), ease: [0.22, 1, 0.36, 1] }}
       whileHover={{ y: -2 }}
-      className="group relative mb-4 break-inside-avoid rounded-2xl border border-white/[0.06] bg-[var(--surface-1)] p-5 transition-all duration-300 hover:bg-[var(--surface-2)] hover:border-white/[0.12] hover:shadow-[0_20px_50px_-25px_rgba(0,0,0,0.6)]"
+      className="group relative mb-4 break-inside-avoid rounded-2xl border border-border bg-[var(--surface-2)] p-5 transition-all duration-300 hover:bg-[var(--surface-3)] hover:border-white/[0.12] hover:shadow-[0_20px_50px_-25px_rgba(0,0,0,0.6)]"
     >
       <div className="flex items-start justify-between gap-3">
         <h3 className="text-[14.5px] font-semibold tracking-tight pr-8 text-foreground">{prompt.title}</h3>
-        <div className="absolute top-3.5 right-3.5 flex items-center gap-1 opacity-60 group-hover:opacity-100 transition">
+        <div className="absolute top-3.5 right-3.5 flex items-center gap-1">
           <button
             onClick={onRemove}
-            className="h-7 w-7 grid place-items-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/[0.06] transition"
+            className="h-7 w-7 grid place-items-center rounded-lg text-copy-secondary hover:text-foreground hover:bg-white/[0.06] transition"
             aria-label="Delete"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
           <button
             onClick={copy}
-            className="h-7 w-7 grid place-items-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/[0.06] transition"
+            className="h-7 w-7 grid place-items-center rounded-lg text-copy-secondary hover:text-foreground hover:bg-white/[0.06] transition"
             aria-label="Copy prompt"
           >
             {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
