@@ -157,6 +157,12 @@ html {
 @utility text-secondary {
   color: var(--text-secondary);
 }
-@utility surface-1 { background-color: var(--surface-1); }
-@utility surface-2 { background-color: var(--surface-2); }
-@utility surface-3 { background-color: var(--surface-3); }
+@utility surface-1 {
+  background-color: var(--surface-1);
+}
+@utility surface-2 {
+  background-color: var(--surface-2);
+}
+@utility surface-3 {
+  background-color: var(--surface-3);
+}
