@@ -28,25 +28,25 @@ export function MatrixModal({
       {open && (
         <motion.div
           className="fixed inset-0 z-[100] flex items-center justify-center p-4"
-          initial={{ opacity: 0 }}
+          initial={{ opacity: 0.88 }}
           animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
+          exit={{ opacity: 0.88 }}
           transition={{ duration: 0.18 }}
         >
           <motion.div
             className="absolute inset-0 bg-black/60 backdrop-blur-md"
             onClick={onClose}
-            initial={{ opacity: 0 }}
+            initial={{ opacity: 0.88 }}
             animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            exit={{ opacity: 0.88 }}
           />
           <motion.div
             role="dialog"
             aria-modal="true"
             aria-label={title}
-            initial={{ scale: 0.96, opacity: 0, y: 6 }}
+            initial={{ scale: 0.96, opacity: 0.88, y: 6 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 0.97, opacity: 0 }}
+            exit={{ scale: 0.97, opacity: 0.88 }}
             transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
             className="relative w-full max-w-md rounded-2xl border border-border bg-[var(--surface-2)] p-6 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.7)]"
           >
