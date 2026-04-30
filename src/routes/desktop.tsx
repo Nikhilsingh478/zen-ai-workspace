@@ -89,8 +89,8 @@ function Tile({
       whileTap={{ scale: 0.96 }}
       className="group relative flex flex-col items-center gap-2.5 outline-none"
     >
-      <div className="relative h-[72px] w-[72px] sm:h-[84px] sm:w-[84px] rounded-2xl bg-[var(--surface-2)] border border-white/[0.06] grid place-items-center overflow-hidden transition-all duration-300 group-hover:border-white/[0.14] group-hover:bg-[var(--surface-3)] group-hover:shadow-[0_10px_40px_-10px_rgba(255,255,255,0.08)]">
-        <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition duration-500 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.10),transparent_70%)]" />
+      <div className="relative h-[72px] w-[72px] sm:h-[84px] sm:w-[84px] rounded-2xl bg-[var(--surface-2)] border border-border grid place-items-center overflow-hidden transition-all duration-300 group-hover:border-white/[0.14] group-hover:bg-[var(--surface-3)] group-hover:shadow-[0_10px_40px_-10px_rgba(255,255,255,0.08)]">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.04),transparent_72%)]" />
         <img
           src={faviconFor(website.url, 128)}
           alt=""
