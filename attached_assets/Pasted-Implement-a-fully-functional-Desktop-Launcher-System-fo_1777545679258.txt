@@ -1,0 +1,324 @@
+Implement a fully functional **Desktop Launcher System** for a web application called “AI Matrix”. This system must behave like a lightweight operating system launcher (similar to macOS Launchpad / mobile home screen), not a simple grid.
+
+The implementation must be production-quality, performant, and structured cleanly.
+
+---
+
+# 🎯 CORE OBJECTIVE
+
+Create a desktop interface where users can:
+
+* view tools as icons
+* drag & rearrange them
+* group them into folders
+* open tools instantly
+* search and launch via keyboard
+
+This system must work differently on:
+
+* Desktop (mouse + keyboard optimized)
+* Mobile (touch + app-grid optimized)
+
+---
+
+# 📦 DATA STRUCTURE (STRICT)
+
+Use this structure:
+
+{
+"items": [...],
+"desktop": {
+"layout": [
+{ "id": "item-id", "x": 0, "y": 0 }
+],
+"folders": [
+{
+"id": "folder-id",
+"name": "Folder Name",
+"children": ["item-id"]
+}
+]
+}
+}
+
+IMPORTANT:
+
+* Do NOT mix layout into items
+* Layout must remain separate
+
+---
+
+# 🖥️ DESKTOP MODE (PRIMARY EXPERIENCE)
+
+## Layout System
+
+* Grid-based layout (not absolute chaos)
+* Use consistent spacing and alignment
+* Each item has logical grid position (x, y)
+
+---
+
+## Icon Tile Design
+
+Each icon must include:
+
+* Favicon (from domain)
+* Label (max 2 lines, truncated)
+
+Tile:
+
+* Size: ~88px
+* Background: #18181B
+* Border radius: 16px
+* Centered layout
+
+---
+
+## Rendering Logic
+
+* Read layout positions
+* Map items into grid positions
+* Handle missing layout entries gracefully
+
+---
+
+# 🧲 DRAG & DROP SYSTEM
+
+Use:
+
+* @dnd-kit/core (REQUIRED)
+
+---
+
+## Behavior:
+
+* Drag icon → reorder positions
+* Swap positions when dropped
+* Update layout state
+* Persist layout via API
+
+---
+
+## Rules:
+
+* Smooth animation during drag
+* No layout breaking
+* Maintain grid alignment
+
+---
+
+# 📁 FOLDER SYSTEM
+
+## Creation:
+
+* Drag one item onto another → create folder
+
+---
+
+## Folder Structure:
+
+{
+"id": "folder1",
+"name": "AI Tools",
+"children": ["item1", "item2"]
+}
+
+---
+
+## UI Behavior:
+
+* Folder appears as single icon
+* Click → opens overlay panel
+* Overlay shows child icons in grid
+
+---
+
+## Folder Interaction:
+
+* Open → smooth zoom-in animation
+* Close → zoom-out animation
+* Allow removing items from folder
+
+---
+
+# 🖱️ INTERACTIONS
+
+## Hover (Desktop only):
+
+* scale(1.08)
+* subtle glow
+* label slightly brighter
+
+---
+
+## Click:
+
+* scale down slightly
+* open link in new tab
+
+---
+
+## Focus Mode (important):
+
+* When hovering an icon:
+
+  * slightly dim others
+  * active icon stands out
+
+---
+
+# ⌨️ KEYBOARD SYSTEM (IMPORTANT)
+
+## Command Palette
+
+Shortcut:
+Ctrl + K
+
+---
+
+## Features:
+
+* Search all items
+* Fuzzy search (Fuse.js)
+* Actions:
+
+  * open tool
+  * copy prompt
+  * navigate
+
+---
+
+# 🔍 SEARCH INTEGRATION
+
+Use Fuse.js:
+
+* keys:
+
+  * title
+  * body
+  * tags
+  * url
+
+* fast, responsive results
+
+---
+
+# 📱 MOBILE MODE (DIFFERENT UX)
+
+## Layout:
+
+* App grid (like phone home screen)
+* Larger touch targets
+* No drag precision complexity initially
+
+---
+
+## Interaction:
+
+* Tap → open
+* Long press → edit/delete menu
+
+---
+
+## Optional:
+
+* Drag support (only if smooth on touch)
+
+---
+
+# 🎞️ ANIMATION SYSTEM
+
+Use Framer Motion:
+
+## Required animations:
+
+* Icons load:
+
+  * staggered fade + scale
+
+* Drag:
+
+  * smooth movement
+
+* Folder open:
+
+  * zoom + fade
+
+* Page transitions:
+
+  * subtle fade
+
+---
+
+# ⚡ PERFORMANCE REQUIREMENTS
+
+* No re-render spam
+* Memoize grid items
+* Efficient drag updates
+* Avoid layout thrashing
+
+---
+
+# 💾 STATE MANAGEMENT
+
+* Maintain layout state separately
+* Update only affected items on drag
+* Sync with backend (GitHub API)
+
+---
+
+# 🔄 SYNC SYSTEM
+
+* On drag end → update layout
+* Send updated layout to backend
+* Optimistic UI (instant feedback)
+
+---
+
+# 🎨 DESIGN RULES
+
+* Maintain dark theme:
+
+  * background: #0B0B0C
+  * surfaces: #141416 / #18181B
+
+* Clear visibility:
+
+  * no opacity-based hiding
+  * all labels readable
+
+---
+
+# 🚫 AVOID
+
+* Absolute positioning chaos
+* Overlapping elements
+* Hover-only visibility
+* Laggy drag behavior
+* Unstructured folder logic
+
+---
+
+# 🎯 FINAL RESULT
+
+The system must feel like:
+
+* a real OS launcher
+* smooth, responsive, intentional
+
+NOT:
+
+* a static grid
+* a toy UI
+
+---
+
+Write clean, modular code:
+
+* DesktopGrid component
+* DesktopItem component
+* Folder component
+* Drag system isolated
+* Layout utilities separated
+
+Ensure everything is maintainable and scalable.
