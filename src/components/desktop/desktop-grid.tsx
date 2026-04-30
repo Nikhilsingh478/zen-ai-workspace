@@ -31,10 +31,9 @@ export function DesktopGrid() {
     items,
     desktop,
     updateLayout,
-    createFolder,
+    addToFolder,
     removeFromFolder,
     createEmptyFolder,
-    addToFolder,
     renameFolder,
     deleteFolder,
   } = useDesktopStorage();
@@ -47,28 +46,41 @@ export function DesktopGrid() {
   useEffect(() => setMounted(true), []);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const [cellPx, setCellPx] = useState(100);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [openFolderId, setOpenFolderId] = useState<string | null>(null);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; gridX: number; gridY: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    gridX: number;
+    gridY: number;
+  } | null>(null);
+
+  // Track exact cell size for the drag ghost
+  useEffect(() => {
+    if (!mounted || !containerRef.current) return;
+    const update = () => {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      setCellPx((rect.width - (cols - 1) * GRID_GAP) / cols);
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, [mounted, cols]);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
   );
 
   const websites = items.filter((item): item is Website => item.type === "website");
   const entries = buildLauncherEntries(websites, desktop.folders);
   const positioned = normalizeDesktopLayout(entries, desktop.layout, cols);
 
-  // Compute grid rows needed
   const maxRow = positioned.reduce((max, e) => Math.max(max, e.y), 0);
   const gridRows = Math.max(maxRow + 2, 4);
-
-  function getCellSize() {
-    if (!containerRef.current) return 100;
-    const rect = containerRef.current.getBoundingClientRect();
-    return (rect.width - (cols - 1) * GRID_GAP) / cols;
-  }
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(String(event.active.id));
@@ -84,33 +96,22 @@ export function DesktopGrid() {
       const activeEntry = positioned.find((e) => e.id === activeIdStr);
       if (!activeEntry) return;
 
-      // Dropped onto another item/folder
+      // Dropped onto a different droppable target
       if (over && String(over.id) !== activeIdStr) {
         const overIdStr = String(over.id);
         const overEntry = positioned.find((e) => e.id === overIdStr);
-        if (overEntry) {
-          if (overEntry.kind === "folder") {
-            // Add to existing folder
+        if (overEntry?.kind === "folder") {
+          // Dragging any item or folder INTO an existing folder
+          if (activeEntry.kind === "item") {
             addToFolder(overIdStr, activeIdStr);
             return;
           }
-          if (overEntry.kind === "item" && activeEntry.kind === "item") {
-            // Create new folder from two items
-            createFolder(activeIdStr, overIdStr);
-            return;
-          }
-          if (activeEntry.kind === "folder" && overEntry.kind === "item") {
-            // Add item to folder
-            addToFolder(activeIdStr, overIdStr);
-            return;
-          }
         }
+        // item onto item → fall through to position swap (no auto folder creation)
       }
 
-      // Move to new grid position
-      const cellSize = getCellSize();
-      const stride = cellSize + GRID_GAP;
-
+      // Move to new grid position using delta
+      const stride = cellPx + GRID_GAP;
       const rawNewX = activeEntry.x + delta.x / stride;
       const rawNewY = activeEntry.y + delta.y / stride;
       const newX = Math.max(0, Math.min(cols - 1, Math.round(rawNewX)));
@@ -118,7 +119,7 @@ export function DesktopGrid() {
 
       if (newX === activeEntry.x && newY === activeEntry.y) return;
 
-      // Check if target is occupied → swap
+      // If target cell is occupied, swap positions
       const occupant = positioned.find(
         (e) => e.id !== activeIdStr && e.x === newX && e.y === newY,
       );
@@ -131,17 +132,16 @@ export function DesktopGrid() {
         return entry;
       });
 
-      // If active wasn't in layout, add it
       if (!nextLayout.find((e) => e.id === activeIdStr)) {
         nextLayout.push({ id: activeIdStr, x: newX, y: newY });
       }
 
       updateLayout(nextLayout);
     },
-    [positioned, desktop.layout, cols, updateLayout, createFolder, addToFolder],
+    [positioned, desktop.layout, cols, cellPx, updateLayout, addToFolder],
   );
 
-  // Right-click context menu on desktop
+  // Right-click context menu — desktop only
   const handleContextMenu = (e: React.MouseEvent) => {
     if (isMobile) return;
     e.preventDefault();
@@ -149,8 +149,7 @@ export function DesktopGrid() {
     const rect = containerRef.current.getBoundingClientRect();
     const relX = e.clientX - rect.left;
     const relY = e.clientY - rect.top;
-    const cellSize = getCellSize();
-    const stride = cellSize + GRID_GAP;
+    const stride = cellPx + GRID_GAP;
     const gridX = Math.max(0, Math.min(cols - 1, Math.floor(relX / stride)));
     const gridY = Math.max(0, Math.floor(relY / stride));
     setContextMenu({ x: e.clientX, y: e.clientY, gridX, gridY });
@@ -161,12 +160,10 @@ export function DesktopGrid() {
       createEmptyFolder(contextMenu.gridX, contextMenu.gridY);
       setContextMenu(null);
     } else {
-      // Mobile: auto-place
       createEmptyFolder(0, 0);
     }
   };
 
-  // Active dragging item info (for overlay)
   const activePositioned = activeId ? positioned.find((e) => e.id === activeId) : null;
 
   const openFolder = openFolderId
@@ -178,14 +175,14 @@ export function DesktopGrid() {
         .filter((w): w is Website => Boolean(w))
     : [];
 
-  // While SSR / before hydration — render a placeholder to avoid useLayoutEffect mismatch
+  // Before mount — SSR-safe placeholder, no dnd-kit hooks rendered
   if (!mounted) {
     return <div className="min-h-[240px] rounded-2xl" />;
   }
 
   return (
     <div className="relative" onClick={() => setContextMenu(null)}>
-      {/* Mobile Create Folder Button */}
+      {/* Mobile: visible Create Folder button */}
       {isMobile && (
         <div className="mb-4 flex justify-end">
           <button
@@ -217,10 +214,7 @@ export function DesktopGrid() {
               return (
                 <div
                   key={entry.id}
-                  style={{
-                    gridColumn: entry.x + 1,
-                    gridRow: entry.y + 1,
-                  }}
+                  style={{ gridColumn: entry.x + 1, gridRow: entry.y + 1 }}
                 >
                   <DesktopItem
                     id={entry.id}
@@ -236,10 +230,7 @@ export function DesktopGrid() {
               return (
                 <div
                   key={entry.id}
-                  style={{
-                    gridColumn: entry.x + 1,
-                    gridRow: entry.y + 1,
-                  }}
+                  style={{ gridColumn: entry.x + 1, gridRow: entry.y + 1 }}
                 >
                   <FolderIcon
                     folder={entry.folder}
@@ -255,13 +246,16 @@ export function DesktopGrid() {
           })}
         </div>
 
-        {/* Drag Overlay */}
-        <DragOverlay dropAnimation={null}>
-          {activePositioned && (
-            <div className="rotate-1 pointer-events-none">
+        {/* Drag Overlay — constrained to exact cell width, no scaling */}
+        <DragOverlay
+          dropAnimation={null}
+          style={{ width: cellPx, pointerEvents: "none" }}
+        >
+          {activePositioned ? (
+            <div style={{ width: cellPx }} className="rotate-1">
               <DragGhost entry={activePositioned} />
             </div>
-          )}
+          ) : null}
         </DragOverlay>
       </DndContext>
 
@@ -275,6 +269,7 @@ export function DesktopGrid() {
             transition={{ duration: 0.12 }}
             style={{ position: "fixed", top: contextMenu.y, left: contextMenu.x, zIndex: 200 }}
             className="overflow-hidden rounded-xl border border-white/10 bg-[#18181B] shadow-[0_8px_30px_rgba(0,0,0,0.6)] py-1 min-w-[160px]"
+            onClick={(e) => e.stopPropagation()}
           >
             <button
               onClick={handleCreateFolder}
@@ -287,15 +282,13 @@ export function DesktopGrid() {
         )}
       </AnimatePresence>
 
-      {/* Folder Overlay */}
+      {/* Folder Modal */}
       {openFolder && (
         <FolderOverlay
           folder={openFolder}
           children={openFolderChildren}
           onClose={() => setOpenFolderId(null)}
-          onRemoveChild={(childId) => {
-            removeFromFolder(openFolder.id, childId);
-          }}
+          onRemoveChild={(childId) => removeFromFolder(openFolder.id, childId)}
           onRename={(name) => renameFolder(openFolder.id, name)}
           onDelete={() => {
             deleteFolder(openFolder.id);

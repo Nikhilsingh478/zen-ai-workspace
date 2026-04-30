@@ -1,5 +1,4 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
-import { CSS } from "@dnd-kit/utilities";
 import { motion } from "framer-motion";
 import { Folder } from "lucide-react";
 import type { DesktopFolder, Website } from "@/lib/store";
@@ -19,15 +18,10 @@ export function FolderIcon({ folder, children, isActive, animationDelay = 0, onO
     attributes,
     listeners,
     setNodeRef: setDragRef,
-    transform,
     isDragging,
   } = useDraggable({ id: folder.id });
 
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: folder.id });
-
-  const style = isDragging
-    ? { transform: CSS.Transform.toString(transform), zIndex: 999, opacity: 0.4 }
-    : undefined;
 
   const setRef = (node: HTMLDivElement | null) => {
     setDragRef(node);
@@ -39,9 +33,9 @@ export function FolderIcon({ folder, children, isActive, animationDelay = 0, onO
   return (
     <div
       ref={setRef}
-      style={style}
       {...listeners}
       {...attributes}
+      style={{ opacity: isDragging ? 0.25 : 1, transition: "opacity 0.15s" }}
       onClick={(e) => {
         if (isDragging) return;
         e.stopPropagation();
@@ -59,10 +53,9 @@ export function FolderIcon({ folder, children, isActive, animationDelay = 0, onO
           isActive && "opacity-40",
         )}
       >
-        {/* Folder icon with mini grid */}
         <div
           className={cn(
-            "relative h-14 w-14 rounded-2xl overflow-hidden bg-[#18181B] border border-white/[0.12] transition-shadow",
+            "relative h-14 w-14 flex-shrink-0 rounded-2xl overflow-hidden bg-[#18181B] border border-white/[0.12] transition-shadow",
             "group-hover:shadow-[0_4px_16px_rgba(0,0,0,0.4)] group-hover:border-white/[0.2]",
             isOver && "border-white/30 shadow-[0_4px_20px_rgba(255,255,255,0.1)]",
           )}
@@ -97,6 +90,7 @@ export function FolderIcon({ folder, children, isActive, animationDelay = 0, onO
             </div>
           )}
         </div>
+
         <span className="text-[11px] text-white/70 text-center leading-tight line-clamp-2 w-full max-w-[80px]">
           {folder.name}
         </span>

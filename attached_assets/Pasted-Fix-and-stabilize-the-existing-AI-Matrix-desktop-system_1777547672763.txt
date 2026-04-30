@@ -1,0 +1,238 @@
+Fix and stabilize the existing AI Matrix desktop system. Do NOT redesign. Correct all bugs and enforce strict behavior.
+
+---
+
+# 🚨 CRITICAL FIX 1: DRAG GHOST / OVERLAY ISSUE (MAIN BUG)
+
+The drag preview (ghost item) is incorrectly sized and appears larger than grid cells.
+
+---
+
+## REQUIRED FIX:
+
+The drag overlay MUST match the exact size and style of the original grid item.
+
+---
+
+## IMPLEMENTATION RULES:
+
+* Use a dedicated lightweight component for DragOverlay (DO NOT reuse full DesktopItem with hooks)
+* Ghost item must have:
+
+width: EXACT grid cell width
+height: EXACT grid cell height
+padding: SAME as original
+border radius: SAME
+NO extra margins
+NO scaling distortion
+
+---
+
+## IMPORTANT:
+
+Remove any of these from overlay:
+
+* extra padding
+* transform scale > 1
+* inherited flex expansion
+* container width stretching
+
+---
+
+## Example fix:
+
+Ensure overlay wrapper:
+
+position: fixed
+pointer-events: none
+width: auto (NOT 100%)
+
+---
+
+## VISUAL REQUIREMENT:
+
+Ghost must look like:
+→ exact clone of icon
+→ no extra empty space around it
+
+---
+
+# 🚨 CRITICAL FIX 2: HYDRATION ISSUE
+
+Wrap ALL desktop and drag-related components:
+
+```js
+const [mounted, setMounted] = useState(false);
+
+useEffect(() => {
+  setMounted(true);
+}, []);
+
+if (!mounted) return null;
+```
+
+---
+
+Remove from render:
+
+* window usage
+* localStorage usage
+
+Move to useEffect only.
+
+---
+
+# 🚨 CRITICAL FIX 3: GITHUB SYNC
+
+Ensure real persistence:
+
+* Fetch file → get SHA
+* Update JSON
+* Encode base64
+* PUT request with SHA
+
+---
+
+Verify:
+
+* Drag → refresh → persists
+* Folder change → persists
+* GitHub file updates
+
+---
+
+# 🚨 CRITICAL FIX 4: REMOVE UNWANTED FEATURES
+
+REMOVE:
+
+* Command palette (Ctrl + K)
+* Auto folder creation via drag
+* Focus mode
+
+---
+
+# 🚨 CRITICAL FIX 5: FOLDER SYSTEM (STRICT)
+
+---
+
+## DESKTOP:
+
+* Right-click empty space → context menu
+* "New Folder"
+* Create folder at clicked grid position
+
+---
+
+## MOBILE:
+
+* Add "Create Folder" button
+* Tap → creates folder
+
+---
+
+## FOLDER RULES:
+
+* No auto creation via drag
+* Folder = manual only
+
+---
+
+## INSIDE FOLDER:
+
+Each item must support:
+
+* click → open
+* remove button → remove from folder
+* drag out → back to desktop
+
+---
+
+# 🚨 CRITICAL FIX 6: DRAG SYSTEM
+
+Use @dnd-kit/core correctly.
+
+---
+
+## REQUIREMENTS:
+
+* Snap to grid
+* No overlap
+* Smooth drag (NO jitter)
+* Stable drop behavior
+
+---
+
+## ON DRAG END:
+
+ONLY update:
+
+desktop.layout
+
+---
+
+## OPTIMISTIC UI:
+
+* update UI instantly
+* backend sync after
+
+---
+
+# 🚨 CRITICAL FIX 7: FOLDER DRAG LOGIC
+
+Ensure:
+
+* drag into folder → add
+* drag out of folder → remove
+* no duplication
+* consistent state
+
+---
+
+# 🚨 CRITICAL FIX 8: MOBILE UX
+
+* Responsive grid
+* Larger touch targets
+* Folder button visible
+* No broken layout
+
+---
+
+# 🎞️ ANIMATION RULES
+
+* Keep Framer Motion
+* Remove heavy scaling
+* Ensure drag feels natural
+* No jitter
+
+---
+
+# 🎨 UI RULES
+
+* Text always visible (no hover dependency)
+* Grid alignment consistent
+* Icons centered properly
+
+---
+
+# 🚫 DO NOT:
+
+* stretch drag overlay
+* use full DesktopItem inside DragOverlay
+* allow layout mismatch
+* add extra features
+
+---
+
+# 🎯 FINAL RESULT
+
+System must:
+
+* Have PERFECT drag preview (no oversized ghost)
+* Persist layout correctly
+* Use manual folder creation only
+* Work smoothly on desktop + mobile
+* Have zero hydration errors
+
+---
+
+Deliver clean, stable, production-ready code.
