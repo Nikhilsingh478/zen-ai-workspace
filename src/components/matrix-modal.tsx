@@ -48,7 +48,7 @@ export function MatrixModal({
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.97, opacity: 0 }}
             transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-            className="relative w-full max-w-md rounded-2xl border border-border/70 bg-[var(--surface-2)] p-6 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.7)]"
+            className="relative w-full max-w-md rounded-2xl border border-border bg-[var(--surface-2)] p-6 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.7)]"
           >
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-[15px] font-semibold tracking-tight">{title}</h2>
@@ -69,12 +69,12 @@ export function MatrixModal({
 }
 
 export const fieldClass =
-  "w-full rounded-xl bg-[var(--surface-3)]/60 border border-border/60 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-white/20 focus:bg-[var(--surface-3)] transition";
+  "w-full rounded-xl bg-[var(--surface-2)] border border-border px-3.5 py-2.5 text-sm text-foreground placeholder:text-copy-muted outline-none focus:border-white/20 focus:bg-[var(--surface-3)] transition";
 
-export const labelClass = "block text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-1.5";
+export const labelClass = "block text-[11px] font-medium uppercase tracking-wider text-copy-secondary mb-1.5";
 
 export const primaryButtonClass =
-  "inline-flex items-center justify-center gap-1.5 rounded-xl bg-foreground text-background px-4 py-2.5 text-sm font-medium hover:opacity-90 active:scale-[0.97] transition";
+  "inline-flex items-center justify-center gap-1.5 rounded-xl bg-foreground text-background px-4 py-2.5 text-sm font-medium hover:bg-copy-secondary active:scale-[0.97] transition";
 
 export const ghostButtonClass =
   "inline-flex items-center justify-center gap-1.5 rounded-xl bg-transparent text-copy-secondary hover:text-foreground px-4 py-2.5 text-sm font-medium hover:bg-white/[0.04] transition";
