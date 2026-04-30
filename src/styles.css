@@ -66,26 +66,25 @@
 }
 
 :root {
-:root {
   --radius: 0.875rem;
 
   /* AI Matrix dark palette (always dark) */
-  --background: oklch(0.145 0.002 285);          /* #0B0B0C */
-  --foreground: oklch(0.93 0 0);                  /* #EDEDED */
+  --background: oklch(0.145 0.002 285);
+  --foreground: oklch(0.93 0 0);
 
-  --card: oklch(0.18 0.002 285);                  /* #141416 */
+  --card: oklch(0.18 0.002 285);
   --card-foreground: oklch(0.93 0 0);
-  --popover: oklch(0.195 0.002 285);              /* #18181B */
+  --popover: oklch(0.195 0.002 285);
   --popover-foreground: oklch(0.93 0 0);
 
   --primary: oklch(0.93 0 0);
   --primary-foreground: oklch(0.145 0.002 285);
 
-  --secondary: oklch(0.195 0.002 285);            /* #18181B */
+  --secondary: oklch(0.195 0.002 285);
   --secondary-foreground: oklch(0.93 0 0);
 
   --muted: oklch(0.195 0.002 285);
-  --muted-foreground: oklch(0.55 0.004 285);      /* #71717A */
+  --muted-foreground: oklch(0.55 0.004 285);
 
   --accent: oklch(0.22 0.003 285);
   --accent-foreground: oklch(0.93 0 0);
@@ -97,10 +96,10 @@
   --input: oklch(1 0 0 / 8%);
   --ring: oklch(1 0 0 / 14%);
 
-  --text-secondary: oklch(0.74 0.003 285);        /* #A1A1AA */
+  --text-secondary: oklch(0.74 0.003 285);
 
-  --surface-1: oklch(0.18 0.002 285);             /* #141416 */
-  --surface-2: oklch(0.195 0.002 285);            /* #18181B */
+  --surface-1: oklch(0.18 0.002 285);
+  --surface-2: oklch(0.195 0.002 285);
   --surface-3: oklch(0.225 0.003 285);
 
   --shadow-glow: 0 0 0 1px rgba(255,255,255,0.04), 0 12px 40px -12px rgba(0,0,0,0.6);
@@ -157,6 +156,12 @@ html {
 @utility text-secondary {
   color: var(--text-secondary);
 }
-@utility surface-1 { background-color: var(--surface-1); }
-@utility surface-2 { background-color: var(--surface-2); }
-@utility surface-3 { background-color: var(--surface-3); }
+@utility surface-1 {
+  background-color: var(--surface-1);
+}
+@utility surface-2 {
+  background-color: var(--surface-2);
+}
+@utility surface-3 {
+  background-color: var(--surface-3);
+}
