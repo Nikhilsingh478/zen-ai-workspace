@@ -71,7 +71,8 @@ export function MatrixModal({
 export const fieldClass =
   "w-full rounded-xl bg-[var(--surface-2)] border border-border px-3.5 py-2.5 text-sm text-foreground placeholder:text-copy-muted outline-none focus:border-white/20 focus:bg-[var(--surface-3)] transition";
 
-export const labelClass = "block text-[11px] font-medium uppercase tracking-wider text-copy-secondary mb-1.5";
+export const labelClass =
+  "block text-[11px] font-medium uppercase tracking-wider text-copy-secondary mb-1.5";
 
 export const primaryButtonClass =
   "inline-flex items-center justify-center gap-1.5 rounded-xl bg-foreground text-background px-4 py-2.5 text-sm font-medium hover:bg-copy-secondary active:scale-[0.97] transition";

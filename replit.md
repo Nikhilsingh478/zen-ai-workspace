@@ -1,9 +1,11 @@
 # AI Metrics — Personal AI Operating System
 
 ## Overview
+
 A full-stack React web app built with TanStack Router/React Start (SSR). It serves as a personal workspace for managing AI tools, prompts, and a drag-and-drop desktop launcher. All data is persisted to **localStorage** (no backend, no environment variables required).
 
 ## Tech Stack
+
 - **Frontend/SSR Framework:** React 19 + TanStack Router + @tanstack/react-start
 - **Build Tool:** Vite 7 with @lovable.dev/vite-tanstack-config
 - **Styling:** Tailwind CSS v4 + Radix UI + shadcn/ui component patterns
@@ -13,6 +15,7 @@ A full-stack React web app built with TanStack Router/React Start (SSR). It serv
 - **Package Manager:** npm
 
 ## Project Structure
+
 ```
 src/
   routes/           # TanStack Router route modules
@@ -44,12 +47,14 @@ api/
 ```
 
 ## Data & Persistence
+
 - **Storage:** Browser localStorage, key `ai-matrix:data`
 - **Hydration:** Store always starts with SEED_DATA. After first mount, `useEffect` reads localStorage and replaces with saved data. This prevents SSR hydration mismatches.
 - **Save:** Every mutation calls `saveData()` synchronously (no debounce, no network calls)
 - **Seed data:** 8 AI websites + 6 prompt templates loaded if localStorage is empty
 
 ## Desktop Launcher
+
 - 8-col grid on desktop, 4-col on mobile
 - Drag items to reposition (snap-to-grid, swap on collision)
 - Drag item onto existing folder → adds to folder
@@ -60,6 +65,7 @@ api/
 - DragOverlay ghost sized to exact cell pixel width via ResizeObserver
 
 ## Dev Notes
+
 - Port: 5000 (vite.config.ts)
 - Workflow: `npm run dev`
 - Hydration errors visible in dev console on Vite server restart — this is a known HMR reconnect artifact, not a runtime bug. Normal page loads are clean.

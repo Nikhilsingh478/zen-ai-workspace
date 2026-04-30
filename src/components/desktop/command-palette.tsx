@@ -27,9 +27,7 @@ export function CommandPalette({ items }: CommandPaletteProps) {
         );
       }
       if (item.type === "prompt") {
-        return (
-          item.title.toLowerCase().includes(q) || item.body?.toLowerCase().includes(q)
-        );
+        return item.title.toLowerCase().includes(q) || item.body?.toLowerCase().includes(q);
       }
       return false;
     })
@@ -87,7 +85,10 @@ export function CommandPalette({ items }: CommandPaletteProps) {
             if (e.target === e.currentTarget) setOpen(false);
           }}
         >
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setOpen(false)} />
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setOpen(false)}
+          />
           <motion.div
             className="relative w-full max-w-lg overflow-hidden rounded-2xl border border-white/10 bg-[#141416] shadow-[0_32px_80px_rgba(0,0,0,0.8)]"
             initial={{ opacity: 0, scale: 0.94, y: -8 }}
@@ -107,7 +108,10 @@ export function CommandPalette({ items }: CommandPaletteProps) {
                 className="flex-1 bg-transparent text-sm text-white placeholder:text-white/30 outline-none"
               />
               {query && (
-                <button onClick={() => setQuery("")} className="text-white/30 hover:text-white/60 transition-colors">
+                <button
+                  onClick={() => setQuery("")}
+                  className="text-white/30 hover:text-white/60 transition-colors"
+                >
                   <X className="h-3.5 w-3.5" />
                 </button>
               )}
@@ -171,9 +175,15 @@ export function CommandPalette({ items }: CommandPaletteProps) {
 
             {/* Footer */}
             <div className="border-t border-white/[0.06] px-4 py-2 flex items-center gap-4 text-[10px] text-white/25">
-              <span><kbd className="font-mono">↑↓</kbd> navigate</span>
-              <span><kbd className="font-mono">↵</kbd> open</span>
-              <span><kbd className="font-mono">ESC</kbd> close</span>
+              <span>
+                <kbd className="font-mono">↑↓</kbd> navigate
+              </span>
+              <span>
+                <kbd className="font-mono">↵</kbd> open
+              </span>
+              <span>
+                <kbd className="font-mono">ESC</kbd> close
+              </span>
             </div>
           </motion.div>
         </motion.div>

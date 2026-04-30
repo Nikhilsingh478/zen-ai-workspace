@@ -13,7 +13,13 @@ interface FolderIconProps {
   onOpen: () => void;
 }
 
-export function FolderIcon({ folder, children, isActive, animationDelay = 0, onOpen }: FolderIconProps) {
+export function FolderIcon({
+  folder,
+  children,
+  isActive,
+  animationDelay = 0,
+  onOpen,
+}: FolderIconProps) {
   const {
     attributes,
     listeners,

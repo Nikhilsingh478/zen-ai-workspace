@@ -13,13 +13,14 @@ interface DesktopItemProps {
   animationDelay?: number;
 }
 
-export function DesktopItem({ id, item, isActive, isDragOver, animationDelay = 0 }: DesktopItemProps) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef: setDragRef,
-    isDragging,
-  } = useDraggable({ id });
+export function DesktopItem({
+  id,
+  item,
+  isActive,
+  isDragOver,
+  animationDelay = 0,
+}: DesktopItemProps) {
+  const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({ id });
 
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id });
 

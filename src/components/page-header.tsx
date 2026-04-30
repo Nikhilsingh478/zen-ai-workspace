@@ -15,9 +15,7 @@ export function PageHeader({
         <h1 className="text-[28px] md:text-[34px] font-semibold tracking-tight leading-none">
           {title}
         </h1>
-        {subtitle && (
-          <p className="mt-2 text-sm text-copy-secondary">{subtitle}</p>
-        )}
+        {subtitle && <p className="mt-2 text-sm text-copy-secondary">{subtitle}</p>}
       </div>
       {action}
     </div>

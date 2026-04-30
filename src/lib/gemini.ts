@@ -40,13 +40,17 @@ export class GeminiAPI {
 
   constructor() {
     this.apiKey = import.meta.env.VITE_GEMINI_API_KEY || "";
-    
+
     if (!this.apiKey) {
       console.warn("Gemini API key not found in environment variables");
     }
   }
 
-  async generateContent(prompt: string, conversationHistory: GeminiMessage[] = [], userContext?: { websites: any[], prompts: any[] }): Promise<string> {
+  async generateContent(
+    prompt: string,
+    conversationHistory: GeminiMessage[] = [],
+    userContext?: { websites: any[]; prompts: any[] },
+  ): Promise<string> {
     if (!this.apiKey) {
       return "API key not configured. Please add your Gemini API key to the .env file.";
     }
@@ -58,10 +62,10 @@ export class GeminiAPI {
         if (userContext.websites && userContext.websites.length > 0) {
           contextString += "\n\nUser's Websites:\n";
           userContext.websites.forEach((site, i) => {
-            contextString += `${i + 1}. ${site.name} - ${site.url}\n   Description: ${site.description}\n   Tags: ${site.tags.join(', ')}\n`;
+            contextString += `${i + 1}. ${site.name} - ${site.url}\n   Description: ${site.description}\n   Tags: ${site.tags.join(", ")}\n`;
           });
         }
-        
+
         if (userContext.prompts && userContext.prompts.length > 0) {
           contextString += "\n\nUser's Prompts:\n";
           userContext.prompts.forEach((prompt, i) => {
@@ -82,15 +86,15 @@ User's question:`;
           ...conversationHistory,
           {
             role: "user",
-            parts: [{ text: systemPrompt + " " + prompt }]
-          }
+            parts: [{ text: systemPrompt + " " + prompt }],
+          },
         ],
         generationConfig: {
           temperature: 0.7,
           topK: 40,
           topP: 0.95,
           maxOutputTokens: 2048,
-        }
+        },
       };
 
       const response = await fetch(
@@ -101,13 +105,13 @@ User's question:`;
             "Content-Type": "application/json",
           },
           body: JSON.stringify(requestBody),
-        }
+        },
       );
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         console.error("Gemini API error:", errorData);
-        
+
         if (response.status === 400) {
           return "Invalid request. Please check your API key and try again.";
         } else if (response.status === 403) {
@@ -120,7 +124,7 @@ User's question:`;
       }
 
       const data: GeminiResponse = await response.json();
-      
+
       if (data.candidates && data.candidates.length > 0) {
         const candidate = data.candidates[0];
         if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {

@@ -182,9 +182,7 @@ export function useDesktopStorage() {
         layout: [...prev.desktop.layout, { id: childId, x: 0, y: 0 }],
         folders: prev.desktop.folders
           .map((f) =>
-            f.id === folderId
-              ? { ...f, children: f.children.filter((c) => c !== childId) }
-              : f,
+            f.id === folderId ? { ...f, children: f.children.filter((c) => c !== childId) } : f,
           )
           .filter((f) => f.children.length > 0),
       },
@@ -253,9 +251,7 @@ export function useDesktopStorage() {
       const childEntries: DesktopLayoutEntry[] = [];
       let slot = 0;
       for (const childId of folder.children) {
-        while (
-          occupied.has(`${(baseX + slot) % 8}:${baseY + Math.floor((baseX + slot) / 8)}`)
-        ) {
+        while (occupied.has(`${(baseX + slot) % 8}:${baseY + Math.floor((baseX + slot) / 8)}`)) {
           slot++;
         }
         const cx = (baseX + slot) % 8;
@@ -267,10 +263,7 @@ export function useDesktopStorage() {
       return {
         ...prev,
         desktop: {
-          layout: [
-            ...prev.desktop.layout.filter((e) => e.id !== folderId),
-            ...childEntries,
-          ],
+          layout: [...prev.desktop.layout.filter((e) => e.id !== folderId), ...childEntries],
           folders: prev.desktop.folders.filter((f) => f.id !== folderId),
         },
       };

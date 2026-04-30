@@ -13,11 +13,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { FolderPlus } from "lucide-react";
 import { useDesktopStorage, type Website } from "@/lib/store";
 import { useIsMobile } from "@/hooks/use-mobile";
-import {
-  buildLauncherEntries,
-  normalizeDesktopLayout,
-  GRID_GAP,
-} from "@/lib/desktop-layout";
+import { buildLauncherEntries, normalizeDesktopLayout, GRID_GAP } from "@/lib/desktop-layout";
 import { DesktopItem } from "@/components/desktop/desktop-item";
 import { FolderIcon } from "@/components/desktop/folder-icon";
 import { FolderOverlay } from "@/components/desktop/folder-overlay";
@@ -120,9 +116,7 @@ export function DesktopGrid() {
       if (newX === activeEntry.x && newY === activeEntry.y) return;
 
       // If target cell is occupied, swap positions
-      const occupant = positioned.find(
-        (e) => e.id !== activeIdStr && e.x === newX && e.y === newY,
-      );
+      const occupant = positioned.find((e) => e.id !== activeIdStr && e.x === newX && e.y === newY);
 
       const nextLayout = desktop.layout.map((entry) => {
         if (entry.id === activeIdStr) return { ...entry, x: newX, y: newY };
@@ -166,9 +160,7 @@ export function DesktopGrid() {
 
   const activePositioned = activeId ? positioned.find((e) => e.id === activeId) : null;
 
-  const openFolder = openFolderId
-    ? desktop.folders.find((f) => f.id === openFolderId)
-    : null;
+  const openFolder = openFolderId ? desktop.folders.find((f) => f.id === openFolderId) : null;
   const openFolderChildren = openFolder
     ? openFolder.children
         .map((cid) => websites.find((w) => w.id === cid))
@@ -212,10 +204,7 @@ export function DesktopGrid() {
             const isActive = entry.id === activeId;
             if (entry.kind === "item") {
               return (
-                <div
-                  key={entry.id}
-                  style={{ gridColumn: entry.x + 1, gridRow: entry.y + 1 }}
-                >
+                <div key={entry.id} style={{ gridColumn: entry.x + 1, gridRow: entry.y + 1 }}>
                   <DesktopItem
                     id={entry.id}
                     item={entry.item}
@@ -228,10 +217,7 @@ export function DesktopGrid() {
             }
             if (entry.kind === "folder") {
               return (
-                <div
-                  key={entry.id}
-                  style={{ gridColumn: entry.x + 1, gridRow: entry.y + 1 }}
-                >
+                <div key={entry.id} style={{ gridColumn: entry.x + 1, gridRow: entry.y + 1 }}>
                   <FolderIcon
                     folder={entry.folder}
                     children={entry.children}
@@ -247,10 +233,7 @@ export function DesktopGrid() {
         </div>
 
         {/* Drag Overlay — constrained to exact cell width, no scaling */}
-        <DragOverlay
-          dropAnimation={null}
-          style={{ width: cellPx, pointerEvents: "none" }}
-        >
+        <DragOverlay dropAnimation={null} style={{ width: cellPx, pointerEvents: "none" }}>
           {activePositioned ? (
             <div style={{ width: cellPx }} className="rotate-1">
               <DragGhost entry={activePositioned} />

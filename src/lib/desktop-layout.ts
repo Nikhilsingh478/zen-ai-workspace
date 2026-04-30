@@ -27,13 +27,12 @@ export function buildLauncherEntries(items: Website[], folders: DesktopFolder[])
   const itemById = new Map(items.map((item) => [item.id, item]));
   const folderChildIds = new Set(folders.flatMap((folder) => folder.children));
 
-  const folderEntries = folders
-    .map((folder): LauncherEntry => {
-      const children = folder.children
-        .map((childId) => itemById.get(childId))
-        .filter((item): item is Website => Boolean(item));
-      return { kind: "folder", id: folder.id, folder, children };
-    });
+  const folderEntries = folders.map((folder): LauncherEntry => {
+    const children = folder.children
+      .map((childId) => itemById.get(childId))
+      .filter((item): item is Website => Boolean(item));
+    return { kind: "folder", id: folder.id, folder, children };
+  });
 
   const itemEntries = items
     .filter((item) => !folderChildIds.has(item.id))
