@@ -149,6 +149,39 @@
   }
 }
 
+/* Prevent layout shifts during navigation */
+main {
+  contain: layout;
+  min-height: 0;
+}
+
+/* Smooth transitions for navigation items */
+nav a {
+  will-change: transform, opacity;
+}
+
+/* Prevent layout shift in animated elements */
+* {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* Prevent layout shift in containers */
+.flex-1 {
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Ensure consistent layout during transitions */
+.grid, .flex {
+  contain: layout style;
+}
+
+/* Prevent content reflow */
+.max-w-7xl, .max-w-3xl {
+  contain: layout;
+}
+
 html {
   color-scheme: dark;
   background: var(--color-background);

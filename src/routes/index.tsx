@@ -10,12 +10,12 @@ import {
   primaryButtonClass,
   ghostButtonClass,
 } from "@/components/matrix-modal";
-import { faviconFor, getDomain, useWebsites, type Website } from "@/lib/store";
+import { faviconFor, getDomain, useWebsites, type Website, type WebsiteInput } from "@/lib/store";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Websites — AI Matrix" },
+      { title: "Websites — AI Metrics" },
       { name: "description", content: "Your curated directory of AI tools and websites." },
     ],
   }),
@@ -90,24 +90,21 @@ function WebsiteCard({
       href={website.url}
       target="_blank"
       rel="noreferrer"
-      initial={{ opacity: 0.88, y: 14 }}
+      initial={{ opacity: 0.9, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, delay: Math.min(index * 0.04, 0.3), ease: [0.22, 1, 0.36, 1] }}
+      transition={{ duration: 0.25, delay: Math.min(index * 0.03, 0.25), ease: "easeOut" }}
       whileHover={{ y: -2 }}
       className="group relative rounded-2xl border border-border bg-[var(--surface-2)] p-5 transition-all duration-300 hover:bg-[var(--surface-3)] hover:border-white/[0.12] hover:shadow-[0_20px_50px_-25px_rgba(0,0,0,0.6)]"
     >
       <div className="flex items-start gap-3.5">
         <div className="h-10 w-10 shrink-0 rounded-xl bg-[var(--surface-3)] grid place-items-center overflow-hidden border border-border">
-          <img
-            src={faviconFor(website.url, 64)}
-            alt=""
-            className="h-6 w-6"
-            loading="lazy"
-          />
+          <img src={faviconFor(website.url, 64)} alt="" className="h-6 w-6" loading="lazy" />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h3 className="text-[15px] font-semibold tracking-tight truncate text-foreground">{website.name}</h3>
+            <h3 className="text-[15px] font-semibold tracking-tight truncate text-foreground">
+              {website.name}
+            </h3>
             <ExternalLink className="h-3.5 w-3.5 text-copy-secondary group-hover:text-foreground transition" />
           </div>
           <p className="text-xs text-copy-secondary mt-0.5 truncate">{getDomain(website.url)}</p>
@@ -152,7 +149,7 @@ function AddWebsiteModal({
 }: {
   open: boolean;
   onClose: () => void;
-  onAdd: (w: Omit<Website, "id">) => void;
+  onAdd: (w: WebsiteInput) => void;
 }) {
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
@@ -174,7 +171,10 @@ function AddWebsiteModal({
       name: name.trim(),
       url: normalized,
       description: description.trim(),
-      tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
+      tags: tags
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean),
     });
     reset();
     onClose();
@@ -185,23 +185,48 @@ function AddWebsiteModal({
       <form onSubmit={submit} className="space-y-4">
         <div>
           <label className={labelClass}>Name</label>
-          <input className={fieldClass} value={name} onChange={(e) => setName(e.target.value)} placeholder="ChatGPT" autoFocus />
+          <input
+            className={fieldClass}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="ChatGPT"
+            autoFocus
+          />
         </div>
         <div>
           <label className={labelClass}>URL</label>
-          <input className={fieldClass} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://chat.openai.com" />
+          <input
+            className={fieldClass}
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://chat.openai.com"
+          />
         </div>
         <div>
           <label className={labelClass}>Description</label>
-          <textarea className={fieldClass + " min-h-[88px] resize-none"} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What it's good for…" />
+          <textarea
+            className={fieldClass + " min-h-[88px] resize-none"}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="What it's good for…"
+          />
         </div>
         <div>
           <label className={labelClass}>Tags (comma-separated)</label>
-          <input className={fieldClass} value={tags} onChange={(e) => setTags(e.target.value)} placeholder="chat, writing" />
+          <input
+            className={fieldClass}
+            value={tags}
+            onChange={(e) => setTags(e.target.value)}
+            placeholder="chat, writing"
+          />
         </div>
         <div className="flex justify-end gap-2 pt-2">
-          <button type="button" onClick={onClose} className={ghostButtonClass}>Cancel</button>
-          <button type="submit" className={primaryButtonClass}>Add website</button>
+          <button type="button" onClick={onClose} className={ghostButtonClass}>
+            Cancel
+          </button>
+          <button type="submit" className={primaryButtonClass}>
+            Add website
+          </button>
         </div>
       </form>
     </MatrixModal>

@@ -30,11 +30,11 @@ export const Route = createRootRoute({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "AI Matrix — Personal AI Operating System" },
+      { title: "AI Metrics — Personal AI Operating System" },
       { name: "description", content: "A calm, premium workspace for your AI tools, prompts and conversations." },
-      { name: "author", content: "AI Matrix" },
+      { name: "author", content: "AI Metrics" },
       { name: "theme-color", content: "#0B0B0C" },
-      { property: "og:title", content: "AI Matrix" },
+      { property: "og:title", content: "AI Metrics" },
       { property: "og:description", content: "A calm, premium workspace for your AI tools, prompts and conversations." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
@@ -57,6 +57,11 @@ export const Route = createRootRoute({
       {
         rel: "stylesheet",
         href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap",
+      },
+      {
+        rel: "icon",
+        type: "image/svg+xml",
+        href: "/favicon.svg",
       },
     ],
   }),

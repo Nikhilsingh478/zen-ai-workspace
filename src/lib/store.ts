@@ -1,90 +1,272 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
+import {
+  fetchData,
+  saveData,
+  SEED_DATA,
+  type AppStorage,
+  type AppDataItem,
+  type DesktopFolder,
+  type DesktopLayoutEntry,
+  type Prompt,
+  type Website,
+} from "@/lib/github-data";
 
-export type Website = {
-  id: string;
-  name: string;
-  url: string;
-  description: string;
-  tags: string[];
+export type { AppDataItem, AppStorage, DesktopFolder, DesktopLayoutEntry, Prompt, Website };
+export type WebsiteInput = Omit<Website, "id" | "type" | "createdAt" | "updatedAt">;
+export type PromptInput = Omit<Prompt, "id" | "type" | "tags" | "createdAt" | "updatedAt">;
+
+type SyncStatus = "loading" | "syncing" | "synced" | "offline";
+
+type StoreState = {
+  storage: AppStorage;
+  status: SyncStatus;
+  error: string | null;
 };
 
-export type Prompt = {
-  id: string;
-  title: string;
-  body: string;
+const listeners = new Set<() => void>();
+let state: StoreState = {
+  storage: SEED_DATA,
+  status: "loading",
+  error: null,
 };
+let loadPromise: Promise<void> | null = null;
+let savePromise = Promise.resolve();
 
-const KEYS = {
-  websites: "ai-matrix:websites",
-  prompts: "ai-matrix:prompts",
-} as const;
-
-const SEED_WEBSITES: Website[] = [
-  { id: "1", name: "ChatGPT", url: "https://chat.openai.com", description: "Conversational AI assistant for writing, coding and reasoning.", tags: ["chat", "general"] },
-  { id: "2", name: "Claude", url: "https://claude.ai", description: "Thoughtful long-context assistant by Anthropic.", tags: ["chat", "writing"] },
-  { id: "3", name: "Perplexity", url: "https://perplexity.ai", description: "AI-powered search with cited sources.", tags: ["search"] },
-  { id: "4", name: "Midjourney", url: "https://midjourney.com", description: "Image generation with a strong artistic direction.", tags: ["image"] },
-  { id: "5", name: "Runway", url: "https://runway.ml", description: "Generative video and creative tools for filmmakers.", tags: ["video"] },
-  { id: "6", name: "ElevenLabs", url: "https://elevenlabs.io", description: "Realistic AI voice generation and cloning.", tags: ["audio"] },
-  { id: "7", name: "Cursor", url: "https://cursor.com", description: "AI-native code editor built for pairs programming.", tags: ["code"] },
-  { id: "8", name: "v0", url: "https://v0.app", description: "Generative UI from natural language prompts.", tags: ["ui", "code"] },
-];
-
-const SEED_PROMPTS: Prompt[] = [
-  { id: "p1", title: "Senior code reviewer", body: "Act as a staff engineer. Review the following code for clarity, correctness, and idiomatic style. Give a prioritized list of changes with rationale, then a refactor." },
-  { id: "p2", title: "Tighten my writing", body: "Edit the following text to be calmer, clearer and more confident. Remove filler. Preserve voice. Return only the edited version." },
-  { id: "p3", title: "Explain like a teacher", body: "Explain the concept below to a curious beginner. Use one analogy, one tiny example, and end with a single question that tests understanding." },
-  { id: "p4", title: "Product brainstorm", body: "Generate 10 distinct product ideas around the theme: {{theme}}. For each, give a one-line pitch, target user, and the riskiest assumption." },
-  { id: "p5", title: "SQL whisperer", body: "Given this schema and natural language question, return a single PostgreSQL query. Use CTEs when it improves readability. Add a one-sentence comment above explaining the approach." },
-  { id: "p6", title: "Daily focus plan", body: "Here is my todo list. Pick the 3 tasks with highest leverage today, in order. Justify each choice in one short sentence. Surface anything I should explicitly NOT do." },
-];
-
-function read<T>(key: string, fallback: T): T {
-  if (typeof window === "undefined") return fallback;
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
-  } catch {
-    return fallback;
-  }
+function emit() {
+  listeners.forEach((listener) => listener());
 }
 
-function write<T>(key: string, value: T) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(key, JSON.stringify(value));
+function setState(next: Partial<StoreState>) {
+  state = { ...state, ...next };
+  emit();
 }
 
-function useStored<T>(key: string, seed: T) {
-  const [value, setValue] = useState<T>(seed);
-  const [hydrated, setHydrated] = useState(false);
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+function getSnapshot() {
+  return state;
+}
+
+function ensureLoaded() {
+  if (loadPromise) return loadPromise;
+
+  loadPromise = fetchData()
+    .then((storage) => {
+      setState({ storage, status: "synced", error: null });
+    })
+    .catch(() => {
+      setState({ status: "offline", error: "Using local fallback data." });
+    });
+
+  return loadPromise;
+}
+
+function updateStorage(updater: (storage: AppStorage) => AppStorage) {
+  const nextStorage = updater(state.storage);
+  setState({ storage: nextStorage, status: "syncing", error: null });
+
+  savePromise = savePromise
+    .catch(() => undefined)
+    .then(() => saveData(nextStorage))
+    .then(() => {
+      if (state.storage === nextStorage) {
+        setState({ status: "synced", error: null });
+      }
+    })
+    .catch(() => {
+      if (state.storage === nextStorage) {
+        setState({
+          status: "offline",
+          error: "Saved locally. GitHub sync will retry on the next change.",
+        });
+      }
+    });
+}
+
+function now() {
+  return new Date().toISOString();
+}
+
+function useDataStore() {
+  const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
   useEffect(() => {
-    setValue(read<T>(key, seed));
-    setHydrated(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    void ensureLoaded();
   }, []);
 
-  useEffect(() => {
-    if (hydrated) write(key, value);
-  }, [key, value, hydrated]);
+  return snapshot;
+}
 
-  return [value, setValue, hydrated] as const;
+export function useSyncStatus() {
+  const { status, error } = useDataStore();
+  return { status, error };
 }
 
 export function useWebsites() {
-  const [websites, setWebsites] = useStored<Website[]>(KEYS.websites, SEED_WEBSITES);
-  const add = (w: Omit<Website, "id">) =>
-    setWebsites((prev) => [{ ...w, id: crypto.randomUUID() }, ...prev]);
-  const remove = (id: string) => setWebsites((prev) => prev.filter((w) => w.id !== id));
+  const { storage } = useDataStore();
+  const websites = useMemo(
+    () => storage.items.filter((item): item is Website => item.type === "website"),
+    [storage.items],
+  );
+
+  const add = (website: WebsiteInput) => {
+    const createdAt = now();
+    const id = crypto.randomUUID();
+    updateStorage((prev) => ({
+      ...prev,
+      items: [
+        {
+          ...website,
+          id,
+          type: "website",
+          tags: website.tags ?? [],
+          createdAt,
+          updatedAt: createdAt,
+        },
+        ...prev.items,
+      ],
+      desktop: {
+        ...prev.desktop,
+        layout: [{ id, x: 0, y: 0 }, ...prev.desktop.layout],
+      },
+    }));
+  };
+
+  const remove = (id: string) => {
+    updateStorage((prev) => ({
+      ...prev,
+      items: prev.items.filter((item) => item.id !== id),
+      desktop: {
+        layout: prev.desktop.layout.filter((entry) => entry.id !== id),
+        folders: prev.desktop.folders
+          .map((folder) => ({
+            ...folder,
+            children: folder.children.filter((child) => child !== id),
+          }))
+          .filter((folder) => folder.children.length > 0),
+      },
+    }));
+  };
+
   return { websites, add, remove };
 }
 
 export function usePrompts() {
-  const [prompts, setPrompts] = useStored<Prompt[]>(KEYS.prompts, SEED_PROMPTS);
-  const add = (p: Omit<Prompt, "id">) =>
-    setPrompts((prev) => [{ ...p, id: crypto.randomUUID() }, ...prev]);
-  const remove = (id: string) => setPrompts((prev) => prev.filter((p) => p.id !== id));
+  const { storage } = useDataStore();
+  const prompts = useMemo(
+    () => storage.items.filter((item): item is Prompt => item.type === "prompt"),
+    [storage.items],
+  );
+
+  const add = (prompt: PromptInput) => {
+    const createdAt = now();
+    updateStorage((prev) => ({
+      ...prev,
+      items: [
+        {
+          ...prompt,
+          id: crypto.randomUUID(),
+          type: "prompt",
+          tags: [],
+          createdAt,
+          updatedAt: createdAt,
+        },
+        ...prev.items,
+      ],
+    }));
+  };
+
+  const remove = (id: string) => {
+    updateStorage((prev) => ({
+      ...prev,
+      items: prev.items.filter((item) => item.id !== id),
+    }));
+  };
+
   return { prompts, add, remove };
+}
+
+export function useDesktopStorage() {
+  const { storage } = useDataStore();
+
+  const updateLayout = (layout: DesktopLayoutEntry[]) => {
+    updateStorage((prev) => ({
+      ...prev,
+      desktop: {
+        ...prev.desktop,
+        layout,
+      },
+    }));
+  };
+
+  const createFolder = (sourceId: string, targetId: string) => {
+    if (sourceId === targetId) return;
+
+    updateStorage((prev) => {
+      const targetItem = prev.items.find((item) => item.id === targetId);
+      const name = targetItem && "name" in targetItem ? String(targetItem.name) : "Folder";
+      const folderId = crypto.randomUUID();
+      const targetEntry = prev.desktop.layout.find((entry) => entry.id === targetId);
+
+      return {
+        ...prev,
+        desktop: {
+          layout: [
+            ...prev.desktop.layout.filter(
+              (entry) => entry.id !== sourceId && entry.id !== targetId,
+            ),
+            {
+              id: folderId,
+              x: targetEntry?.x ?? 0,
+              y: targetEntry?.y ?? 0,
+            },
+          ],
+          folders: [
+            ...prev.desktop.folders
+              .map((folder) => ({
+                ...folder,
+                children: folder.children.filter(
+                  (child) => child !== sourceId && child !== targetId,
+                ),
+              }))
+              .filter((folder) => folder.children.length > 0),
+            {
+              id: folderId,
+              name: `${name} Folder`,
+              children: [targetId, sourceId],
+            },
+          ],
+        },
+      };
+    });
+  };
+
+  const removeFromFolder = (folderId: string, childId: string) => {
+    updateStorage((prev) => ({
+      ...prev,
+      desktop: {
+        layout: [...prev.desktop.layout, { id: childId, x: 0, y: 0 }],
+        folders: prev.desktop.folders
+          .map((folder) =>
+            folder.id === folderId
+              ? { ...folder, children: folder.children.filter((child) => child !== childId) }
+              : folder,
+          )
+          .filter((folder) => folder.children.length > 0),
+      },
+    }));
+  };
+
+  return {
+    items: storage.items,
+    desktop: storage.desktop,
+    updateLayout,
+    createFolder,
+    removeFromFolder,
+  };
 }
 
 export function getDomain(url: string): string {
