@@ -9,6 +9,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
+import { restrictToWindowEdges } from "@dnd-kit/modifiers";
 import { motion, AnimatePresence } from "framer-motion";
 import { FolderPlus } from "lucide-react";
 import { useDesktopStorage, type Website } from "@/lib/store";
@@ -232,10 +233,14 @@ export function DesktopGrid() {
           })}
         </div>
 
-        {/* Drag Overlay — constrained to exact cell width, no scaling */}
-        <DragOverlay dropAnimation={null} style={{ width: cellPx, pointerEvents: "none" }}>
+        {/* Drag Overlay — fixed positioning, modifier keeps it inside viewport */}
+        <DragOverlay
+          dropAnimation={null}
+          modifiers={[restrictToWindowEdges]}
+          style={{ width: cellPx, pointerEvents: "none" }}
+        >
           {activePositioned ? (
-            <div style={{ width: cellPx }} className="rotate-1">
+            <div style={{ width: cellPx }}>
               <DragGhost entry={activePositioned} />
             </div>
           ) : null}
