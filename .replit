@@ -42,3 +42,9 @@ externalPort = 5173
 deploymentTarget = "autoscale"
 run = ["npm", "run", "preview"]
 build = ["npm", "run", "build"]
+
+[userenv]
+
+[userenv.shared]
+VITE_SUPABASE_URL = "https://rajaodltkrxtglfnavjg.supabase.co"
+VITE_SUPABASE_ANON_KEY = "sb_publishable_NpWyQLF8ULpqmJcNxrU75Q_YqND_8xl"
