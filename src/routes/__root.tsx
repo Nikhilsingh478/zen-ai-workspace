@@ -1,4 +1,5 @@
 import { Outlet, Link, createRootRoute } from "@tanstack/react-router";
+import { Toaster } from "sonner";
 import { AppShell } from "@/components/app-shell";
 
 function NotFoundComponent() {
@@ -21,6 +22,17 @@ function RootComponent() {
   return (
     <AppShell>
       <Outlet />
+      <Toaster
+        theme="dark"
+        position="bottom-right"
+        toastOptions={{
+          style: {
+            background: "var(--surface-2)",
+            border: "1px solid rgba(255,255,255,0.06)",
+            color: "#EDEDED",
+          },
+        }}
+      />
     </AppShell>
   );
 }

@@ -1,0 +1,170 @@
+Integrate Supabase as the complete data layer for AI Matrix. 
+Replace localStorage entirely. The Supabase project is already created 
+and the following environment variables are already set:
+
+VITE_SUPABASE_URL=<already configured>
+VITE_SUPABASE_ANON_KEY=<already configured>
+
+The database already has these 3 tables created and seeded:
+- public.items (id, type, name, url, description, title, body, tags, created_at, updated_at)
+- public.desktop_layout (id, x, y)
+- public.desktop_folders (id, name, children, created_at)
+RLS is disabled on all three tables.
+
+---
+
+# STEP 1 — Install Supabase client
+npm install @supabase/supabase-js
+
+---
+
+# STEP 2 — Create src/lib/supabase.ts
+import { createClient } from "@supabase/supabase-js";
+export const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+);
+
+---
+
+# STEP 3 — Create src/lib/supabase-data.ts
+This file replaces all localStorage I/O. Implement these functions:
+
+fetchAllData(): Promise<AppStorage>
+  - Query all 3 tables in parallel with Promise.all
+  - Map rows to Website | Prompt types
+  - Return full AppStorage shape
+
+addWebsite(website: Website): Promise<void>
+  - Insert into items table
+  - Insert into desktop_layout at x:0, y:0
+
+addPrompt(prompt: Prompt): Promise<void>
+  - Insert into items table only
+
+removeItem(id: string): Promise<void>
+  - Delete from items
+  - Delete from desktop_layout
+  - Remove id from any folder's children array
+  - Delete folder if it becomes empty
+
+updateLayout(layout: DesktopLayoutEntry[]): Promise<void>
+  - Upsert all entries into desktop_layout
+
+createFolder(id: string, x: number, y: number): Promise<void>
+  - Insert into desktop_folders
+  - Insert into desktop_layout
+
+updateFolder(id: string, updates: {name?: string, children?: string[]}): Promise<void>
+  - Update desktop_folders row
+
+deleteFolder(id: string, childEntries: DesktopLayoutEntry[]): Promise<void>
+  - Delete from desktop_folders
+  - Delete from desktop_layout
+  - Upsert childEntries back into desktop_layout
+
+---
+
+# STEP 4 — Rewrite src/lib/store.ts
+
+Keep the exact same useSyncExternalStore pattern and all the same 
+exported hooks (useWebsites, usePrompts, useDesktopStorage, useSyncStatus).
+Only change the data layer underneath.
+
+Key changes:
+1. On mount (ensureClientLoaded), call fetchAllData() instead of localStorage
+2. All mutations call supabase-data.ts functions then update local state
+3. Use optimistic updates — update state immediately, then sync to Supabase
+4. On Supabase error, roll back state and show toast via sonner:
+   import { toast } from "sonner"
+   toast.error("Failed to save. Please try again.")
+5. On successful add: toast.success("Saved", { duration: 1500 })
+6. Remove ALL localStorage references and imports
+7. Remove SEED_DATA usage from store (DB is already seeded)
+8. useSyncStatus returns "loading" during initial fetch, "synced" after, 
+   "error" if fetchAllData fails
+
+---
+
+# STEP 5 — Add loading skeletons to all 4 routes
+
+While loaded === false, each route shows a skeleton instead of empty content.
+
+Websites skeleton: 6 cards, h-36, rounded-2xl, bg-white/[0.04], animate-pulse,
+staggered animationDelay 0.05s per card
+
+Desktop skeleton: 8 icon tiles, h-24 w-24, rounded-2xl, bg-white/[0.04], 
+animate-pulse in a flex-wrap gap-4
+
+Prompts skeleton: 6 cards, variable heights (h-28, h-40, h-32 alternating), 
+columns-3, animate-pulse
+
+Ask skeleton: just show the empty state immediately (no data needed)
+
+---
+
+# STEP 6 — Add Sonner toast provider
+
+In src/routes/__root.tsx, add <Toaster /> from sonner inside the AppShell:
+import { Toaster } from "sonner"
+
+Style it dark to match the design:
+<Toaster 
+  theme="dark" 
+  position="bottom-right"
+  toastOptions={{
+    style: {
+      background: "var(--surface-2)",
+      border: "1px solid rgba(255,255,255,0.06)",
+      color: "#EDEDED",
+    }
+  }}
+/>
+
+---
+
+# STEP 7 — Add Supabase realtime sync
+
+After fetchAllData completes, subscribe to changes:
+
+supabase
+  .channel("db-changes")
+  .on("postgres_changes", { event: "*", schema: "public", table: "items" }, 
+    () => refetch())
+  .on("postgres_changes", { event: "*", schema: "public", table: "desktop_layout" },
+    () => refetch())
+  .on("postgres_changes", { event: "*", schema: "public", table: "desktop_folders" },
+    () => refetch())
+  .subscribe()
+
+Where refetch() calls fetchAllData() and updates state.
+Unsubscribe on cleanup.
+
+---
+
+# STRICT RULES — DO NOT BREAK THESE
+
+- Do NOT change any TypeScript types (Website, Prompt, AppStorage etc)
+- Do NOT change routing structure
+- Do NOT add authentication
+- Do NOT change vite.config.ts
+- Do NOT add postcss.config.js
+- Do NOT hand-edit routeTree.gen.ts
+- Do NOT change the design system or any CSS variables
+- Do NOT use React Context or useState for global state
+- Keep useSyncExternalStore pattern exactly as is
+- Keep all existing animations and Framer Motion code intact
+- Tailwind v4 — no @tailwind directives, plugin only
+
+---
+
+# DELIVERY ORDER
+1. npm install @supabase/supabase-js
+2. Create src/lib/supabase.ts
+3. Create src/lib/supabase-data.ts
+4. Rewrite src/lib/store.ts
+5. Add skeletons to all routes
+6. Add Toaster to __root.tsx
+7. Add realtime subscription
+8. Verify app builds with no TypeScript errors
+9. Test that adding a website persists after page refresh

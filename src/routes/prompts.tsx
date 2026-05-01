@@ -42,14 +42,14 @@ const cardVariant = {
 };
 
 function PromptsPage() {
-  const { prompts, add, remove } = usePrompts();
+  const { prompts, loaded, add, remove } = usePrompts();
   const [open, setOpen] = useState(false);
 
   return (
     <div className="px-5 md:px-10 py-10 md:py-14 max-w-6xl mx-auto">
       <PageHeader
         title="Prompts"
-        subtitle={`${prompts.length} saved · click any card to copy`}
+        subtitle={loaded ? `${prompts.length} saved · click any card to copy` : "Loading…"}
         action={
           <button onClick={() => setOpen(true)} className={primaryButtonClass}>
             <Plus className="h-4 w-4" /> New Prompt
@@ -57,7 +57,9 @@ function PromptsPage() {
         }
       />
 
-      {prompts.length === 0 ? (
+      {!loaded ? (
+        <PromptsSkeleton />
+      ) : prompts.length === 0 ? (
         <EmptyState onAdd={() => setOpen(true)} />
       ) : (
         <motion.div
@@ -73,6 +75,21 @@ function PromptsPage() {
       )}
 
       <AddPromptModal open={open} onClose={() => setOpen(false)} onAdd={add} />
+    </div>
+  );
+}
+
+function PromptsSkeleton() {
+  const heights = ["h-28", "h-40", "h-32"];
+  return (
+    <div className="columns-1 sm:columns-2 lg:columns-3 gap-4 [column-fill:_balance]">
+      {[0, 1, 2, 3, 4, 5].map((i) => (
+        <div
+          key={i}
+          className={`${heights[i % 3]} mb-4 break-inside-avoid rounded-2xl bg-white/[0.04] animate-pulse`}
+          style={{ animationDelay: `${i * 0.05}s` }}
+        />
+      ))}
     </div>
   );
 }

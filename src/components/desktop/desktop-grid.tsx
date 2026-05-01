@@ -9,7 +9,6 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { restrictToWindowEdges } from "@dnd-kit/modifiers";
 import { motion, AnimatePresence } from "framer-motion";
 import { FolderPlus } from "lucide-react";
 import { useDesktopStorage, type Website } from "@/lib/store";
@@ -53,7 +52,7 @@ export function DesktopGrid() {
     gridY: number;
   } | null>(null);
 
-  // Track exact cell size for the drag ghost
+  // Track cell size for delta-based drop math
   useEffect(() => {
     if (!mounted || !containerRef.current) return;
     const update = () => {
@@ -98,13 +97,11 @@ export function DesktopGrid() {
         const overIdStr = String(over.id);
         const overEntry = positioned.find((e) => e.id === overIdStr);
         if (overEntry?.kind === "folder") {
-          // Dragging any item or folder INTO an existing folder
           if (activeEntry.kind === "item") {
             addToFolder(overIdStr, activeIdStr);
             return;
           }
         }
-        // item onto item → fall through to position swap (no auto folder creation)
       }
 
       // Move to new grid position using delta
@@ -233,14 +230,10 @@ export function DesktopGrid() {
           })}
         </div>
 
-        {/* Drag Overlay — fixed positioning, modifier keeps it inside viewport */}
-        <DragOverlay
-          dropAnimation={null}
-          modifiers={[restrictToWindowEdges]}
-          style={{ width: cellPx, pointerEvents: "none" }}
-        >
-          {activePositioned ? (
-            <div style={{ width: cellPx }}>
+        {/* Drag Overlay — dnd-kit handles cursor tracking automatically */}
+        <DragOverlay dropAnimation={null}>
+          {activeId && activePositioned ? (
+            <div className="opacity-90 rotate-1 scale-105">
               <DragGhost entry={activePositioned} />
             </div>
           ) : null}

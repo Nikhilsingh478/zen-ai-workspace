@@ -23,7 +23,7 @@ export const Route = createFileRoute("/")({
 });
 
 function Index() {
-  const { websites, add, remove } = useWebsites();
+  const { websites, loaded, add, remove } = useWebsites();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
 
@@ -43,7 +43,7 @@ function Index() {
     <div className="px-6 md:px-12 py-10 md:py-14 max-w-7xl mx-auto">
       <PageHeader
         title="Websites"
-        subtitle={`${websites.length} tools in your library`}
+        subtitle={loaded ? `${websites.length} tools in your library` : "Loading…"}
         action={
           <button onClick={() => setOpen(true)} className={primaryButtonClass}>
             <Plus className="h-4 w-4" /> Add Website
@@ -51,27 +51,47 @@ function Index() {
         }
       />
 
-      <div className="mb-8">
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search by name, tag, or URL…"
-          className={fieldClass + " max-w-md"}
-        />
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filtered.map((w, i) => (
-          <WebsiteCard key={w.id} website={w} index={i} onRemove={() => remove(w.id)} />
-        ))}
-        {filtered.length === 0 && (
-          <div className="col-span-full text-center text-copy-secondary py-20 text-sm">
-            Nothing matches "{query}".
+      {!loaded ? (
+        <WebsitesSkeleton />
+      ) : (
+        <>
+          <div className="mb-8">
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search by name, tag, or URL…"
+              className={fieldClass + " max-w-md"}
+            />
           </div>
-        )}
-      </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filtered.map((w, i) => (
+              <WebsiteCard key={w.id} website={w} index={i} onRemove={() => remove(w.id)} />
+            ))}
+            {filtered.length === 0 && (
+              <div className="col-span-full text-center text-copy-secondary py-20 text-sm">
+                Nothing matches "{query}".
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
       <AddWebsiteModal open={open} onClose={() => setOpen(false)} onAdd={add} />
+    </div>
+  );
+}
+
+function WebsitesSkeleton() {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-8">
+      {[0, 1, 2, 3, 4, 5].map((i) => (
+        <div
+          key={i}
+          className="h-36 rounded-2xl bg-white/[0.04] animate-pulse"
+          style={{ animationDelay: `${i * 0.05}s` }}
+        />
+      ))}
     </div>
   );
 }
@@ -85,6 +105,8 @@ function WebsiteCard({
   index: number;
   onRemove: () => void;
 }) {
+  const [faviconError, setFaviconError] = useState(false);
+
   return (
     <motion.a
       href={website.url}
@@ -98,7 +120,19 @@ function WebsiteCard({
     >
       <div className="flex items-start gap-3.5">
         <div className="h-10 w-10 shrink-0 rounded-xl bg-[var(--surface-3)] grid place-items-center overflow-hidden border border-border">
-          <img src={faviconFor(website.url, 64)} alt="" className="h-6 w-6" loading="lazy" />
+          {faviconError ? (
+            <span className="text-base font-bold text-white/60">
+              {website.name.charAt(0).toUpperCase()}
+            </span>
+          ) : (
+            <img
+              src={faviconFor(website.url, 64)}
+              alt=""
+              className="h-6 w-6"
+              loading="lazy"
+              onError={() => setFaviconError(true)}
+            />
+          )}
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
