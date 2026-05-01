@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import { snapCenterToCursor } from "@dnd-kit/modifiers";
 import {
   DndContext,
   DragOverlay,
@@ -107,9 +108,7 @@ export function DesktopGrid() {
 
       if (newX === activeEntry.x && newY === activeEntry.y) return;
 
-      const occupant = positioned.find(
-        (e) => e.id !== activeIdStr && e.x === newX && e.y === newY,
-      );
+      const occupant = positioned.find((e) => e.id !== activeIdStr && e.x === newX && e.y === newY);
 
       const nextLayout = desktop.layout.map((entry) => {
         if (entry.id === activeIdStr) return { ...entry, x: newX, y: newY };
@@ -176,11 +175,7 @@ export function DesktopGrid() {
         </div>
       )}
 
-      <DndContext
-        sensors={sensors}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
-      >
+      <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         <div
           ref={containerRef}
           onContextMenu={handleContextMenu}
@@ -196,10 +191,7 @@ export function DesktopGrid() {
             const isActive = entry.id === activeId;
             if (entry.kind === "item") {
               return (
-                <div
-                  key={entry.id}
-                  style={{ gridColumn: entry.x + 1, gridRow: entry.y + 1 }}
-                >
+                <div key={entry.id} style={{ gridColumn: entry.x + 1, gridRow: entry.y + 1 }}>
                   <DesktopItem
                     id={entry.id}
                     item={entry.item}
@@ -213,10 +205,7 @@ export function DesktopGrid() {
             }
             if (entry.kind === "folder") {
               return (
-                <div
-                  key={entry.id}
-                  style={{ gridColumn: entry.x + 1, gridRow: entry.y + 1 }}
-                >
+                <div key={entry.id} style={{ gridColumn: entry.x + 1, gridRow: entry.y + 1 }}>
                   <FolderIcon
                     folder={entry.folder}
                     children={entry.children}
@@ -237,17 +226,8 @@ export function DesktopGrid() {
           and dnd-kit positions it relative to the pointer automatically.
           We also set pointerEvents none so it never blocks drop targets.
         */}
-        <DragOverlay
-          dropAnimation={null}
-          style={{
-            width: cellPx,
-            height: cellPx,
-            pointerEvents: "none",
-          }}
-        >
-          {activeId && activePositioned ? (
-            <DragGhost entry={activePositioned} />
-          ) : null}
+        <DragOverlay dropAnimation={null} modifiers={[snapCenterToCursor]}>
+          {activeId && activePositioned ? <DragGhost entry={activePositioned} /> : null}
         </DragOverlay>
       </DndContext>
 
