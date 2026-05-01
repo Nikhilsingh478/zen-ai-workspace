@@ -38,7 +38,7 @@ export function DesktopItem({
       ref={setRef}
       {...listeners}
       {...attributes}
-      style={{ opacity: isDragging ? 0.25 : 1, transition: "opacity 0.15s" }}
+      style={{ opacity: isDragging ? 0 : 1, transition: "opacity 0.15s" }}
       onClick={(e) => {
         if (isDragging) return;
         if (isWebsite && url) {
