@@ -37,7 +37,6 @@ export function DesktopGrid() {
   const isMobile = useIsMobile();
   const cols = isMobile ? MOBILE_COLS : DESKTOP_COLS;
 
-  // SSR guard — dnd-kit uses useLayoutEffect internally
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
@@ -52,7 +51,6 @@ export function DesktopGrid() {
     gridY: number;
   } | null>(null);
 
-  // Track cell size for delta-based drop math
   useEffect(() => {
     if (!mounted || !containerRef.current) return;
     const update = () => {
@@ -92,19 +90,15 @@ export function DesktopGrid() {
       const activeEntry = positioned.find((e) => e.id === activeIdStr);
       if (!activeEntry) return;
 
-      // Dropped onto a different droppable target
       if (over && String(over.id) !== activeIdStr) {
         const overIdStr = String(over.id);
         const overEntry = positioned.find((e) => e.id === overIdStr);
-        if (overEntry?.kind === "folder") {
-          if (activeEntry.kind === "item") {
-            addToFolder(overIdStr, activeIdStr);
-            return;
-          }
+        if (overEntry?.kind === "folder" && activeEntry.kind === "item") {
+          addToFolder(overIdStr, activeIdStr);
+          return;
         }
       }
 
-      // Move to new grid position using delta
       const stride = cellPx + GRID_GAP;
       const rawNewX = activeEntry.x + delta.x / stride;
       const rawNewY = activeEntry.y + delta.y / stride;
@@ -113,8 +107,9 @@ export function DesktopGrid() {
 
       if (newX === activeEntry.x && newY === activeEntry.y) return;
 
-      // If target cell is occupied, swap positions
-      const occupant = positioned.find((e) => e.id !== activeIdStr && e.x === newX && e.y === newY);
+      const occupant = positioned.find(
+        (e) => e.id !== activeIdStr && e.x === newX && e.y === newY,
+      );
 
       const nextLayout = desktop.layout.map((entry) => {
         if (entry.id === activeIdStr) return { ...entry, x: newX, y: newY };
@@ -133,7 +128,6 @@ export function DesktopGrid() {
     [positioned, desktop.layout, cols, cellPx, updateLayout, addToFolder],
   );
 
-  // Right-click context menu — desktop only
   const handleContextMenu = (e: React.MouseEvent) => {
     if (isMobile) return;
     e.preventDefault();
@@ -157,7 +151,6 @@ export function DesktopGrid() {
   };
 
   const activePositioned = activeId ? positioned.find((e) => e.id === activeId) : null;
-
   const openFolder = openFolderId ? desktop.folders.find((f) => f.id === openFolderId) : null;
   const openFolderChildren = openFolder
     ? openFolder.children
@@ -165,14 +158,12 @@ export function DesktopGrid() {
         .filter((w): w is Website => Boolean(w))
     : [];
 
-  // Before mount — SSR-safe placeholder, no dnd-kit hooks rendered
   if (!mounted) {
     return <div className="min-h-[240px] rounded-2xl" />;
   }
 
   return (
     <div className="relative" onClick={() => setContextMenu(null)}>
-      {/* Mobile: visible Create Folder button */}
       {isMobile && (
         <div className="mb-4 flex justify-end">
           <button
@@ -185,8 +176,11 @@ export function DesktopGrid() {
         </div>
       )}
 
-      <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-        {/* Grid */}
+      <DndContext
+        sensors={sensors}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+      >
         <div
           ref={containerRef}
           onContextMenu={handleContextMenu}
@@ -202,20 +196,27 @@ export function DesktopGrid() {
             const isActive = entry.id === activeId;
             if (entry.kind === "item") {
               return (
-                <div key={entry.id} style={{ gridColumn: entry.x + 1, gridRow: entry.y + 1 }}>
+                <div
+                  key={entry.id}
+                  style={{ gridColumn: entry.x + 1, gridRow: entry.y + 1 }}
+                >
                   <DesktopItem
                     id={entry.id}
                     item={entry.item}
                     isActive={isActive}
                     isDragOver={false}
                     animationDelay={i * 0.03}
+                    cellPx={cellPx}
                   />
                 </div>
               );
             }
             if (entry.kind === "folder") {
               return (
-                <div key={entry.id} style={{ gridColumn: entry.x + 1, gridRow: entry.y + 1 }}>
+                <div
+                  key={entry.id}
+                  style={{ gridColumn: entry.x + 1, gridRow: entry.y + 1 }}
+                >
                   <FolderIcon
                     folder={entry.folder}
                     children={entry.children}
@@ -230,17 +231,26 @@ export function DesktopGrid() {
           })}
         </div>
 
-        {/* Drag Overlay — dnd-kit handles cursor tracking automatically */}
-        <DragOverlay dropAnimation={null}>
+        {/* 
+          THE FIX: style the DragOverlay to exactly match the cell size.
+          This makes the ghost render at the same size as the tile,
+          and dnd-kit positions it relative to the pointer automatically.
+          We also set pointerEvents none so it never blocks drop targets.
+        */}
+        <DragOverlay
+          dropAnimation={null}
+          style={{
+            width: cellPx,
+            height: cellPx,
+            pointerEvents: "none",
+          }}
+        >
           {activeId && activePositioned ? (
-            <div className="opacity-90 rotate-1 scale-105">
-              <DragGhost entry={activePositioned} />
-            </div>
+            <DragGhost entry={activePositioned} />
           ) : null}
         </DragOverlay>
       </DndContext>
 
-      {/* Context Menu */}
       <AnimatePresence>
         {contextMenu && (
           <motion.div
@@ -248,7 +258,12 @@ export function DesktopGrid() {
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.12 }}
-            style={{ position: "fixed", top: contextMenu.y, left: contextMenu.x, zIndex: 200 }}
+            style={{
+              position: "fixed",
+              top: contextMenu.y,
+              left: contextMenu.x,
+              zIndex: 200,
+            }}
             className="overflow-hidden rounded-xl border border-white/10 bg-[#18181B] shadow-[0_8px_30px_rgba(0,0,0,0.6)] py-1 min-w-[160px]"
             onClick={(e) => e.stopPropagation()}
           >
@@ -263,7 +278,6 @@ export function DesktopGrid() {
         )}
       </AnimatePresence>
 
-      {/* Folder Modal */}
       {openFolder && (
         <FolderOverlay
           folder={openFolder}

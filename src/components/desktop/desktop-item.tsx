@@ -1,9 +1,10 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { motion } from "framer-motion";
-import { ExternalLink, Sparkles } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import type { Website } from "@/lib/store";
 import { faviconFor } from "@/lib/store";
 import { cn } from "@/lib/utils";
+import { useState } from "react";
 
 interface DesktopItemProps {
   id: string;
@@ -11,6 +12,7 @@ interface DesktopItemProps {
   isActive: boolean;
   isDragOver: boolean;
   animationDelay?: number;
+  cellPx?: number;
 }
 
 export function DesktopItem({
@@ -19,10 +21,11 @@ export function DesktopItem({
   isActive,
   isDragOver,
   animationDelay = 0,
+  cellPx = 100,
 }: DesktopItemProps) {
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({ id });
-
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id });
+  const [faviconError, setFaviconError] = useState(false);
 
   const isWebsite = item.type === "website";
   const label = isWebsite ? (item as Website).name : (item as { title: string }).title;
@@ -38,8 +41,14 @@ export function DesktopItem({
       ref={setRef}
       {...listeners}
       {...attributes}
-      style={{ opacity: isDragging ? 0 : 1, transition: "opacity 0.15s" }}
-      onClick={(e) => {
+      style={{
+        opacity: isDragging ? 0 : 1,
+        transition: "opacity 0.1s",
+        width: cellPx,
+        height: cellPx,
+        touchAction: "none",
+      }}
+      onClick={() => {
         if (isDragging) return;
         if (isWebsite && url) {
           window.open(url, "_blank", "noopener,noreferrer");
@@ -50,55 +59,42 @@ export function DesktopItem({
         initial={{ opacity: 0, scale: 0.85 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.2, delay: animationDelay, ease: [0.22, 1, 0.36, 1] }}
-        whileHover={{ y: -2 }}
+        whileHover={{ scale: 1.06 }}
         className={cn(
-          "group relative flex flex-col items-center gap-2 rounded-2xl p-3 cursor-grab active:cursor-grabbing select-none transition-colors",
-          isDragOver || isOver ? "bg-white/10 ring-1 ring-white/20" : "hover:bg-white/[0.04]",
-          isActive && "opacity-40",
+          "group relative flex flex-col items-center justify-center gap-2 rounded-2xl p-2 cursor-grab active:cursor-grabbing select-none transition-colors w-full h-full",
+          isDragOver || isOver
+            ? "bg-white/10 ring-1 ring-white/20"
+            : "hover:bg-white/[0.04]",
         )}
       >
+        {/* Icon well */}
         <div
           className={cn(
-            "relative h-14 w-14 flex-shrink-0 rounded-2xl overflow-hidden bg-[#18181B] border border-white/[0.08] flex items-center justify-center transition-shadow",
-            "group-hover:shadow-[0_4px_16px_rgba(0,0,0,0.4)] group-hover:border-white/[0.15]",
+            "relative h-14 w-14 flex-shrink-0 rounded-2xl overflow-hidden bg-[#18181B] border border-white/[0.08] flex items-center justify-center transition-all duration-150",
+            "group-hover:bg-[#1F1F23] group-hover:border-white/[0.15]",
           )}
         >
-          {isWebsite ? (
+          {isWebsite && !faviconError ? (
             <img
               src={faviconFor(url!, 64)}
               alt=""
               draggable={false}
               className="h-8 w-8 object-contain"
-              onError={(e) => {
-                (e.currentTarget as HTMLImageElement).style.display = "none";
-                const fallback = e.currentTarget.nextSibling as HTMLElement;
-                if (fallback) fallback.style.display = "flex";
-              }}
+              onError={() => setFaviconError(true)}
             />
-          ) : null}
-          {!isWebsite && (
-            <div className="flex items-center justify-center h-full w-full">
-              <Sparkles className="h-6 w-6 text-white/50" />
-            </div>
-          )}
-          {isWebsite && (
-            <div className="hidden absolute inset-0 items-center justify-center">
-              <span className="text-xl font-bold text-white/60">
-                {label.charAt(0).toUpperCase()}
-              </span>
-            </div>
+          ) : isWebsite && faviconError ? (
+            <span className="text-xl font-bold text-white/60">
+              {label.charAt(0).toUpperCase()}
+            </span>
+          ) : (
+            <Sparkles className="h-6 w-6 text-white/50" />
           )}
         </div>
 
+        {/* Label */}
         <span className="text-[11px] text-white/70 text-center leading-tight line-clamp-2 w-full max-w-[80px]">
           {label}
         </span>
-
-        {isWebsite && (
-          <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            <ExternalLink className="h-3 w-3 text-white/30" />
-          </div>
-        )}
       </motion.div>
     </div>
   );
