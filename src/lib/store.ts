@@ -18,6 +18,7 @@ import {
   createFolder as dbCreateFolder,
   updateFolder as dbUpdateFolder,
   deleteFolder as dbDeleteFolder,
+  deleteLayoutEntry as dbDeleteLayoutEntry,
 } from "@/lib/supabase-data";
 import { supabase } from "@/lib/supabase";
 
@@ -130,7 +131,7 @@ function optimistic(
   persist(next).then(() => {
     if (successMsg) toast.success(successMsg, { duration: 1500 });
   }).catch((err) => {
-    console.error("[store] mutation error:", err);
+    console.error("[store] mutation error:", err?.message ?? err?.code ?? err);
     setState({ storage: prev });
     toast.error("Failed to save. Please try again.");
   });
@@ -343,7 +344,10 @@ export function useDesktopStorage() {
           ),
         },
       }),
-      () => dbUpdateFolder(folderId, { children: newChildren }),
+      async () => {
+        await dbUpdateFolder(folderId, { children: newChildren });
+        await dbDeleteLayoutEntry(itemId);
+      },
     );
   };
 

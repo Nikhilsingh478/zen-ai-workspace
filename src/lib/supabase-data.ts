@@ -197,6 +197,11 @@ export async function updateFolder(
   if (error) throw error;
 }
 
+export async function deleteLayoutEntry(id: string): Promise<void> {
+  const { error } = await supabase.from("desktop_layout").delete().eq("id", id);
+  if (error) throw error;
+}
+
 export async function deleteFolder(
   id: string,
   childEntries: DesktopLayoutEntry[],

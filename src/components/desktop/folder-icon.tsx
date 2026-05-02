@@ -55,6 +55,8 @@ export function FolderIcon({
         opacity: isDragging ? 0 : dimmed ? 0.25 : 1,
         transition: "opacity 0.15s",
         touchAction: "none",
+        width: cellPx,
+        height: cellPx,
       }}
       onClick={(e) => {
         if (isDragging) return;
@@ -68,7 +70,7 @@ export function FolderIcon({
         transition={{ duration: 0.2, delay: animationDelay, ease: [0.22, 1, 0.36, 1] }}
         whileHover={{ y: -2 }}
         className={cn(
-          "group flex flex-col items-center gap-1 rounded-2xl cursor-grab active:cursor-grabbing select-none transition-colors p-1.5",
+          "group flex flex-col items-center justify-center gap-1 rounded-2xl cursor-grab active:cursor-grabbing select-none transition-colors p-1.5 w-full h-full",
           isOver
             ? "bg-white/10 ring-2 ring-white/30 ring-offset-1 ring-offset-transparent"
             : "hover:bg-white/[0.04]",
