@@ -211,6 +211,7 @@ export function DesktopGrid() {
                     children={entry.children}
                     isActive={isActive}
                     animationDelay={i * 0.03}
+                    cellPx={cellPx}
                     onOpen={() => setOpenFolderId(entry.id)}
                   />
                 </div>
