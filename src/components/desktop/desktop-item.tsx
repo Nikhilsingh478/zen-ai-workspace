@@ -5,6 +5,7 @@ import type { Website } from "@/lib/store";
 import { faviconFor } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
+import { logToolOpen } from "@/lib/usage-tracking";
 
 interface DesktopItemProps {
   id: string;
@@ -51,7 +52,10 @@ export function DesktopItem({
       }}
       onClick={() => {
         if (isDragging) return;
-        if (isWebsite && url) window.open(url, "_blank", "noopener,noreferrer");
+        if (isWebsite && url) {
+          logToolOpen(id, label, url);
+          window.open(url, "_blank", "noopener,noreferrer");
+        }
       }}
     >
       <motion.div

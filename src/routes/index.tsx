@@ -11,6 +11,7 @@ import {
   ghostButtonClass,
 } from "@/components/matrix-modal";
 import { faviconFor, getDomain, useWebsites, type Website, type WebsiteInput } from "@/lib/store";
+import { logToolOpen } from "@/lib/usage-tracking";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({
@@ -309,6 +310,7 @@ function WebsiteCard({
           target="_blank"
           rel="noreferrer"
           tabIndex={-1}
+          onClick={() => logToolOpen(website.id, website.name, website.url)}
           className="h-10 w-10 shrink-0 rounded-xl bg-[var(--surface-3)] grid place-items-center overflow-hidden border border-border"
         >
           {faviconError ? (
@@ -331,6 +333,7 @@ function WebsiteCard({
             href={website.url}
             target="_blank"
             rel="noreferrer"
+            onClick={() => logToolOpen(website.id, website.name, website.url)}
             className="flex items-center gap-2 group/link"
           >
             <h3 className="text-[15px] font-semibold tracking-tight truncate text-foreground group-hover/link:text-white transition">

@@ -11,6 +11,7 @@ import {
   ghostButtonClass,
 } from "@/components/matrix-modal";
 import { usePrompts, type Prompt, type PromptInput } from "@/lib/store";
+import { logPromptCopy } from "@/lib/usage-tracking";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 
@@ -205,6 +206,7 @@ function PromptCard({ prompt, onRemove }: { prompt: Prompt; onRemove: () => void
       await navigator.clipboard.writeText(prompt.body);
       setCopied(true);
       setTimeout(() => setCopied(false), 1600);
+      logPromptCopy(prompt.id, prompt.title);
     } catch {
       /* noop */
     }
