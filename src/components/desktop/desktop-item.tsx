@@ -38,8 +38,8 @@ export function DesktopItem({
 
   const compact = cellPx < 90;
   const iconWell = compact ? "h-10 w-10 rounded-xl" : "h-14 w-14 rounded-2xl";
-  const iconImg = compact ? "h-6 w-6" : "h-8 w-8";
-  const iconFallback = compact ? "h-5 w-5" : "h-6 w-6";
+  const iconImg = compact ? "h-8 w-8" : "h-8 w-8";
+  const iconFallback = compact ? "h-7 w-7" : "h-6 w-6";
 
   return (
     <div
@@ -89,7 +89,7 @@ export function DesktopItem({
               onError={() => setFaviconError(true)}
             />
           ) : isWebsite && faviconError ? (
-            <span className={cn("font-bold text-white/60", compact ? "text-base" : "text-xl")}>
+            <span className={cn("font-bold text-white/60", compact ? "text-lg" : "text-xl")}>
               {label.charAt(0).toUpperCase()}
             </span>
           ) : (
@@ -100,7 +100,7 @@ export function DesktopItem({
         {/* Label */}
         <span className={cn(
           "text-white/70 text-center leading-tight line-clamp-2 w-full",
-          compact ? "text-[10px] max-w-[70px]" : "text-[11px] max-w-[80px]",
+          compact ? "text-[11px] max-w-[70px]" : "text-[11px] max-w-[80px]",
         )}>
           {label}
         </span>
