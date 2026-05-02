@@ -20,7 +20,7 @@ import { FolderIcon } from "@/components/desktop/folder-icon";
 import { FolderOverlay } from "@/components/desktop/folder-overlay";
 import { DragGhost } from "@/components/desktop/drag-ghost";
 
-const DESKTOP_COLS = 8;
+const DESKTOP_COLS = 12;
 const MOBILE_COLS = 4;
 
 export function DesktopGrid() {
@@ -211,6 +211,7 @@ export function DesktopGrid() {
                     children={entry.children}
                     isActive={isActive}
                     animationDelay={i * 0.03}
+                    cellPx={cellPx}
                     onOpen={() => setOpenFolderId(entry.id)}
                   />
                 </div>
@@ -227,7 +228,7 @@ export function DesktopGrid() {
           We also set pointerEvents none so it never blocks drop targets.
         */}
         <DragOverlay dropAnimation={null} modifiers={[snapCenterToCursor]}>
-          {activeId && activePositioned ? <DragGhost entry={activePositioned} /> : null}
+          {activeId && activePositioned ? <DragGhost entry={activePositioned} cellPx={cellPx} /> : null}
         </DragOverlay>
       </DndContext>
 
