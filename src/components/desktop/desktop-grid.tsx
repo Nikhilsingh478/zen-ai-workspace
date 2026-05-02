@@ -9,6 +9,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
+import { snapCenterToCursor } from "@dnd-kit/modifiers";
 import { motion, AnimatePresence } from "framer-motion";
 import { FolderPlus } from "lucide-react";
 import { useDesktopStorage, type Website } from "@/lib/store";
@@ -278,8 +279,8 @@ export function DesktopGrid({ searchQuery = "" }: DesktopGridProps) {
           })}
         </div>
 
-        {/* No modifiers — overlay tracks the grab point naturally */}
-        <DragOverlay dropAnimation={null}>
+        {/* snapCenterToCursor: ghost center always locks to the cursor, no offset gap */}
+        <DragOverlay dropAnimation={null} modifiers={[snapCenterToCursor]}>
           {activeId && activePositioned ? (
             <div className="opacity-90 rotate-1 scale-105">
               <DragGhost entry={activePositioned} cellPx={cellPx} />
