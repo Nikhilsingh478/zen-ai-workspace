@@ -39,8 +39,8 @@ export function FolderIcon({
   const preview = children.slice(0, 4);
   const compact = cellPx < 90;
   const wellSize = compact ? "h-10 w-10 rounded-xl" : "h-14 w-14 rounded-2xl";
-  const folderIcon = compact ? "h-7 w-7" : "h-7 w-7";
-  const childIcon = compact ? "h-4 w-4" : "h-4 w-4";
+  const folderIcon = compact ? "h-9 w-9" : "h-9 w-9";
+  const childIcon = compact ? "h-5 w-5" : "h-5 w-5";
 
   return (
     <div
@@ -106,7 +106,7 @@ export function FolderIcon({
         </div>
 
         <span className={cn(
-          "text-white/70 text-center leading-tight line-clamp-2 w-full",
+          "text-white/70 text-center leading-tight w-full truncate whitespace-nowrap overflow-hidden",
           compact ? "text-[11px] max-w-[70px]" : "text-[11px] max-w-[80px]",
         )}>
           {folder.name}

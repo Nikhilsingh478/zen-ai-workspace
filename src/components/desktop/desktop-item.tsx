@@ -38,8 +38,8 @@ export function DesktopItem({
 
   const compact = cellPx < 90;
   const iconWell = compact ? "h-10 w-10 rounded-xl" : "h-14 w-14 rounded-2xl";
-  const iconImg = compact ? "h-8 w-8" : "h-8 w-8";
-  const iconFallback = compact ? "h-7 w-7" : "h-6 w-6";
+  const iconImg = compact ? "h-10 w-10" : "h-10 w-10";
+  const iconFallback = compact ? "h-9 w-9" : "h-8 w-8";
 
   return (
     <div
@@ -99,7 +99,7 @@ export function DesktopItem({
 
         {/* Label */}
         <span className={cn(
-          "text-white/70 text-center leading-tight line-clamp-2 w-full",
+          "text-white/70 text-center leading-tight w-full truncate whitespace-nowrap overflow-hidden",
           compact ? "text-[11px] max-w-[70px]" : "text-[11px] max-w-[80px]",
         )}>
           {label}
