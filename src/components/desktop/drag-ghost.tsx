@@ -2,6 +2,7 @@ import { Folder, Sparkles } from "lucide-react";
 import type { Website } from "@/lib/store";
 import { faviconFor } from "@/lib/store";
 import type { LauncherEntry } from "@/lib/desktop-layout";
+import { cn } from "@/lib/utils";
 
 interface DragGhostProps {
   entry: LauncherEntry;
