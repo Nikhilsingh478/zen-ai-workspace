@@ -228,7 +228,7 @@ export function DesktopGrid() {
           We also set pointerEvents none so it never blocks drop targets.
         */}
         <DragOverlay dropAnimation={null} modifiers={[snapCenterToCursor]}>
-          {activeId && activePositioned ? <DragGhost entry={activePositioned} /> : null}
+          {activeId && activePositioned ? <DragGhost entry={activePositioned} cellPx={cellPx} /> : null}
         </DragOverlay>
       </DndContext>
 
