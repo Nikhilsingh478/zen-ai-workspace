@@ -1,0 +1,261 @@
+# 🚀 FEATURE BUILD PROMPT — USAGE INTELLIGENCE DASHBOARD
+
+## 🎯 OBJECTIVE
+
+Upgrade the existing AI Metrics app from a static tool organizer into a **behavior-aware intelligence system**.
+
+The dashboard must track, analyze, and visualize user behavior across:
+
+* Tool usage
+* Prompt usage
+* Time spent
+* Interaction patterns
+
+This is NOT just analytics — it should feel like:
+
+> “This app understands how I use AI”
+
+---
+
+## 🧱 CORE FEATURE: USAGE INTELLIGENCE DASHBOARD
+
+Create a new tab in the sidebar:
+→ Label: **Insights**
+
+---
+
+## 📊 SECTION 1: KEY METRICS (TOP STRIP)
+
+Display 4 primary metrics as cards:
+
+1. Total Sessions Today
+2. Total Time Spent (minutes)
+3. Most Used Tool (name + favicon)
+4. Most Used Prompt (title)
+
+### UI Requirements:
+
+* Grid: 4 cards in one row (responsive → 2x2 on mobile)
+* Style:
+
+  * Background: #18181B
+  * Border: subtle rgba(255,255,255,0.08)
+  * Rounded: 16px
+  * Hover: slight scale + glow
+* Use framer-motion for entry animation
+
+---
+
+## 📈 SECTION 2: TOOL USAGE ANALYTICS
+
+### Component: “Top Tools”
+
+Display:
+
+* List of top 5 most used tools
+* Each item shows:
+
+  * favicon
+  * name
+  * usage count
+  * total time spent
+
+### Component: “Usage Over Time”
+
+* Line chart (last 7 days)
+* X-axis: days
+* Y-axis: usage count
+
+---
+
+## 🧠 SECTION 3: PROMPT INTELLIGENCE
+
+### Component: “Top Prompts”
+
+* Top 5 most used prompts
+* Show:
+
+  * title
+  * usage count
+  * last used timestamp
+
+### Component: “Prompt Frequency Heatmap”
+
+* Grid view (7 days × time blocks)
+* Show when prompts are most used
+
+---
+
+## ⏱️ SECTION 4: TIME TRACKING
+
+### Component: “Time Spent Per Tool”
+
+* Bar chart
+* Each bar = tool
+* Value = total time (minutes)
+
+### Component: “Session Timeline”
+
+* Timeline view of user sessions
+* Each session:
+
+  * start time
+  * duration
+  * tool used
+
+---
+
+## 🤖 SECTION 5: AI INSIGHTS (IMPORTANT)
+
+This is where the product becomes intelligent.
+
+Generate insights dynamically like:
+
+* “You use ChatGPT most between 10 PM – 1 AM”
+* “Your most productive tool is Perplexity”
+* “You frequently reuse ‘SEO Prompt’ with research tools”
+
+### Implementation:
+
+* Use simple rule-based logic first (no heavy AI needed)
+* Later upgrade to Gemini analysis
+
+---
+
+## 🗃️ DATABASE DESIGN (SUPABASE)
+
+### New Table: `usage_logs`
+
+Columns:
+
+* id (uuid)
+* user_id
+* item_id (tool or prompt id)
+* type ("tool" | "prompt")
+* action ("open" | "copy" | "execute")
+* timestamp (timestamptz)
+* duration (int, seconds)
+
+---
+
+### New Table: `sessions`
+
+Columns:
+
+* id
+* user_id
+* start_time
+* end_time
+* total_duration
+
+---
+
+## ⚙️ TRACKING LOGIC
+
+### When user:
+
+* clicks a tool → log "open"
+* copies a prompt → log "copy"
+* runs prompt (future) → log "execute"
+
+### Time tracking:
+
+* Start timer on tool open
+* Stop when:
+
+  * tab inactive
+  * user switches tool
+* Store duration
+
+---
+
+## 🧠 BACKEND QUERIES
+
+Create functions:
+
+1. getTopTools()
+2. getTopPrompts()
+3. getUsageByDay()
+4. getTimeSpentPerTool()
+5. getSessions()
+
+Use Supabase SQL aggregation:
+
+* COUNT()
+* SUM(duration)
+* GROUP BY item_id
+
+---
+
+## 🎨 UI SYSTEM
+
+* Charts: use Recharts
+* Icons: lucide-react
+* Components: shadcn/ui
+* Layout: grid + cards
+* Animations: framer-motion
+
+---
+
+## 📱 RESPONSIVENESS
+
+* Desktop: 3–4 column grid
+* Tablet: 2 columns
+* Mobile: 1 column stacked
+
+---
+
+## ⚡ PERFORMANCE
+
+* Lazy load charts
+* Cache results for session
+* Use debounced queries
+
+---
+
+## 🧪 FUTURE EXTENSIONS (DO NOT BUILD NOW)
+
+* AI-based recommendations
+* Cross-device analytics
+* Team analytics
+* Productivity scoring system
+
+---
+
+## ✅ SUCCESS CRITERIA
+
+Feature is successful if:
+
+* User can instantly see:
+
+  * what tools they use most
+  * how much time they spend
+  * which prompts matter
+* Dashboard feels:
+
+  * fast
+  * premium
+  * insightful (not decorative)
+
+---
+
+## 🚫 IMPORTANT CONSTRAINTS
+
+* Do NOT overcomplicate backend
+* Do NOT add unnecessary charts
+* Do NOT slow down core UX
+
+Focus:
+→ clarity
+→ usefulness
+→ speed
+
+---
+
+## 🧠 FINAL NOTE
+
+This feature should make the user feel:
+
+> “I’m not just using AI tools… I understand how I use them.”
+
+That’s the shift from tool → system.
