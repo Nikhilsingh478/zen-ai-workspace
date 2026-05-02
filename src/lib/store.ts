@@ -11,6 +11,7 @@ import {
 import {
   fetchAllData,
   addWebsite as dbAddWebsite,
+  updateWebsite as dbUpdateWebsite,
   addPrompt as dbAddPrompt,
   removeItem as dbRemoveItem,
   updateLayout as dbUpdateLayout,
@@ -192,6 +193,21 @@ export function useWebsites() {
     );
   };
 
+  const update = (id: string, input: Partial<WebsiteInput>) => {
+    optimistic(
+      (prev) => ({
+        ...prev,
+        items: prev.items.map((item) =>
+          item.id === id && item.type === "website"
+            ? { ...item, ...input, updatedAt: now() }
+            : item,
+        ),
+      }),
+      () => dbUpdateWebsite(id, input),
+      "Saved",
+    );
+  };
+
   const remove = (id: string) => {
     const folders = state.storage.desktop.folders;
     optimistic(
@@ -209,7 +225,7 @@ export function useWebsites() {
     );
   };
 
-  return { websites, loaded, add, remove };
+  return { websites, loaded, add, update, remove };
 }
 
 export function usePrompts() {

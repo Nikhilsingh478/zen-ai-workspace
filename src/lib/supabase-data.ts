@@ -100,6 +100,17 @@ export async function fetchAllData(): Promise<AppStorage> {
   return { items, desktop: { layout, folders } };
 }
 
+export async function updateWebsite(
+  id: string,
+  updates: Partial<Pick<Website, "name" | "url" | "description" | "tags">>,
+): Promise<void> {
+  const { error } = await supabase
+    .from("items")
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw error;
+}
+
 export async function addWebsite(website: Website): Promise<void> {
   const { error: itemErr } = await supabase.from("items").insert({
     id: website.id,

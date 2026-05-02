@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { motion } from "framer-motion";
-import { Plus, ExternalLink, Trash2 } from "lucide-react";
+import { Plus, ExternalLink, Trash2, Pencil } from "lucide-react";
 import { useMemo, useState } from "react";
 import { PageHeader } from "@/components/page-header";
 import {
@@ -23,8 +23,9 @@ export const Route = createFileRoute("/")({
 });
 
 function Index() {
-  const { websites, loaded, add, remove } = useWebsites();
+  const { websites, loaded, add, update, remove } = useWebsites();
   const [open, setOpen] = useState(false);
+  const [editingWebsite, setEditingWebsite] = useState<Website | null>(null);
   const [query, setQuery] = useState("");
 
   const filtered = useMemo(() => {
@@ -66,7 +67,13 @@ function Index() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {filtered.map((w, i) => (
-              <WebsiteCard key={w.id} website={w} index={i} onRemove={() => remove(w.id)} />
+              <WebsiteCard
+                key={w.id}
+                website={w}
+                index={i}
+                onRemove={() => remove(w.id)}
+                onEdit={() => setEditingWebsite(w)}
+              />
             ))}
             {filtered.length === 0 && (
               <div className="col-span-full text-center text-copy-secondary py-20 text-sm">
@@ -78,6 +85,17 @@ function Index() {
       )}
 
       <AddWebsiteModal open={open} onClose={() => setOpen(false)} onAdd={add} />
+
+      {editingWebsite && (
+        <EditWebsiteModal
+          website={editingWebsite}
+          onClose={() => setEditingWebsite(null)}
+          onSave={(input) => {
+            update(editingWebsite.id, input);
+            setEditingWebsite(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -100,18 +118,17 @@ function WebsiteCard({
   website,
   index,
   onRemove,
+  onEdit,
 }: {
   website: Website;
   index: number;
   onRemove: () => void;
+  onEdit: () => void;
 }) {
   const [faviconError, setFaviconError] = useState(false);
 
   return (
-    <motion.a
-      href={website.url}
-      target="_blank"
-      rel="noreferrer"
+    <motion.div
       initial={{ opacity: 0.9, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25, delay: Math.min(index * 0.03, 0.25), ease: "easeOut" }}
@@ -119,7 +136,13 @@ function WebsiteCard({
       className="group relative rounded-2xl border border-border bg-[var(--surface-2)] p-5 transition-all duration-300 hover:bg-[var(--surface-3)] hover:border-white/[0.12] hover:shadow-[0_20px_50px_-25px_rgba(0,0,0,0.6)]"
     >
       <div className="flex items-start gap-3.5">
-        <div className="h-10 w-10 shrink-0 rounded-xl bg-[var(--surface-3)] grid place-items-center overflow-hidden border border-border">
+        <a
+          href={website.url}
+          target="_blank"
+          rel="noreferrer"
+          className="h-10 w-10 shrink-0 rounded-xl bg-[var(--surface-3)] grid place-items-center overflow-hidden border border-border"
+          tabIndex={-1}
+        >
           {faviconError ? (
             <span className="text-base font-bold text-white/60">
               {website.name.charAt(0).toUpperCase()}
@@ -133,27 +156,46 @@ function WebsiteCard({
               onError={() => setFaviconError(true)}
             />
           )}
-        </div>
+        </a>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <h3 className="text-[15px] font-semibold tracking-tight truncate text-foreground">
+          <a
+            href={website.url}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-2 group/link"
+          >
+            <h3 className="text-[15px] font-semibold tracking-tight truncate text-foreground group-hover/link:text-white transition">
               {website.name}
             </h3>
-            <ExternalLink className="h-3.5 w-3.5 text-copy-secondary group-hover:text-foreground transition" />
-          </div>
+            <ExternalLink className="h-3.5 w-3.5 text-copy-secondary group-hover/link:text-foreground transition shrink-0" />
+          </a>
           <p className="text-xs text-copy-secondary mt-0.5 truncate">{getDomain(website.url)}</p>
         </div>
-        <button
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onRemove();
-          }}
-          className="h-7 w-7 grid place-items-center rounded-lg text-copy-secondary hover:text-foreground hover:bg-white/[0.06] transition"
-          aria-label="Remove"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
+
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onEdit();
+            }}
+            className="h-7 w-7 grid place-items-center rounded-lg text-copy-secondary hover:text-foreground hover:bg-white/[0.06] transition opacity-0 group-hover:opacity-100"
+            aria-label="Edit"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onRemove();
+            }}
+            className="h-7 w-7 grid place-items-center rounded-lg text-copy-secondary hover:text-red-400 hover:bg-red-400/10 transition opacity-0 group-hover:opacity-100"
+            aria-label="Remove"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
 
       <p className="mt-4 text-[13px] leading-relaxed text-copy-secondary line-clamp-3">
@@ -172,7 +214,7 @@ function WebsiteCard({
           ))}
         </div>
       )}
-    </motion.a>
+    </motion.div>
   );
 }
 
@@ -260,6 +302,88 @@ function AddWebsiteModal({
           </button>
           <button type="submit" className={primaryButtonClass}>
             Add website
+          </button>
+        </div>
+      </form>
+    </MatrixModal>
+  );
+}
+
+function EditWebsiteModal({
+  website,
+  onClose,
+  onSave,
+}: {
+  website: Website;
+  onClose: () => void;
+  onSave: (input: Partial<WebsiteInput>) => void;
+}) {
+  const [name, setName] = useState(website.name);
+  const [url, setUrl] = useState(website.url);
+  const [description, setDescription] = useState(website.description);
+  const [tags, setTags] = useState(website.tags.join(", "));
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim() || !url.trim()) return;
+    const normalized = url.startsWith("http") ? url : `https://${url}`;
+    onSave({
+      name: name.trim(),
+      url: normalized,
+      description: description.trim(),
+      tags: tags
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean),
+    });
+  };
+
+  return (
+    <MatrixModal open onClose={onClose} title="Edit website">
+      <form onSubmit={submit} className="space-y-4">
+        <div>
+          <label className={labelClass}>Name</label>
+          <input
+            className={fieldClass}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="ChatGPT"
+            autoFocus
+          />
+        </div>
+        <div>
+          <label className={labelClass}>URL</label>
+          <input
+            className={fieldClass}
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://chat.openai.com"
+          />
+        </div>
+        <div>
+          <label className={labelClass}>Description</label>
+          <textarea
+            className={fieldClass + " min-h-[88px] resize-none"}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="What it's good for…"
+          />
+        </div>
+        <div>
+          <label className={labelClass}>Tags (comma-separated)</label>
+          <input
+            className={fieldClass}
+            value={tags}
+            onChange={(e) => setTags(e.target.value)}
+            placeholder="chat, writing"
+          />
+        </div>
+        <div className="flex justify-end gap-2 pt-2">
+          <button type="button" onClick={onClose} className={ghostButtonClass}>
+            Cancel
+          </button>
+          <button type="submit" className={primaryButtonClass}>
+            Save changes
           </button>
         </div>
       </form>
