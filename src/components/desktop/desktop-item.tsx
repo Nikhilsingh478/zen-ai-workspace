@@ -36,6 +36,11 @@ export function DesktopItem({
     setDropRef(node);
   };
 
+  const compact = cellPx < 90;
+  const iconWell = compact ? "h-10 w-10 rounded-xl" : "h-14 w-14 rounded-2xl";
+  const iconImg = compact ? "h-6 w-6" : "h-8 w-8";
+  const iconFallback = compact ? "h-5 w-5" : "h-6 w-6";
+
   return (
     <div
       ref={setRef}
