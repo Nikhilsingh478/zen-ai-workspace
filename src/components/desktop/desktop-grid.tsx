@@ -116,28 +116,16 @@ export function DesktopGrid({ searchQuery = "" }: DesktopGridProps) {
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
-      const { active, over, delta, activatorEvent } = event;
+      const { active, delta, activatorEvent } = event;
       setActiveId(null);
 
       const activeIdStr = String(active.id);
       const activeEntry = positioned.find((e) => e.id === activeIdStr);
       if (!activeEntry || !containerRef.current) return;
 
-      // ── Check if dropped directly onto a folder ──────────────────────────
-      if (over && String(over.id) !== activeIdStr) {
-        const overIdStr = String(over.id);
-        const overEntry = positioned.find((e) => e.id === overIdStr);
-        if (overEntry?.kind === "folder" && activeEntry.kind === "item") {
-          addToFolder(overIdStr, activeIdStr);
-          return;
-        }
-      }
-
-      // ── Cursor-based grid snapping ────────────────────────────────────────
-      // Use activatorEvent (pointer-down position) + delta (pointer movement)
-      // to get the exact final cursor position. This is completely independent
-      // of where the user grabbed the icon, eliminating the ±cellPx/2 error
-      // that the translatedRect center approach had.
+      // ── Resolve exact cursor position ─────────────────────────────────────
+      // activatorEvent = pointer-down; delta = movement since drag activation.
+      // Their sum tracks the live cursor independently of grab-offset.
       const ae = activatorEvent as MouseEvent | TouchEvent;
       let cursorX: number;
       let cursorY: number;
@@ -156,6 +144,20 @@ export function DesktopGrid({ searchQuery = "" }: DesktopGridProps) {
       const newX = Math.max(0, Math.min(cols - 1, Math.round((cursorX - containerRect.left) / stride)));
       const newY = Math.max(0, Math.round((cursorY - containerRect.top) / stride));
 
+      // ── Cursor-based folder detection ─────────────────────────────────────
+      // Use the same cursor→grid mapping for folder drops so the detection
+      // is perfectly consistent with snapCenterToCursor and the ghost position.
+      // dnd-kit's collision rect lags behind the visual by a grab-offset amount,
+      // which caused the classic "need to hover one cell early" problem.
+      const targetEntry = positioned.find(
+        (e) => e.x === newX && e.y === newY && e.id !== activeIdStr,
+      );
+      if (targetEntry?.kind === "folder" && activeEntry.kind === "item") {
+        addToFolder(targetEntry.id, activeIdStr);
+        return;
+      }
+
+      // ── Cursor-based grid snap ────────────────────────────────────────────
       if (newX === activeEntry.x && newY === activeEntry.y) return;
 
       // Swap with occupant if any
