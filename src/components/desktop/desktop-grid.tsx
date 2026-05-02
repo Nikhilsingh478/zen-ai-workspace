@@ -20,7 +20,7 @@ import { FolderIcon } from "@/components/desktop/folder-icon";
 import { FolderOverlay } from "@/components/desktop/folder-overlay";
 import { DragGhost } from "@/components/desktop/drag-ghost";
 
-const DESKTOP_COLS = 8;
+const DESKTOP_COLS = 12;
 const MOBILE_COLS = 4;
 
 export function DesktopGrid() {
