@@ -1,5 +1,4 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { snapCenterToCursor } from "@dnd-kit/modifiers";
 import {
   DndContext,
   DragOverlay,
@@ -20,10 +19,14 @@ import { FolderIcon } from "@/components/desktop/folder-icon";
 import { FolderOverlay } from "@/components/desktop/folder-overlay";
 import { DragGhost } from "@/components/desktop/drag-ghost";
 
-const DESKTOP_COLS = 12;
+const DESKTOP_COLS = 8;
 const MOBILE_COLS = 4;
 
-export function DesktopGrid() {
+interface DesktopGridProps {
+  searchQuery?: string;
+}
+
+export function DesktopGrid({ searchQuery = "" }: DesktopGridProps) {
   const {
     items,
     desktop,
@@ -77,20 +80,49 @@ export function DesktopGrid() {
   const maxRow = positioned.reduce((max, e) => Math.max(max, e.y), 0);
   const gridRows = Math.max(maxRow + 2, 4);
 
+  const q = searchQuery.trim().toLowerCase();
+
+  const matchesSearch = (entry: (typeof positioned)[number]): boolean => {
+    if (!q) return true;
+    if (entry.kind === "item") {
+      const w = entry.item as Website;
+      return (
+        w.name.toLowerCase().includes(q) ||
+        (w.url ?? "").toLowerCase().includes(q) ||
+        (w.description ?? "").toLowerCase().includes(q) ||
+        (w.tags ?? []).some((t) => t.toLowerCase().includes(q))
+      );
+    }
+    if (entry.kind === "folder") {
+      return (
+        entry.folder.name.toLowerCase().includes(q) ||
+        entry.children.some(
+          (c) =>
+            c.name.toLowerCase().includes(q) ||
+            c.url.toLowerCase().includes(q) ||
+            c.tags.some((t) => t.toLowerCase().includes(q)),
+        )
+      );
+    }
+    return false;
+  };
+
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(String(event.active.id));
     setContextMenu(null);
+    setOpenFolderId(null);
   };
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
-      const { active, over, delta } = event;
+      const { active, over } = event;
       setActiveId(null);
 
       const activeIdStr = String(active.id);
       const activeEntry = positioned.find((e) => e.id === activeIdStr);
       if (!activeEntry) return;
 
+      // ── Check if dropped directly onto a folder ──────────────────────────
       if (over && String(over.id) !== activeIdStr) {
         const overIdStr = String(over.id);
         const overEntry = positioned.find((e) => e.id === overIdStr);
@@ -100,15 +132,27 @@ export function DesktopGrid() {
         }
       }
 
+      // ── Use the actual translated rect for accurate grid snapping ─────────
+      // This eliminates grab-offset errors that plague delta-based math.
+      const translatedRect = active.rect.current.translated;
+      if (!translatedRect || !containerRef.current) return;
+
+      const containerRect = containerRef.current.getBoundingClientRect();
       const stride = cellPx + GRID_GAP;
-      const rawNewX = activeEntry.x + delta.x / stride;
-      const rawNewY = activeEntry.y + delta.y / stride;
-      const newX = Math.max(0, Math.min(cols - 1, Math.round(rawNewX)));
-      const newY = Math.max(0, Math.round(rawNewY));
+
+      // Center of the dragged ghost in container coordinates
+      const centerX = translatedRect.left + translatedRect.width / 2 - containerRect.left;
+      const centerY = translatedRect.top + translatedRect.height / 2 - containerRect.top;
+
+      const newX = Math.max(0, Math.min(cols - 1, Math.round(centerX / stride)));
+      const newY = Math.max(0, Math.round(centerY / stride));
 
       if (newX === activeEntry.x && newY === activeEntry.y) return;
 
-      const occupant = positioned.find((e) => e.id !== activeIdStr && e.x === newX && e.y === newY);
+      // Swap with occupant if any
+      const occupant = positioned.find(
+        (e) => e.id !== activeIdStr && e.x === newX && e.y === newY,
+      );
 
       const nextLayout = desktop.layout.map((entry) => {
         if (entry.id === activeIdStr) return { ...entry, x: newX, y: newY };
@@ -118,6 +162,7 @@ export function DesktopGrid() {
         return entry;
       });
 
+      // Item might not have been in layout yet (new item at 0,0 from removeFromFolder)
       if (!nextLayout.find((e) => e.id === activeIdStr)) {
         nextLayout.push({ id: activeIdStr, x: newX, y: newY });
       }
@@ -189,6 +234,8 @@ export function DesktopGrid() {
         >
           {positioned.map((entry, i) => {
             const isActive = entry.id === activeId;
+            const dimmed = q ? !matchesSearch(entry) : false;
+
             if (entry.kind === "item") {
               return (
                 <div key={entry.id} style={{ gridColumn: entry.x + 1, gridRow: entry.y + 1 }}>
@@ -199,6 +246,7 @@ export function DesktopGrid() {
                     isDragOver={false}
                     animationDelay={i * 0.03}
                     cellPx={cellPx}
+                    dimmed={dimmed}
                   />
                 </div>
               );
@@ -212,6 +260,7 @@ export function DesktopGrid() {
                     isActive={isActive}
                     animationDelay={i * 0.03}
                     cellPx={cellPx}
+                    dimmed={dimmed}
                     onOpen={() => setOpenFolderId(entry.id)}
                   />
                 </div>
@@ -221,14 +270,13 @@ export function DesktopGrid() {
           })}
         </div>
 
-        {/* 
-          THE FIX: style the DragOverlay to exactly match the cell size.
-          This makes the ghost render at the same size as the tile,
-          and dnd-kit positions it relative to the pointer automatically.
-          We also set pointerEvents none so it never blocks drop targets.
-        */}
-        <DragOverlay dropAnimation={null} modifiers={[snapCenterToCursor]}>
-          {activeId && activePositioned ? <DragGhost entry={activePositioned} cellPx={cellPx} /> : null}
+        {/* No modifiers — overlay tracks the grab point naturally */}
+        <DragOverlay dropAnimation={null}>
+          {activeId && activePositioned ? (
+            <div className="opacity-90 rotate-1 scale-105">
+              <DragGhost entry={activePositioned} cellPx={cellPx} />
+            </div>
+          ) : null}
         </DragOverlay>
       </DndContext>
 

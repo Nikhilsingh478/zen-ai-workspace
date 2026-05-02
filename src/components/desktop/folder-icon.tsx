@@ -12,6 +12,7 @@ interface FolderIconProps {
   animationDelay?: number;
   onOpen: () => void;
   cellPx?: number;
+  dimmed?: boolean;
 }
 
 export function FolderIcon({
@@ -21,6 +22,7 @@ export function FolderIcon({
   animationDelay = 0,
   onOpen,
   cellPx = 100,
+  dimmed = false,
 }: FolderIconProps) {
   const {
     attributes,
@@ -29,6 +31,7 @@ export function FolderIcon({
     isDragging,
   } = useDraggable({ id: folder.id });
 
+  // Folders ARE the only droppable targets on the desktop grid
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: folder.id });
 
   const setRef = (node: HTMLDivElement | null) => {
@@ -39,15 +42,19 @@ export function FolderIcon({
   const preview = children.slice(0, 4);
   const compact = cellPx < 90;
   const wellSize = compact ? "h-10 w-10 rounded-xl" : "h-14 w-14 rounded-2xl";
-  const folderIcon = compact ? "h-9 w-9" : "h-9 w-9";
-  const childIcon = compact ? "h-5 w-5" : "h-5 w-5";
+  const childIcon = compact ? "h-4 w-4" : "h-5 w-5";
+  const folderIconSize = compact ? "h-7 w-7" : "h-9 w-9";
 
   return (
     <div
       ref={setRef}
       {...listeners}
       {...attributes}
-      style={{ opacity: isDragging ? 0.25 : 1, transition: "opacity 0.15s" }}
+      style={{
+        opacity: isDragging ? 0 : dimmed ? 0.25 : 1,
+        transition: "opacity 0.15s",
+        touchAction: "none",
+      }}
       onClick={(e) => {
         if (isDragging) return;
         e.stopPropagation();
@@ -60,23 +67,26 @@ export function FolderIcon({
         transition={{ duration: 0.2, delay: animationDelay, ease: [0.22, 1, 0.36, 1] }}
         whileHover={{ y: -2 }}
         className={cn(
-          "group flex flex-col items-center gap-2 rounded-2xl cursor-grab active:cursor-grabbing select-none transition-colors",
+          "group flex flex-col items-center gap-1.5 rounded-2xl cursor-grab active:cursor-grabbing select-none transition-colors",
           compact ? "p-2" : "p-3",
-          isOver ? "bg-white/10 ring-1 ring-white/20" : "hover:bg-white/[0.04]",
+          isOver
+            ? "bg-white/10 ring-2 ring-white/30 ring-offset-1 ring-offset-transparent"
+            : "hover:bg-white/[0.04]",
           isActive && "opacity-40",
         )}
       >
         <div
           className={cn(
-            "relative flex-shrink-0 overflow-hidden bg-[#18181B] border border-white/[0.12] transition-shadow",
+            "relative flex-shrink-0 overflow-hidden bg-[#18181B] border transition-all",
             wellSize,
-            "group-hover:shadow-[0_4px_16px_rgba(0,0,0,0.4)] group-hover:border-white/[0.2]",
-            isOver && "border-white/30 shadow-[0_4px_20px_rgba(255,255,255,0.1)]",
+            isOver
+              ? "border-white/30 shadow-[0_0_20px_rgba(255,255,255,0.15)]"
+              : "border-white/[0.12] group-hover:border-white/[0.2] group-hover:shadow-[0_4px_16px_rgba(0,0,0,0.4)]",
           )}
         >
           {preview.length === 0 ? (
             <div className="flex h-full w-full items-center justify-center">
-              <Folder className={cn("text-white/30", folderIcon)} />
+              <Folder className={cn("text-white/30", folderIconSize)} />
             </div>
           ) : (
             <div className={cn("grid grid-cols-2 gap-px h-full w-full", compact ? "p-1" : "p-1.5")}>
@@ -105,10 +115,12 @@ export function FolderIcon({
           )}
         </div>
 
-        <span className={cn(
-          "text-white/70 text-center leading-tight w-full truncate whitespace-nowrap overflow-hidden",
-          compact ? "text-[11px] max-w-[70px]" : "text-[11px] max-w-[80px]",
-        )}>
+        <span
+          className={cn(
+            "text-white/70 text-center leading-tight w-full line-clamp-2 break-words px-0.5",
+            compact ? "text-[10px]" : "text-[11px]",
+          )}
+        >
           {folder.name}
         </span>
       </motion.div>

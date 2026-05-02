@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { motion } from "framer-motion";
-import { Plus, ExternalLink, Trash2, Pencil } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Plus, ExternalLink, Trash2, Pencil, Search, X, ChevronDown } from "lucide-react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import { PageHeader } from "@/components/page-header";
 import {
   MatrixModal,
@@ -11,6 +11,7 @@ import {
   ghostButtonClass,
 } from "@/components/matrix-modal";
 import { faviconFor, getDomain, useWebsites, type Website, type WebsiteInput } from "@/lib/store";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -22,23 +23,91 @@ export const Route = createFileRoute("/")({
   component: Index,
 });
 
+type SortOption = "default" | "name-asc" | "name-desc" | "oldest";
+
+const SORT_LABELS: Record<SortOption, string> = {
+  default: "Newest",
+  "name-asc": "Name A–Z",
+  "name-desc": "Name Z–A",
+  oldest: "Oldest",
+};
+
 function Index() {
   const { websites, loaded, add, update, remove } = useWebsites();
   const [open, setOpen] = useState(false);
   const [editingWebsite, setEditingWebsite] = useState<Website | null>(null);
   const [query, setQuery] = useState("");
+  const [activeTags, setActiveTags] = useState<Set<string>>(new Set());
+  const [sort, setSort] = useState<SortOption>("default");
+  const [sortOpen, setSortOpen] = useState(false);
+  const sortRef = useRef<HTMLDivElement>(null);
+
+  // Close sort dropdown when clicking outside
+  useEffect(() => {
+    if (!sortOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (sortRef.current && !sortRef.current.contains(e.target as Node)) {
+        setSortOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [sortOpen]);
+
+  // Collect all unique tags
+  const allTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    websites.forEach((w) => w.tags.forEach((t) => tagSet.add(t)));
+    return Array.from(tagSet).sort();
+  }, [websites]);
+
+  const toggleTag = (tag: string) => {
+    setActiveTags((prev) => {
+      const next = new Set(prev);
+      if (next.has(tag)) next.delete(tag);
+      else next.add(tag);
+      return next;
+    });
+  };
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return websites;
-    return websites.filter(
-      (w) =>
-        w.name.toLowerCase().includes(q) ||
-        w.description.toLowerCase().includes(q) ||
-        w.url.toLowerCase().includes(q) ||
-        w.tags.some((t) => t.toLowerCase().includes(q)),
-    );
-  }, [websites, query]);
+    let result = websites;
+
+    // Text search
+    if (q) {
+      result = result.filter(
+        (w) =>
+          w.name.toLowerCase().includes(q) ||
+          w.description.toLowerCase().includes(q) ||
+          w.url.toLowerCase().includes(q) ||
+          w.tags.some((t) => t.toLowerCase().includes(q)),
+      );
+    }
+
+    // Tag filter (AND logic — item must have ALL active tags)
+    if (activeTags.size > 0) {
+      result = result.filter((w) => [...activeTags].every((t) => w.tags.includes(t)));
+    }
+
+    // Sort
+    result = [...result];
+    if (sort === "name-asc") result.sort((a, b) => a.name.localeCompare(b.name));
+    else if (sort === "name-desc") result.sort((a, b) => b.name.localeCompare(a.name));
+    else if (sort === "oldest")
+      result.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    // "default" = newest first (server returns newest first already)
+
+    return result;
+  }, [websites, query, activeTags, sort]);
+
+  const clearFilters = () => {
+    setQuery("");
+    setActiveTags(new Set());
+    setSort("default");
+  };
+
+  const hasFilters = query || activeTags.size > 0 || sort !== "default";
 
   return (
     <div className="px-6 md:px-12 py-10 md:py-14 max-w-7xl mx-auto">
@@ -56,14 +125,110 @@ function Index() {
         <WebsitesSkeleton />
       ) : (
         <>
-          <div className="mb-8">
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search by name, tag, or URL…"
-              className={fieldClass + " max-w-md"}
-            />
+          {/* Search + Sort row */}
+          <div className="mb-4 flex flex-col sm:flex-row gap-3">
+            {/* Search input */}
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-copy-secondary pointer-events-none" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search by name, tag, or URL…"
+                className={cn(
+                  fieldClass,
+                  "pl-9 pr-8",
+                )}
+              />
+              {query && (
+                <button
+                  onClick={() => setQuery("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Sort dropdown */}
+            <div ref={sortRef} className="relative shrink-0">
+              <button
+                onClick={() => setSortOpen((v) => !v)}
+                className={cn(
+                  "flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm transition whitespace-nowrap",
+                  sort !== "default"
+                    ? "border-white/20 bg-white/[0.07] text-foreground"
+                    : "border-border bg-[var(--surface-2)] text-copy-secondary hover:text-foreground hover:border-white/15",
+                )}
+              >
+                {SORT_LABELS[sort]}
+                <ChevronDown
+                  className={cn(
+                    "h-3.5 w-3.5 transition-transform duration-150",
+                    sortOpen && "rotate-180",
+                  )}
+                />
+              </button>
+              {sortOpen && (
+                <div className="absolute right-0 top-full mt-1.5 z-50 min-w-[140px] rounded-xl border border-white/10 bg-[#18181B] shadow-[0_8px_30px_rgba(0,0,0,0.6)] py-1 overflow-hidden">
+                  {(Object.keys(SORT_LABELS) as SortOption[]).map((opt) => (
+                    <button
+                      key={opt}
+                      onClick={() => {
+                        setSort(opt);
+                        setSortOpen(false);
+                      }}
+                      className={cn(
+                        "w-full text-left px-3 py-2 text-sm transition-colors",
+                        sort === opt
+                          ? "text-white bg-white/[0.08]"
+                          : "text-white/60 hover:text-white hover:bg-white/[0.05]",
+                      )}
+                    >
+                      {SORT_LABELS[opt]}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Clear filters */}
+            {hasFilters && (
+              <button
+                onClick={clearFilters}
+                className="flex items-center gap-1.5 text-sm text-copy-secondary hover:text-foreground transition shrink-0 px-1"
+              >
+                <X className="h-3.5 w-3.5" />
+                Clear
+              </button>
+            )}
           </div>
+
+          {/* Tag filter pills */}
+          {allTags.length > 0 && (
+            <div className="mb-6 flex flex-wrap gap-1.5">
+              {allTags.map((tag) => (
+                <button
+                  key={tag}
+                  onClick={() => toggleTag(tag)}
+                  className={cn(
+                    "text-[11px] uppercase tracking-wider px-2.5 py-1 rounded-lg border transition-colors",
+                    activeTags.has(tag)
+                      ? "bg-white text-black border-white font-semibold"
+                      : "bg-transparent text-copy-secondary border-border hover:border-white/20 hover:text-foreground",
+                  )}
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Results count when filtering */}
+          {hasFilters && (
+            <p className="text-xs text-copy-secondary mb-4">
+              {filtered.length} of {websites.length} results
+            </p>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {filtered.map((w, i) => (
@@ -77,7 +242,10 @@ function Index() {
             ))}
             {filtered.length === 0 && (
               <div className="col-span-full text-center text-copy-secondary py-20 text-sm">
-                Nothing matches "{query}".
+                Nothing matches your filters.{" "}
+                <button onClick={clearFilters} className="underline hover:text-foreground">
+                  Clear filters
+                </button>
               </div>
             )}
           </div>
@@ -140,8 +308,8 @@ function WebsiteCard({
           href={website.url}
           target="_blank"
           rel="noreferrer"
-          className="h-10 w-10 shrink-0 rounded-xl bg-[var(--surface-3)] grid place-items-center overflow-hidden border border-border"
           tabIndex={-1}
+          className="h-10 w-10 shrink-0 rounded-xl bg-[var(--surface-3)] grid place-items-center overflow-hidden border border-border"
         >
           {faviconError ? (
             <span className="text-base font-bold text-white/60">
@@ -157,6 +325,7 @@ function WebsiteCard({
             />
           )}
         </a>
+
         <div className="min-w-0 flex-1">
           <a
             href={website.url}

@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Copy, Check, Trash2, FileText } from "lucide-react";
-import { useState } from "react";
+import { Plus, Copy, Check, Trash2, FileText, Search, X } from "lucide-react";
+import { useMemo, useState } from "react";
 import { PageHeader } from "@/components/page-header";
 import {
   MatrixModal,
@@ -24,36 +24,65 @@ export const Route = createFileRoute("/prompts")({
   component: PromptsPage,
 });
 
+type SortOption = "newest" | "oldest" | "alpha";
+
+const SORT_LABELS: Record<SortOption, string> = {
+  newest: "Newest",
+  oldest: "Oldest",
+  alpha: "A–Z",
+};
+
 const container = {
   hidden: {},
-  show: {
-    transition: { staggerChildren: 0.055 },
-  },
+  show: { transition: { staggerChildren: 0.045 } },
 };
 
 const cardVariant = {
-  hidden: { opacity: 0, y: 16, scale: 0.98 },
+  hidden: { opacity: 0, y: 14, scale: 0.98 },
   show: {
     opacity: 1,
     y: 0,
     scale: 1,
-    transition: { duration: 0.3, ease: [0.22, 1, 0.36, 1] as const },
+    transition: { duration: 0.28, ease: [0.22, 1, 0.36, 1] as const },
   },
 };
 
 function PromptsPage() {
   const { prompts, loaded, add, remove } = usePrompts();
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<SortOption>("newest");
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    let result = prompts;
+
+    if (q) {
+      result = result.filter(
+        (p) =>
+          p.title.toLowerCase().includes(q) ||
+          p.body.toLowerCase().includes(q),
+      );
+    }
+
+    result = [...result];
+    if (sort === "oldest") {
+      result.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    } else if (sort === "alpha") {
+      result.sort((a, b) => a.title.localeCompare(b.title));
+    }
+    // "newest" = default server order (descending created_at)
+
+    return result;
+  }, [prompts, query, sort]);
+
+  const hasFilters = query || sort !== "newest";
 
   return (
     <div className="px-4 md:px-10 py-8 md:py-14 max-w-6xl mx-auto">
       <PageHeader
         title="Prompts"
-        subtitle={
-          loaded
-            ? `${prompts.length} saved · tap any card to copy`
-            : "Loading…"
-        }
+        subtitle={loaded ? `${prompts.length} saved · tap any card to copy` : "Loading…"}
         action={
           <button onClick={() => setOpen(true)} className={primaryButtonClass}>
             <Plus className="h-4 w-4" />
@@ -65,19 +94,84 @@ function PromptsPage() {
 
       {!loaded ? (
         <PromptsSkeleton />
-      ) : prompts.length === 0 ? (
-        <EmptyState onAdd={() => setOpen(true)} />
       ) : (
-        <motion.div
-          variants={container}
-          initial="hidden"
-          animate="show"
-          className="columns-1 sm:columns-2 lg:columns-3 gap-4 [column-fill:_balance]"
-        >
-          {prompts.map((p) => (
-            <PromptCard key={p.id} prompt={p} onRemove={() => remove(p.id)} />
-          ))}
-        </motion.div>
+        <>
+          {/* Search + Sort */}
+          <div className="mb-5 flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+            {/* Search */}
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-copy-secondary pointer-events-none" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search prompts…"
+                className={cn(
+                  "w-full pl-9 pr-8 py-2.5 rounded-xl bg-[var(--surface-2)] border border-border",
+                  "text-sm text-foreground placeholder:text-copy-muted",
+                  "outline-none focus:border-white/20 focus:bg-[var(--surface-3)] transition",
+                )}
+              />
+              {query && (
+                <button
+                  onClick={() => setQuery("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Sort pills */}
+            <div className="flex items-center gap-1 shrink-0">
+              {(Object.keys(SORT_LABELS) as SortOption[]).map((opt) => (
+                <button
+                  key={opt}
+                  onClick={() => setSort(opt)}
+                  className={cn(
+                    "px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
+                    sort === opt
+                      ? "bg-white text-black"
+                      : "bg-white/[0.05] text-copy-secondary hover:text-foreground hover:bg-white/[0.08]",
+                  )}
+                >
+                  {SORT_LABELS[opt]}
+                </button>
+              ))}
+            </div>
+
+            {/* Result count when filtering */}
+            {hasFilters && filtered.length !== prompts.length && (
+              <span className="text-xs text-copy-secondary shrink-0">
+                {filtered.length} of {prompts.length}
+              </span>
+            )}
+          </div>
+
+          {filtered.length === 0 && prompts.length > 0 ? (
+            <div className="text-center py-20">
+              <p className="text-copy-secondary text-sm">No prompts match "{query}".</p>
+              <button
+                onClick={() => setQuery("")}
+                className="mt-2 text-xs text-copy-secondary underline hover:text-foreground transition"
+              >
+                Clear search
+              </button>
+            </div>
+          ) : filtered.length === 0 ? (
+            <EmptyState onAdd={() => setOpen(true)} />
+          ) : (
+            <motion.div
+              variants={container}
+              initial="hidden"
+              animate="show"
+              className="columns-1 sm:columns-2 lg:columns-3 gap-4 [column-fill:_balance]"
+            >
+              {filtered.map((p) => (
+                <PromptCard key={p.id} prompt={p} onRemove={() => remove(p.id)} />
+              ))}
+            </motion.div>
+          )}
+        </>
       )}
 
       <AddPromptModal open={open} onClose={() => setOpen(false)} onAdd={add} />
@@ -92,10 +186,7 @@ function PromptsSkeleton() {
       {heights.map((h, i) => (
         <div
           key={i}
-          className={cn(
-            "mb-4 break-inside-avoid rounded-2xl bg-white/[0.04] animate-pulse",
-            h,
-          )}
+          className={cn("mb-4 break-inside-avoid rounded-2xl bg-white/[0.04] animate-pulse", h)}
           style={{ animationDelay: `${i * 0.06}s` }}
         />
       ))}
@@ -103,13 +194,7 @@ function PromptsSkeleton() {
   );
 }
 
-function PromptCard({
-  prompt,
-  onRemove,
-}: {
-  prompt: Prompt;
-  onRemove: () => void;
-}) {
+function PromptCard({ prompt, onRemove }: { prompt: Prompt; onRemove: () => void }) {
   const isMobile = useIsMobile();
   const [copied, setCopied] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -135,21 +220,11 @@ function PromptCard({
     }
   };
 
-  const handleCardClick = () => {
-    // On mobile, tapping the card body copies
-    if (isMobile) copy();
-  };
-
   return (
     <motion.div
       variants={cardVariant}
-      // Only lift on desktop hover
-      whileHover={
-        !isMobile
-          ? { y: -3, transition: { duration: 0.2, ease: "easeOut" } }
-          : undefined
-      }
-      onClick={handleCardClick}
+      whileHover={!isMobile ? { y: -3, transition: { duration: 0.2, ease: "easeOut" } } : undefined}
+      onClick={() => { if (isMobile) copy(); }}
       className={cn(
         "group relative mb-4 break-inside-avoid rounded-2xl border border-border",
         "bg-[var(--surface-2)] select-none",
@@ -159,15 +234,11 @@ function PromptCard({
         isMobile ? "cursor-default active:scale-[0.99]" : "cursor-pointer",
       )}
     >
-      {/* Card body */}
       <div className="p-4 md:p-5 pb-3">
-        {/* Title row */}
         <div className="flex items-start justify-between gap-2">
           <p className="text-[13.5px] font-semibold tracking-tight text-foreground leading-snug flex-1">
             {prompt.title}
           </p>
-
-          {/* Mobile: inline action buttons always visible in title row */}
           {isMobile && (
             <div className="flex items-center gap-1 shrink-0 -mt-0.5">
               <motion.button
@@ -183,7 +254,6 @@ function PromptCard({
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </motion.button>
-
               <motion.button
                 onClick={(e) => copy(e)}
                 whileTap={{ scale: 0.88 }}
@@ -192,23 +262,11 @@ function PromptCard({
               >
                 <AnimatePresence mode="wait">
                   {copied ? (
-                    <motion.span
-                      key="check"
-                      initial={{ scale: 0.6, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      exit={{ scale: 0.6, opacity: 0 }}
-                      transition={{ duration: 0.15 }}
-                    >
+                    <motion.span key="check" initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.6, opacity: 0 }} transition={{ duration: 0.15 }}>
                       <Check className="h-3.5 w-3.5 text-emerald-400" />
                     </motion.span>
                   ) : (
-                    <motion.span
-                      key="copy"
-                      initial={{ scale: 0.6, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      exit={{ scale: 0.6, opacity: 0 }}
-                      transition={{ duration: 0.15 }}
-                    >
+                    <motion.span key="copy" initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.6, opacity: 0 }} transition={{ duration: 0.15 }}>
                       <Copy className="h-3.5 w-3.5" />
                     </motion.span>
                   )}
@@ -217,52 +275,25 @@ function PromptCard({
             </div>
           )}
         </div>
-
-        {/* Divider */}
         <div className="my-3 h-px bg-border/60" />
-
-        {/* Prompt body */}
         <p className="text-[12.5px] leading-[1.7] text-copy-secondary whitespace-pre-wrap line-clamp-6 font-mono">
           {prompt.body}
         </p>
       </div>
 
-      {/* Card footer */}
       <div className="flex items-center justify-between px-4 md:px-5 py-3 border-t border-border/40">
-        {/* Copy status / hint */}
         <AnimatePresence mode="wait">
           {copied ? (
-            <motion.span
-              key="copied"
-              initial={{ opacity: 0, x: -4 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -4 }}
-              transition={{ duration: 0.15 }}
-              className="flex items-center gap-1.5 text-[11px] text-emerald-400 font-medium"
-            >
-              <Check className="h-3 w-3" />
-              Copied
+            <motion.span key="copied" initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -4 }} transition={{ duration: 0.15 }} className="flex items-center gap-1.5 text-[11px] text-emerald-400 font-medium">
+              <Check className="h-3 w-3" /> Copied
             </motion.span>
           ) : (
-            <motion.span
-              key="hint"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
-              className={cn(
-                "text-[11px] text-copy-muted transition-opacity duration-200",
-                isMobile
-                  ? "opacity-60"
-                  : "opacity-0 group-hover:opacity-100",
-              )}
-            >
+            <motion.span key="hint" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className={cn("text-[11px] text-copy-muted transition-opacity duration-200", isMobile ? "opacity-60" : "opacity-0 group-hover:opacity-100")}>
               {isMobile ? "Tap to copy" : "Click to copy"}
             </motion.span>
           )}
         </AnimatePresence>
 
-        {/* Desktop action buttons — hover only */}
         {!isMobile && (
           <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
             <motion.button
@@ -279,7 +310,6 @@ function PromptCard({
             >
               <Trash2 className="h-3.5 w-3.5" />
             </motion.button>
-
             <motion.button
               onClick={(e) => copy(e)}
               whileTap={{ scale: 0.92 }}
@@ -288,23 +318,11 @@ function PromptCard({
             >
               <AnimatePresence mode="wait">
                 {copied ? (
-                  <motion.span
-                    key="check"
-                    initial={{ scale: 0.7, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    exit={{ scale: 0.7, opacity: 0 }}
-                    transition={{ duration: 0.15 }}
-                  >
+                  <motion.span key="check" initial={{ scale: 0.7, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.7, opacity: 0 }} transition={{ duration: 0.15 }}>
                     <Check className="h-3.5 w-3.5 text-emerald-400" />
                   </motion.span>
                 ) : (
-                  <motion.span
-                    key="copy"
-                    initial={{ scale: 0.7, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    exit={{ scale: 0.7, opacity: 0 }}
-                    transition={{ duration: 0.15 }}
-                  >
+                  <motion.span key="copy" initial={{ scale: 0.7, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.7, opacity: 0 }} transition={{ duration: 0.15 }}>
                     <Copy className="h-3.5 w-3.5" />
                   </motion.span>
                 )}
@@ -314,7 +332,6 @@ function PromptCard({
         )}
       </div>
 
-      {/* Copied flash overlay */}
       <AnimatePresence>
         {copied && (
           <motion.div
@@ -411,10 +428,7 @@ function AddPromptModal({
           <button
             type="submit"
             disabled={!title.trim() || !body.trim()}
-            className={cn(
-              primaryButtonClass,
-              "disabled:opacity-40 disabled:cursor-not-allowed",
-            )}
+            className={cn(primaryButtonClass, "disabled:opacity-40 disabled:cursor-not-allowed")}
           >
             Save prompt
           </button>
