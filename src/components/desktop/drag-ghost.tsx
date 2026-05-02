@@ -11,22 +11,25 @@ interface DragGhostProps {
 
 export function DragGhost({ entry, cellPx = 100 }: DragGhostProps) {
   const compact = cellPx < 90;
-  const wellSize = compact ? "h-10 w-10 rounded-xl" : "h-14 w-14 rounded-2xl";
-  const imgSize = compact ? "h-7 w-7" : "h-9 w-9";
-  const iconSize = compact ? "h-6 w-6" : "h-7 w-7";
-  const childImg = compact ? "h-3.5 w-3.5" : "h-4 w-4";
-  const containerSize = { width: cellPx, height: cellPx };
+
+  // Match the new smaller sizes from desktop-item / folder-icon
+  const wellSize  = compact ? "h-10 w-10 rounded-xl" : "h-12 w-12 rounded-xl";
+  const imgSize   = compact ? "h-7 w-7"  : "h-8 w-8";
+  const iconSize  = compact ? "h-6 w-6"  : "h-7 w-7";
+  const childImg  = compact ? "h-3.5 w-3.5" : "h-4 w-4";
+
+  const containerStyle = { width: cellPx, height: cellPx };
 
   if (entry.kind === "item") {
     const item = entry.item;
     const isWebsite = item.type === "website";
     const label = isWebsite ? (item as Website).name : "";
-    const url = isWebsite ? (item as Website).url : undefined;
+    const url   = isWebsite ? (item as Website).url : undefined;
 
     return (
       <div
-        style={containerSize}
-        className="flex flex-col items-center justify-center gap-1.5 rounded-2xl p-2 bg-white/[0.10] ring-1 ring-white/25 shadow-[0_8px_32px_rgba(0,0,0,0.8)]"
+        style={containerStyle}
+        className="flex flex-col items-center justify-center gap-1 rounded-2xl p-1.5 bg-white/[0.10] ring-1 ring-white/25 shadow-[0_8px_32px_rgba(0,0,0,0.8)]"
       >
         <div
           className={cn(
@@ -41,8 +44,7 @@ export function DragGhost({ entry, cellPx = 100 }: DragGhostProps) {
               draggable={false}
               className={cn("object-contain", imgSize)}
               onError={(e) => {
-                const el = e.currentTarget as HTMLImageElement;
-                el.style.display = "none";
+                (e.currentTarget as HTMLImageElement).style.display = "none";
               }}
             />
           ) : (
@@ -52,7 +54,7 @@ export function DragGhost({ entry, cellPx = 100 }: DragGhostProps) {
         <span
           className={cn(
             "text-white/90 text-center leading-tight w-full line-clamp-2 break-words px-0.5",
-            compact ? "text-[10px]" : "text-[11px]",
+            compact ? "text-[9px]" : "text-[10px]",
           )}
         >
           {label}
@@ -67,8 +69,8 @@ export function DragGhost({ entry, cellPx = 100 }: DragGhostProps) {
 
     return (
       <div
-        style={containerSize}
-        className="flex flex-col items-center justify-center gap-1.5 rounded-2xl p-2 bg-white/[0.10] ring-1 ring-white/25 shadow-[0_8px_32px_rgba(0,0,0,0.8)]"
+        style={containerStyle}
+        className="flex flex-col items-center justify-center gap-1 rounded-2xl p-1.5 bg-white/[0.10] ring-1 ring-white/25 shadow-[0_8px_32px_rgba(0,0,0,0.8)]"
       >
         <div
           className={cn(
@@ -77,9 +79,9 @@ export function DragGhost({ entry, cellPx = 100 }: DragGhostProps) {
           )}
         >
           {preview.length === 0 ? (
-            <Folder className={cn("text-white/40", compact ? "h-6 w-6" : "h-8 w-8")} />
+            <Folder className={cn("text-white/40", compact ? "h-5 w-5" : "h-6 w-6")} />
           ) : (
-            <div className={cn("grid grid-cols-2 gap-px h-full w-full", compact ? "p-1" : "p-1.5")}>
+            <div className={cn("grid grid-cols-2 gap-px h-full w-full", compact ? "p-0.5" : "p-1")}>
               {[0, 1, 2, 3].map((i) => {
                 const child = preview[i];
                 return (
@@ -107,7 +109,7 @@ export function DragGhost({ entry, cellPx = 100 }: DragGhostProps) {
         <span
           className={cn(
             "text-white/90 text-center leading-tight w-full line-clamp-2 break-words px-0.5",
-            compact ? "text-[10px]" : "text-[11px]",
+            compact ? "text-[9px]" : "text-[10px]",
           )}
         >
           {folder.name}

@@ -31,7 +31,6 @@ export function FolderIcon({
     isDragging,
   } = useDraggable({ id: folder.id });
 
-  // Folders ARE the only droppable targets on the desktop grid
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: folder.id });
 
   const setRef = (node: HTMLDivElement | null) => {
@@ -41,9 +40,11 @@ export function FolderIcon({
 
   const preview = children.slice(0, 4);
   const compact = cellPx < 90;
-  const wellSize = compact ? "h-10 w-10 rounded-xl" : "h-14 w-14 rounded-2xl";
-  const childIcon = compact ? "h-4 w-4" : "h-5 w-5";
-  const folderIconSize = compact ? "h-7 w-7" : "h-9 w-9";
+
+  // Smaller well to match DesktopItem — containers smaller, icons intact
+  const wellSize       = compact ? "h-10 w-10 rounded-xl" : "h-12 w-12 rounded-xl";
+  const childIcon      = compact ? "h-3.5 w-3.5" : "h-4 w-4";
+  const folderIconSize = compact ? "h-6 w-6" : "h-7 w-7";
 
   return (
     <div
@@ -67,8 +68,7 @@ export function FolderIcon({
         transition={{ duration: 0.2, delay: animationDelay, ease: [0.22, 1, 0.36, 1] }}
         whileHover={{ y: -2 }}
         className={cn(
-          "group flex flex-col items-center gap-1.5 rounded-2xl cursor-grab active:cursor-grabbing select-none transition-colors",
-          compact ? "p-2" : "p-3",
+          "group flex flex-col items-center gap-1 rounded-2xl cursor-grab active:cursor-grabbing select-none transition-colors p-1.5",
           isOver
             ? "bg-white/10 ring-2 ring-white/30 ring-offset-1 ring-offset-transparent"
             : "hover:bg-white/[0.04]",
@@ -89,7 +89,7 @@ export function FolderIcon({
               <Folder className={cn("text-white/30", folderIconSize)} />
             </div>
           ) : (
-            <div className={cn("grid grid-cols-2 gap-px h-full w-full", compact ? "p-1" : "p-1.5")}>
+            <div className={cn("grid grid-cols-2 gap-px h-full w-full", compact ? "p-0.5" : "p-1")}>
               {[0, 1, 2, 3].map((i) => {
                 const child = preview[i];
                 return (
@@ -118,7 +118,7 @@ export function FolderIcon({
         <span
           className={cn(
             "text-white/70 text-center leading-tight w-full line-clamp-2 break-words px-0.5",
-            compact ? "text-[10px]" : "text-[11px]",
+            compact ? "text-[9px]" : "text-[10px]",
           )}
         >
           {folder.name}

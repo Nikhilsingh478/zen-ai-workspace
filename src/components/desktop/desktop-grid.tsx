@@ -115,12 +115,12 @@ export function DesktopGrid({ searchQuery = "" }: DesktopGridProps) {
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
-      const { active, over } = event;
+      const { active, over, delta, activatorEvent } = event;
       setActiveId(null);
 
       const activeIdStr = String(active.id);
       const activeEntry = positioned.find((e) => e.id === activeIdStr);
-      if (!activeEntry) return;
+      if (!activeEntry || !containerRef.current) return;
 
       // ── Check if dropped directly onto a folder ──────────────────────────
       if (over && String(over.id) !== activeIdStr) {
@@ -132,20 +132,28 @@ export function DesktopGrid({ searchQuery = "" }: DesktopGridProps) {
         }
       }
 
-      // ── Use the actual translated rect for accurate grid snapping ─────────
-      // This eliminates grab-offset errors that plague delta-based math.
-      const translatedRect = active.rect.current.translated;
-      if (!translatedRect || !containerRef.current) return;
+      // ── Cursor-based grid snapping ────────────────────────────────────────
+      // Use activatorEvent (pointer-down position) + delta (pointer movement)
+      // to get the exact final cursor position. This is completely independent
+      // of where the user grabbed the icon, eliminating the ±cellPx/2 error
+      // that the translatedRect center approach had.
+      const ae = activatorEvent as MouseEvent | TouchEvent;
+      let cursorX: number;
+      let cursorY: number;
+      if ("clientX" in ae) {
+        cursorX = ae.clientX + delta.x;
+        cursorY = ae.clientY + delta.y;
+      } else {
+        const touch = ae.changedTouches?.[0] ?? ae.touches?.[0];
+        cursorX = touch.clientX + delta.x;
+        cursorY = touch.clientY + delta.y;
+      }
 
       const containerRect = containerRef.current.getBoundingClientRect();
       const stride = cellPx + GRID_GAP;
 
-      // Center of the dragged ghost in container coordinates
-      const centerX = translatedRect.left + translatedRect.width / 2 - containerRect.left;
-      const centerY = translatedRect.top + translatedRect.height / 2 - containerRect.top;
-
-      const newX = Math.max(0, Math.min(cols - 1, Math.round(centerX / stride)));
-      const newY = Math.max(0, Math.round(centerY / stride));
+      const newX = Math.max(0, Math.min(cols - 1, Math.round((cursorX - containerRect.left) / stride)));
+      const newY = Math.max(0, Math.round((cursorY - containerRect.top) / stride));
 
       if (newX === activeEntry.x && newY === activeEntry.y) return;
 

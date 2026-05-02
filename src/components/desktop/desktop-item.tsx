@@ -24,8 +24,6 @@ export function DesktopItem({
   cellPx = 100,
   dimmed = false,
 }: DesktopItemProps) {
-  // Items are ONLY draggable — NOT droppable.
-  // Only FolderIcon is a drop target so folder detection is unambiguous.
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id });
   const [faviconError, setFaviconError] = useState(false);
 
@@ -34,8 +32,10 @@ export function DesktopItem({
   const url = isWebsite ? (item as Website).url : undefined;
 
   const compact = cellPx < 90;
-  const iconWell = compact ? "h-10 w-10 rounded-xl" : "h-14 w-14 rounded-2xl";
-  const iconImg = compact ? "h-8 w-8" : "h-10 w-10";
+
+  // Smaller well, icon stays same size — "icons intact, containers smaller"
+  const iconWell = compact ? "h-10 w-10 rounded-xl" : "h-12 w-12 rounded-xl";
+  const iconImg  = compact ? "h-7 w-7"  : "h-8 w-8";
 
   return (
     <div
@@ -51,18 +51,16 @@ export function DesktopItem({
       }}
       onClick={() => {
         if (isDragging) return;
-        if (isWebsite && url) {
-          window.open(url, "_blank", "noopener,noreferrer");
-        }
+        if (isWebsite && url) window.open(url, "_blank", "noopener,noreferrer");
       }}
     >
       <motion.div
         initial={{ opacity: 0, scale: 0.85 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.2, delay: animationDelay, ease: [0.22, 1, 0.36, 1] }}
-        whileHover={{ scale: 1.06 }}
+        whileHover={{ scale: 1.07 }}
         className={cn(
-          "group relative flex flex-col items-center justify-center gap-1.5 rounded-2xl p-2",
+          "group relative flex flex-col items-center justify-center gap-1 rounded-2xl p-1.5",
           "cursor-grab active:cursor-grabbing select-none transition-colors w-full h-full",
           isActive ? "opacity-40" : "hover:bg-white/[0.04]",
         )}
@@ -84,18 +82,18 @@ export function DesktopItem({
               onError={() => setFaviconError(true)}
             />
           ) : isWebsite && faviconError ? (
-            <span className={cn("font-bold text-white/60", compact ? "text-lg" : "text-xl")}>
+            <span className={cn("font-bold text-white/60", compact ? "text-base" : "text-lg")}>
               {label.charAt(0).toUpperCase()}
             </span>
           ) : (
-            <Sparkles className={cn("text-white/50", compact ? "h-7 w-7" : "h-8 w-8")} />
+            <Sparkles className={cn("text-white/50", compact ? "h-6 w-6" : "h-7 w-7")} />
           )}
         </div>
 
         <span
           className={cn(
             "text-white/70 text-center leading-tight w-full line-clamp-2 break-words px-0.5",
-            compact ? "text-[10px]" : "text-[11px]",
+            compact ? "text-[9px]" : "text-[10px]",
           )}
         >
           {label}
