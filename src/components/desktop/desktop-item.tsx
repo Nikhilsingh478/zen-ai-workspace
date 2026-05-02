@@ -75,7 +75,8 @@ export function DesktopItem({
         {/* Icon well */}
         <div
           className={cn(
-            "relative h-14 w-14 flex-shrink-0 rounded-2xl overflow-hidden bg-[#18181B] border border-white/[0.08] flex items-center justify-center transition-all duration-150",
+            "relative flex-shrink-0 overflow-hidden bg-[#18181B] border border-white/[0.08] flex items-center justify-center transition-all duration-150",
+            iconWell,
             "group-hover:bg-[#1F1F23] group-hover:border-white/[0.15]",
           )}
         >
@@ -84,20 +85,23 @@ export function DesktopItem({
               src={faviconFor(url!, 64)}
               alt=""
               draggable={false}
-              className="h-8 w-8 object-contain"
+              className={cn("object-contain", iconImg)}
               onError={() => setFaviconError(true)}
             />
           ) : isWebsite && faviconError ? (
-            <span className="text-xl font-bold text-white/60">
+            <span className={cn("font-bold text-white/60", compact ? "text-base" : "text-xl")}>
               {label.charAt(0).toUpperCase()}
             </span>
           ) : (
-            <Sparkles className="h-6 w-6 text-white/50" />
+            <Sparkles className={cn("text-white/50", iconFallback)} />
           )}
         </div>
 
         {/* Label */}
-        <span className="text-[11px] text-white/70 text-center leading-tight line-clamp-2 w-full max-w-[80px]">
+        <span className={cn(
+          "text-white/70 text-center leading-tight line-clamp-2 w-full",
+          compact ? "text-[10px] max-w-[70px]" : "text-[11px] max-w-[80px]",
+        )}>
           {label}
         </span>
       </motion.div>
