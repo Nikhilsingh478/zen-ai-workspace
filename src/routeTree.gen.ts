@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as PromptsRouteImport } from './routes/prompts'
 import { Route as LinksRouteImport } from './routes/links'
 import { Route as InsightsRouteImport } from './routes/insights'
+import { Route as ImagesRouteImport } from './routes/images'
 import { Route as DesktopRouteImport } from './routes/desktop'
 import { Route as AskRouteImport } from './routes/ask'
 import { Route as IndexRouteImport } from './routes/index'
@@ -29,6 +30,11 @@ const LinksRoute = LinksRouteImport.update({
 const InsightsRoute = InsightsRouteImport.update({
   id: '/insights',
   path: '/insights',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ImagesRoute = ImagesRouteImport.update({
+  id: '/images',
+  path: '/images',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DesktopRoute = DesktopRouteImport.update({
@@ -51,6 +57,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/ask': typeof AskRoute
   '/desktop': typeof DesktopRoute
+  '/images': typeof ImagesRoute
   '/insights': typeof InsightsRoute
   '/links': typeof LinksRoute
   '/prompts': typeof PromptsRoute
@@ -59,6 +66,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/ask': typeof AskRoute
   '/desktop': typeof DesktopRoute
+  '/images': typeof ImagesRoute
   '/insights': typeof InsightsRoute
   '/links': typeof LinksRoute
   '/prompts': typeof PromptsRoute
@@ -68,20 +76,36 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/ask': typeof AskRoute
   '/desktop': typeof DesktopRoute
+  '/images': typeof ImagesRoute
   '/insights': typeof InsightsRoute
   '/links': typeof LinksRoute
   '/prompts': typeof PromptsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/ask' | '/desktop' | '/insights' | '/links' | '/prompts'
+  fullPaths:
+    | '/'
+    | '/ask'
+    | '/desktop'
+    | '/images'
+    | '/insights'
+    | '/links'
+    | '/prompts'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/ask' | '/desktop' | '/insights' | '/links' | '/prompts'
+  to:
+    | '/'
+    | '/ask'
+    | '/desktop'
+    | '/images'
+    | '/insights'
+    | '/links'
+    | '/prompts'
   id:
     | '__root__'
     | '/'
     | '/ask'
     | '/desktop'
+    | '/images'
     | '/insights'
     | '/links'
     | '/prompts'
@@ -91,6 +115,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AskRoute: typeof AskRoute
   DesktopRoute: typeof DesktopRoute
+  ImagesRoute: typeof ImagesRoute
   InsightsRoute: typeof InsightsRoute
   LinksRoute: typeof LinksRoute
   PromptsRoute: typeof PromptsRoute
@@ -117,6 +142,13 @@ declare module '@tanstack/react-router' {
       path: '/insights'
       fullPath: '/insights'
       preLoaderRoute: typeof InsightsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/images': {
+      id: '/images'
+      path: '/images'
+      fullPath: '/images'
+      preLoaderRoute: typeof ImagesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/desktop': {
@@ -147,6 +179,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AskRoute: AskRoute,
   DesktopRoute: DesktopRoute,
+  ImagesRoute: ImagesRoute,
   InsightsRoute: InsightsRoute,
   LinksRoute: LinksRoute,
   PromptsRoute: PromptsRoute,
