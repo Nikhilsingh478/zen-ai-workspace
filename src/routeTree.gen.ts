@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as PromptsRouteImport } from './routes/prompts'
+import { Route as MessagesRouteImport } from './routes/messages'
 import { Route as LinksRouteImport } from './routes/links'
 import { Route as InsightsRouteImport } from './routes/insights'
 import { Route as ImagesRouteImport } from './routes/images'
@@ -20,6 +21,11 @@ import { Route as IndexRouteImport } from './routes/index'
 const PromptsRoute = PromptsRouteImport.update({
   id: '/prompts',
   path: '/prompts',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MessagesRoute = MessagesRouteImport.update({
+  id: '/messages',
+  path: '/messages',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LinksRoute = LinksRouteImport.update({
@@ -60,6 +66,7 @@ export interface FileRoutesByFullPath {
   '/images': typeof ImagesRoute
   '/insights': typeof InsightsRoute
   '/links': typeof LinksRoute
+  '/messages': typeof MessagesRoute
   '/prompts': typeof PromptsRoute
 }
 export interface FileRoutesByTo {
@@ -69,6 +76,7 @@ export interface FileRoutesByTo {
   '/images': typeof ImagesRoute
   '/insights': typeof InsightsRoute
   '/links': typeof LinksRoute
+  '/messages': typeof MessagesRoute
   '/prompts': typeof PromptsRoute
 }
 export interface FileRoutesById {
@@ -79,6 +87,7 @@ export interface FileRoutesById {
   '/images': typeof ImagesRoute
   '/insights': typeof InsightsRoute
   '/links': typeof LinksRoute
+  '/messages': typeof MessagesRoute
   '/prompts': typeof PromptsRoute
 }
 export interface FileRouteTypes {
@@ -90,6 +99,7 @@ export interface FileRouteTypes {
     | '/images'
     | '/insights'
     | '/links'
+    | '/messages'
     | '/prompts'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -99,6 +109,7 @@ export interface FileRouteTypes {
     | '/images'
     | '/insights'
     | '/links'
+    | '/messages'
     | '/prompts'
   id:
     | '__root__'
@@ -108,6 +119,7 @@ export interface FileRouteTypes {
     | '/images'
     | '/insights'
     | '/links'
+    | '/messages'
     | '/prompts'
   fileRoutesById: FileRoutesById
 }
@@ -118,6 +130,7 @@ export interface RootRouteChildren {
   ImagesRoute: typeof ImagesRoute
   InsightsRoute: typeof InsightsRoute
   LinksRoute: typeof LinksRoute
+  MessagesRoute: typeof MessagesRoute
   PromptsRoute: typeof PromptsRoute
 }
 
@@ -128,6 +141,13 @@ declare module '@tanstack/react-router' {
       path: '/prompts'
       fullPath: '/prompts'
       preLoaderRoute: typeof PromptsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/messages': {
+      id: '/messages'
+      path: '/messages'
+      fullPath: '/messages'
+      preLoaderRoute: typeof MessagesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/links': {
@@ -182,6 +202,7 @@ const rootRouteChildren: RootRouteChildren = {
   ImagesRoute: ImagesRoute,
   InsightsRoute: InsightsRoute,
   LinksRoute: LinksRoute,
+  MessagesRoute: MessagesRoute,
   PromptsRoute: PromptsRoute,
 }
 export const routeTree = rootRouteImport
