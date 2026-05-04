@@ -1,174 +1,240 @@
 # AI Metrics — Full Documentation
 
+_Last updated: May 4, 2026_
+
 ## What is AI Metrics?
 
-AI Metrics is a personal AI operating system — a private, browser-based dashboard for people who live inside AI tools. Instead of hunting through browser bookmarks or re-typing the same prompts over and over, everything lives in one dark, premium interface that stays in sync across devices via a live Supabase backend.
+AI Metrics is a personal AI operating system — a private, browser-based dashboard for people who live inside AI tools. Every section is a different mode of working with AI: discovering tools, launching them spatially, reusing prompts, asking quick questions, tracking your usage, saving important links and images, and keeping reminders top of mind.
 
-There are four sections: **Websites**, **Desktop**, **Prompts**, and **Ask**. Each serves a different mode of working with AI.
+Everything syncs in real time through a Supabase backend, so any change you make in one tab or device shows up everywhere else.
+
+The eight top-level sections are:
+
+1. **Websites** — your AI tool directory
+2. **Desktop** — spatial launcher with folders and drag-and-drop
+3. **Prompts** — clipboard-ready prompt library
+4. **Link Board** — drag-and-drop board of important URLs
+5. **Image Board** — masonry gallery of uploaded images
+6. **Important Messages** — reminders with motive, time, and message
+7. **Insights** — usage analytics across tools and prompts
+8. **Ask** — direct AI chat powered by Google Gemini
 
 ---
 
-## Websites Tab
+## 1. Websites Tab (`/`)
 
-**What it's for:** A curated directory of every AI website, tool, or service you use. Think of it as your AI-specific bookmark manager with tags, descriptions, and instant search.
+**What it's for:** A curated directory of every AI website, tool, or service you use — with tags, descriptions, and instant search.
 
 ### Adding a website
 Click **Add Website** in the top-right. Fill in:
-- **Name** — human-readable label (e.g. "Perplexity")
-- **URL** — the full address (auto-prefixes `https://` if you forget)
-- **Description** — what you use it for, when to reach for it
+- **Name** — e.g. "Perplexity"
+- **URL** — auto-prefixes `https://` if you forget
+- **Description** — when to reach for it
 - **Tags** — comma-separated categories (e.g. `research, chat, writing`)
 
-The website is saved instantly to your Supabase database and appears in the grid.
+Cards save instantly and show the website's favicon.
 
-### Editing a website
-Hover any card to reveal the **pencil icon** (top-right of the card). Click it to open the Edit modal where you can update any field. Changes sync immediately.
+### Editing & deleting
+Hover any card to reveal **pencil** (edit) and **trash** (delete) icons in the top-right.
 
-### Deleting a website
-Hover a card and click the **trash icon**. The card is removed instantly.
-
-### Search
-The search bar (top of the tab) searches across name, description, URL, and tags simultaneously. Results filter in real time as you type.
-
-### Tag filter pills
-Every unique tag from your collection appears as a clickable pill below the search bar. Click a tag to filter the grid to only items with that tag. Click multiple tags to narrow further (AND logic — item must have all selected tags). Tags highlight white when active. Click again to deselect.
-
-### Sorting
-The **Newest** dropdown lets you change sort order:
-- **Newest** — most recently added first (default)
-- **Name A–Z** — alphabetical by name
-- **Name Z–A** — reverse alphabetical
-- **Oldest** — oldest entries first
-
-### Clearing filters
-When any filter is active, a **Clear** button appears. Clicking it resets search, tags, and sort at once. The result count shows how many items match your current filters.
+### Search & filtering
+- The search bar matches name, description, URL, and tags.
+- Tag pills below the search filter the grid (multi-select uses AND logic).
+- The **Newest / Name A–Z / Name Z–A / Oldest** dropdown changes sort order.
+- A **Clear** button appears when filters are active and resets everything at once.
 
 ---
 
-## Desktop Tab
+## 2. Desktop Tab (`/desktop`)
 
-**What it's for:** A spatial, icon-based launcher. Your websites become tappable icons on a grid — like a phone home screen for your AI stack. Drag to rearrange, group into folders, and launch any tool in one click.
+**What it's for:** A spatial, icon-based launcher — your websites become tappable icons on a grid, like a phone home screen for your AI stack.
 
-### Launching a tool
+### Launching
 Click any icon to open its URL in a new tab.
 
-### Drag and drop rearranging
-Click and hold any icon (8px movement threshold on desktop, 250ms hold on mobile), then drag it to a new grid position. Release to snap it into place. The icon drops at whichever grid cell your **cursor** is over when you let go — grab-point independent.
-
-If you drop an icon onto an occupied cell, the two icons **swap** positions.
+### Drag-and-drop rearranging
+Click-and-hold any icon (8px movement on desktop, 250ms hold on mobile) and drag to a new cell. The icon drops at the cell your **cursor** is over — independent of where you grabbed it. Dropping onto an occupied cell **swaps** positions.
 
 ### Folders
-**Creating a folder:**
-- Right-click anywhere on the empty grid to open the context menu → **New Folder**
-- Or click the **New Folder** button in the top-right header
-- On mobile, a New Folder button appears above the grid
+- **Create:** right-click the empty grid → **New Folder**, or click the New Folder button in the header (mobile shows it above the grid).
+- **Add items:** drag any icon onto a folder — the folder highlights when ready to receive.
+- **Open:** click the folder to open a full-screen overlay listing its contents.
+- **Remove items:** drag any item out of the overlay onto the dim backdrop.
+- **Rename:** click the folder name in the overlay and edit inline.
+- **Delete:** the **Delete folder** button returns all children to the desktop.
 
-**Adding items to a folder:**
-Drag any icon onto a folder. When the folder highlights (bright ring + glow), release — the icon is now inside.
-
-**Opening a folder:**
-Click the folder icon. A full-screen overlay opens showing all items inside. Click any item to launch it.
-
-**Removing items from a folder:**
-Inside the folder overlay, drag any item toward the "drag out to remove" backdrop (the semi-transparent area). The item returns to the desktop grid.
-
-**Renaming a folder:**
-Click the folder name text at the top of the overlay — it becomes an editable field. Press Enter or click away to save.
-
-**Deleting a folder:**
-Click the **Delete folder** button inside the folder overlay. All items that were in the folder return to the desktop grid (they don't get deleted).
-
-### Searching the desktop
-The filter bar at the top of the Desktop tab dims non-matching icons to 25% opacity as you type. This lets you quickly spot a specific tool without losing spatial context. Clear the search with the X button to restore full opacity.
-
-### Icon grid behavior
-- Icons auto-arrange with a collision resolver — no two icons can occupy the same cell
-- The grid expands downward as you add more icons
-- Icons show their favicon (brand icon from the website) — falls back to the first letter of the name if the favicon can't load
-- Folders show a 2×2 preview grid of the first 4 icons inside them
+### Other behavior
+- The filter bar at the top dims non-matching icons to 25% opacity as you type.
+- The grid auto-resolves collisions and expands downward.
+- Compact icon size on desktop, larger touch-friendly icons on mobile.
+- Folders show a 2×2 preview of the first four icons inside.
 
 ---
 
-## Prompts Tab
+## 3. Prompts Tab (`/prompts`)
 
-**What it's for:** A personal prompt library. Save any prompt you use regularly and copy it to your clipboard in one click. Stop re-typing or searching chat history.
+**What it's for:** A personal prompt library — copy any prompt to your clipboard with one click.
 
-### Adding a prompt
-Click **New Prompt**. Fill in:
-- **Title** — short description of what the prompt does (e.g. "Rewrite for clarity")
-- **Prompt** — the full prompt text, written in a monospace font
+### Adding
+Click **New Prompt** and fill in **Title** and **Prompt**. Saved instantly.
 
-Click **Save prompt**. It appears instantly in the grid.
+### Copying
+- **Desktop:** click the card body — it flashes green and copies.
+- **Mobile:** tap the card to copy, or use the dedicated copy button.
 
-### Copying a prompt
-**Desktop:** Click anywhere on a prompt card. The card flashes green with a "Copied" indicator and the text is on your clipboard.
-**Mobile:** Tap any prompt card to copy. Dedicated copy button also available in the card actions.
+### Deleting
+Two-step confirmation: first click arms the trash icon (turns red), second click within 2 seconds deletes.
 
-### Deleting a prompt
-**Desktop:** Hover the card to reveal the trash icon. Click it once to arm (turns red), click again to confirm delete.
-**Mobile:** A trash icon is always visible in the top-right of each card. Tap once to arm, again to confirm.
+### Search & sort
+The search bar matches title and body. Sort pills toggle between **Newest / Oldest / A–Z**.
 
-### Search
-The search bar filters prompts by title and body text in real time.
-
-### Sorting
-Three sort pills appear next to the search bar:
-- **Newest** — most recently created first (default)
-- **Oldest** — oldest first
-- **A–Z** — alphabetical by title
-
-### Masonry layout
-Prompt cards use a masonry column layout so short and long prompts tile naturally without large empty gaps.
+### Layout
+Masonry columns (1 / 2 / 3 depending on screen size) so short and long prompts tile naturally.
 
 ---
 
-## Ask Tab
+## 4. Link Board (`/links`)
 
-**What it's for:** A direct AI chat interface powered by Google Gemini. Ask any question and get a response without leaving the dashboard — no switching tabs.
+**What it's for:** A separate, drag-and-drop board of important URLs that don't fit your tool directory — articles, references, dashboards, anything you want to keep in a personal corkboard.
 
-### How to use it
-Type your question in the input field and press **Enter** or click the send button. The response streams back in real time.
+### Adding
+**Add Link** opens a modal with:
+- **Link Name** (required)
+- **URL** (required, auto-prefixes `https://`)
+- **Description** (optional, multi-line)
 
-### When it shows an error
-The Ask tab requires a `VITE_GEMINI_API_KEY` environment variable to be set. Without it, the interface will display a warning. Set the key in your environment to activate it.
+### Editing & deleting
+Hover any card to reveal:
+- **Pencil** — opens the same modal pre-filled with current values.
+- **Trash** — two-step confirmation matching the Prompts pattern.
+
+### Drag to reorder
+A grip handle on the left side of each card (visible on hover) lets you drag cards to any position in the grid. The new order is saved to Supabase via the `position` column. Sensors match the Desktop tab — 8px on desktop, 250ms hold on mobile.
+
+### Layout
+Responsive auto-fill grid (`repeat(auto-fill, minmax(260px, 1fr))`, 16px gap) — fills as many columns as the viewport allows. Each card shows the link's favicon, name, clickable URL, and optional description.
+
+---
+
+## 5. Image Board (`/images`)
+
+**What it's for:** A personal masonry gallery of uploaded images — references, screenshots, mood boards, brand assets.
+
+### Uploading
+**Upload Image** opens a modal with:
+- **Image name** (required, auto-fills from filename)
+- **File** (required, `image/*`, max 5MB — anything larger is rejected inline before upload)
+
+The submit button shows **Uploading…** and is disabled during the upload. The file is stored in the `image-board` Supabase Storage bucket and a row is added to the `image_board` table with the public URL.
+
+### Editing
+Hover an image and click the **pencil** to open a rename modal. Only the `name` column updates — the file is not re-uploaded.
+
+### Deleting
+Hover an image and click the **trash**. A confirmation modal appears before any destructive call. On confirm, the file is removed from Storage and the row is deleted from the table — both must succeed or you'll see an error toast.
+
+### Layout
+Masonry columns (1 / 2 / 3) using CSS columns with `break-inside: avoid`. Each tile shows the full image with `object-cover` and the name below. Edit and delete buttons appear at the top-right on hover.
+
+---
+
+## 6. Important Messages (`/messages`)
+
+**What it's for:** Time-bound reminders or notes — anything you want to "save the motive of" and remember when. Useful for follow-ups, recurring rituals, or a single-line journal of things you keep meaning to do.
+
+### Adding
+**Add Message** opens a modal with three required fields:
+- **Motive** — short purpose (e.g. "Follow up with client")
+- **Time** — free-form string (e.g. "Every Monday 9am" or "2025-07-01 10:00")
+- **Message** — multi-line body, 4 rows
+
+The submit button stays disabled until all three are non-empty.
+
+### Editing
+Hover any card and click the **pencil** to reopen the modal pre-filled.
+
+### Deleting
+Two-step inline confirmation: first click turns the button red and shows **Confirm?**, second click within 2 seconds deletes.
+
+### Layout
+Single-column list of full-width cards, sorted **newest first**. Each card shows the **motive** as a bold header, **time** as a pill badge using the `--surface-3` token, and the **message** as body text with whitespace preserved.
+
+---
+
+## 7. Insights Tab (`/insights`)
+
+**What it's for:** Usage analytics across your tools and prompts. Logs every time you open a tool or copy a prompt and rolls them up into trends, top items, and time-range stats.
+
+(See `SETUP.sql` to enable the `usage_logs` table.)
+
+---
+
+## 8. Ask Tab (`/ask`)
+
+**What it's for:** A direct AI chat powered by Google Gemini, embedded in the dashboard so you don't need to switch tabs.
+
+### Usage
+Type a question and press **Enter** (Shift+Enter for newline). The response streams back in real time.
+
+### Configuration
+Requires a `VITE_GEMINI_API_KEY` environment variable. Without it, the tab shows a configuration warning.
 
 ---
 
 ## General Features
 
 ### Real-time sync
-Every action (add, edit, delete, move, folder changes) is saved to Supabase immediately. The status indicator in the bottom-left of the sidebar shows **Synced** when all changes are persisted. If you open the app in two browser tabs, changes in one reflect in the other.
+Every action (add, edit, delete, move, folder change, link reorder, image upload, message edit) is saved to Supabase immediately. The status indicator in the bottom-right shows **Synced** when all changes are persisted.
 
-### Sidebar navigation
-The left sidebar provides one-click navigation between all four tabs. The active tab is highlighted. The AI Metrics logo links back to the Websites tab.
+### Sidebar & mobile nav
+- **Desktop:** left sidebar with eight one-click destinations and the active tab highlighted.
+- **Mobile:** floating bottom bar with all eight tabs, compact icons + labels.
 
 ### Premium dark UI
-The interface uses a consistent dark design system:
-- `#0A0A0C` base background
-- `#18181B` surface cards
-- White text at varying opacity levels for hierarchy
+- `#0A0A0C` base background, `#18181B` surface cards
+- White text at varying opacities for hierarchy
 - Subtle borders at `rgba(255,255,255,0.08)`
-- Smooth framer-motion transitions on all state changes
-- Sonner toast notifications for errors and async feedback
+- Smooth Framer Motion transitions on every state change
+- Sonner toast notifications for async feedback and errors
+- Custom favicon embedded for browser tabs
 
 ### Mobile support
-The layout is fully responsive. On small screens:
-- The sidebar collapses to a bottom navigation bar
-- Desktop grid switches from 8 columns to 4 columns
-- Icons use the compact size variant
-- Touch drag-and-drop works with a 250ms hold before dragging activates
+- Responsive layouts on every page
+- Sidebar collapses to bottom nav
+- Desktop grid switches from 8 to 4 columns
+- Touch drag-and-drop with a 250ms hold activation
 
 ---
 
 ## Data & Privacy
 
-- **Database:** Supabase PostgreSQL — your data is stored in your own Supabase project
-- **Row-Level Security:** Disabled by default (single-user setup)
-- **Tables:**
-  - `items` — all websites and prompts
-  - `desktop_layout` — grid position for each icon
-  - `desktop_folders` — folder structure and membership
-- **No analytics, no tracking, no third-party scripts** beyond Supabase and Gemini API calls you initiate
+- **Database:** Supabase Postgres in your own project.
+- **Auth model:** single-user — RLS is disabled by default; no login required.
+- **No analytics, no tracking, no third-party scripts** beyond Supabase and the Gemini API calls you initiate.
+
+### Tables
+
+| Table | Purpose |
+|---|---|
+| `items` | Websites + prompts (discriminated by `type`) |
+| `desktop_layout` | Grid position for each desktop icon/folder |
+| `desktop_folders` | Folder names + child id arrays |
+| `links` | Link Board entries (with `position` for ordering) |
+| `image_board` | Image Board metadata (storage path + public URL) |
+| `important_messages` | Important Messages (motive / time / message) |
+| `usage_logs` | Insights events (open / copy) |
+
+### Storage
+
+| Bucket | Purpose |
+|---|---|
+| `image-board` | Public-read bucket for uploaded images (5MB cap enforced client-side) |
+
+### Setup files
+- `SETUP.sql` — usage logging table for the Insights tab
+- `SETUP_NEW_TABS.sql` — `links`, `image_board`, `important_messages` tables and the `image-board` storage bucket + policies
+
+Run both in your Supabase dashboard → SQL Editor before using their corresponding tabs.
 
 ---
 
@@ -189,11 +255,12 @@ The layout is fully responsive. On small screens:
 |---|---|
 | Framework | React 19 + TanStack Router (SPA mode) |
 | Build | Vite 7 |
-| Styling | Tailwind CSS v4 |
-| Drag & Drop | @dnd-kit/core |
+| Styling | Tailwind CSS v4 (oklch tokens in `src/styles.css`) |
+| Drag & Drop | `@dnd-kit/core` + `@dnd-kit/sortable` |
 | Animations | Framer Motion |
 | Components | shadcn/ui |
-| Database | Supabase (PostgreSQL + Realtime) |
+| Database | Supabase (Postgres + Realtime + Storage) |
 | AI | Google Gemini API |
 | Notifications | Sonner |
+| State | `useSyncExternalStore` external stores per feature (`store.ts`, `link-board.ts`, `image-board.ts`, `important-messages.ts`) |
 | Hosting | Replit |

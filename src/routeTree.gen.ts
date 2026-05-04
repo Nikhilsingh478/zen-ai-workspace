@@ -10,7 +10,10 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as PromptsRouteImport } from './routes/prompts'
+import { Route as MessagesRouteImport } from './routes/messages'
+import { Route as LinksRouteImport } from './routes/links'
 import { Route as InsightsRouteImport } from './routes/insights'
+import { Route as ImagesRouteImport } from './routes/images'
 import { Route as DesktopRouteImport } from './routes/desktop'
 import { Route as AskRouteImport } from './routes/ask'
 import { Route as IndexRouteImport } from './routes/index'
@@ -20,9 +23,24 @@ const PromptsRoute = PromptsRouteImport.update({
   path: '/prompts',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MessagesRoute = MessagesRouteImport.update({
+  id: '/messages',
+  path: '/messages',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LinksRoute = LinksRouteImport.update({
+  id: '/links',
+  path: '/links',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const InsightsRoute = InsightsRouteImport.update({
   id: '/insights',
   path: '/insights',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ImagesRoute = ImagesRouteImport.update({
+  id: '/images',
+  path: '/images',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DesktopRoute = DesktopRouteImport.update({
@@ -45,14 +63,20 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/ask': typeof AskRoute
   '/desktop': typeof DesktopRoute
+  '/images': typeof ImagesRoute
   '/insights': typeof InsightsRoute
+  '/links': typeof LinksRoute
+  '/messages': typeof MessagesRoute
   '/prompts': typeof PromptsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/ask': typeof AskRoute
   '/desktop': typeof DesktopRoute
+  '/images': typeof ImagesRoute
   '/insights': typeof InsightsRoute
+  '/links': typeof LinksRoute
+  '/messages': typeof MessagesRoute
   '/prompts': typeof PromptsRoute
 }
 export interface FileRoutesById {
@@ -60,22 +84,53 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/ask': typeof AskRoute
   '/desktop': typeof DesktopRoute
+  '/images': typeof ImagesRoute
   '/insights': typeof InsightsRoute
+  '/links': typeof LinksRoute
+  '/messages': typeof MessagesRoute
   '/prompts': typeof PromptsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/ask' | '/desktop' | '/insights' | '/prompts'
+  fullPaths:
+    | '/'
+    | '/ask'
+    | '/desktop'
+    | '/images'
+    | '/insights'
+    | '/links'
+    | '/messages'
+    | '/prompts'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/ask' | '/desktop' | '/insights' | '/prompts'
-  id: '__root__' | '/' | '/ask' | '/desktop' | '/insights' | '/prompts'
+  to:
+    | '/'
+    | '/ask'
+    | '/desktop'
+    | '/images'
+    | '/insights'
+    | '/links'
+    | '/messages'
+    | '/prompts'
+  id:
+    | '__root__'
+    | '/'
+    | '/ask'
+    | '/desktop'
+    | '/images'
+    | '/insights'
+    | '/links'
+    | '/messages'
+    | '/prompts'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AskRoute: typeof AskRoute
   DesktopRoute: typeof DesktopRoute
+  ImagesRoute: typeof ImagesRoute
   InsightsRoute: typeof InsightsRoute
+  LinksRoute: typeof LinksRoute
+  MessagesRoute: typeof MessagesRoute
   PromptsRoute: typeof PromptsRoute
 }
 
@@ -88,11 +143,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PromptsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/messages': {
+      id: '/messages'
+      path: '/messages'
+      fullPath: '/messages'
+      preLoaderRoute: typeof MessagesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/links': {
+      id: '/links'
+      path: '/links'
+      fullPath: '/links'
+      preLoaderRoute: typeof LinksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/insights': {
       id: '/insights'
       path: '/insights'
       fullPath: '/insights'
       preLoaderRoute: typeof InsightsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/images': {
+      id: '/images'
+      path: '/images'
+      fullPath: '/images'
+      preLoaderRoute: typeof ImagesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/desktop': {
@@ -123,18 +199,12 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AskRoute: AskRoute,
   DesktopRoute: DesktopRoute,
+  ImagesRoute: ImagesRoute,
   InsightsRoute: InsightsRoute,
+  LinksRoute: LinksRoute,
+  MessagesRoute: MessagesRoute,
   PromptsRoute: PromptsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}

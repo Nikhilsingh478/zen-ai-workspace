@@ -1,5 +1,14 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Globe, LayoutGrid, Sparkles, MessageSquare, BarChart2 } from "lucide-react";
+import {
+  Globe,
+  LayoutGrid,
+  Sparkles,
+  MessageSquare,
+  BarChart2,
+  Link2,
+  Image as ImageIcon,
+  Bell,
+} from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { SyncIndicator } from "@/components/sync-indicator";
@@ -8,6 +17,9 @@ const NAV = [
   { to: "/", label: "Websites", icon: Globe },
   { to: "/desktop", label: "Desktop", icon: LayoutGrid },
   { to: "/prompts", label: "Prompts", icon: Sparkles },
+  { to: "/links", label: "Links", icon: Link2 },
+  { to: "/images", label: "Images", icon: ImageIcon },
+  { to: "/messages", label: "Messages", icon: Bell },
   { to: "/insights", label: "Insights", icon: BarChart2 },
   { to: "/ask", label: "Ask", icon: MessageSquare },
 ] as const;
@@ -63,7 +75,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       {/* Mobile bottom nav — 5 items */}
       <nav className="md:hidden fixed bottom-3 left-3 right-3 z-50 rounded-2xl border border-border bg-[var(--surface-2)] shadow-[0_8px_30px_rgba(0,0,0,0.4)]">
-        <div className="grid grid-cols-5">
+        <div className="grid grid-cols-8">
           {NAV.map((item) => {
             const active = item.to === "/" ? pathname === "/" : pathname.startsWith(item.to);
             const Icon = item.icon;
@@ -72,14 +84,14 @@ export function AppShell({ children }: { children: ReactNode }) {
                 key={item.to}
                 to={item.to}
                 className={cn(
-                  "relative flex flex-col items-center justify-center gap-1 py-2.5 text-[9px] font-medium",
+                  "relative flex flex-col items-center justify-center gap-0.5 py-2 text-[8px] font-medium",
                   active ? "text-foreground" : "text-copy-secondary",
                 )}
               >
-                <Icon className="h-4 w-4" strokeWidth={1.75} />
-                <span>{item.label}</span>
+                <Icon className="h-[15px] w-[15px]" strokeWidth={1.75} />
+                <span className="truncate max-w-full px-0.5">{item.label}</span>
                 {active && (
-                  <span className="absolute top-1 h-1 w-5 rounded-full bg-foreground/80" />
+                  <span className="absolute top-0.5 h-0.5 w-4 rounded-full bg-foreground/80" />
                 )}
               </Link>
             );
