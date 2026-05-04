@@ -14,7 +14,7 @@ The eight top-level sections are:
 2. **Desktop** — spatial launcher with folders and drag-and-drop
 3. **Prompts** — clipboard-ready prompt library
 4. **Link Board** — drag-and-drop board of important URLs
-5. **Image Board** — masonry gallery of uploaded images
+5. **Image Board** — masonry gallery of uploaded images allows downloading them too
 6. **Important Messages** — reminders with motive, time, and message
 7. **Insights** — usage analytics across tools and prompts
 8. **Ask** — direct AI chat powered by Google Gemini
