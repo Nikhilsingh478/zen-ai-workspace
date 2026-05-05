@@ -71,10 +71,10 @@ export function MessageModal({
         <div>
           <label className={labelClass}>Time</label>
           <input
-            className={fieldClass}
+            type="time"
+            className={cn(fieldClass, "[&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:opacity-60 [&::-webkit-calendar-picker-indicator]:cursor-pointer")}
             value={time}
             onChange={(e) => setTime(e.target.value)}
-            placeholder="e.g. Every Monday 9am"
           />
         </div>
         <div>
