@@ -84,10 +84,10 @@ function MetricCard({
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.35, delay, ease: [0.22, 1, 0.36, 1] }}
       whileHover={{ y: -2, transition: { duration: 0.15 } }}
-      className="rounded-2xl border border-white/[0.07] bg-[#18181B] p-5 flex flex-col gap-3 hover:border-white/[0.13] hover:shadow-[0_20px_40px_-20px_rgba(0,0,0,0.6)] transition-all duration-300"
+      className="rounded-2xl border border-white/[0.07] bg-[#18181B] p-3.5 md:p-5 flex flex-col gap-2.5 md:gap-3 hover:border-white/[0.13] hover:shadow-[0_20px_40px_-20px_rgba(0,0,0,0.6)] transition-all duration-300 min-w-0"
     >
       <div className="flex items-center justify-between">
-        <span className="text-xs text-white/40 uppercase tracking-widest font-medium">{label}</span>
+        <span className="text-[10px] md:text-xs text-white/40 uppercase tracking-widest font-medium truncate">{label}</span>
         <div
           className={cn(
             "h-7 w-7 rounded-lg grid place-items-center",
@@ -97,9 +97,9 @@ function MetricCard({
           <Icon className="h-3.5 w-3.5 text-white/60" />
         </div>
       </div>
-      <div>
-        <p className="text-2xl font-semibold tracking-tight text-foreground leading-none">{value}</p>
-        {sub && <p className="text-[11px] text-white/35 mt-1.5 truncate">{sub}</p>}
+      <div className="min-w-0">
+        <p className="text-lg md:text-2xl font-semibold tracking-tight text-foreground leading-tight truncate">{value}</p>
+        {sub && <p className="text-[10px] md:text-[11px] text-white/35 mt-1 md:mt-1.5 truncate">{sub}</p>}
       </div>
     </motion.div>
   );
