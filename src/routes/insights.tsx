@@ -117,8 +117,8 @@ function Section({
   className?: string;
 }) {
   return (
-    <div className={cn("rounded-2xl border border-white/[0.07] bg-[#18181B] p-5", className)}>
-      <h2 className="text-[13px] font-semibold tracking-tight text-white/70 uppercase tracking-widest mb-4">
+    <div className={cn("rounded-2xl border border-white/[0.07] bg-[#18181B] p-3.5 md:p-5", className)}>
+      <h2 className="text-[12px] md:text-[13px] font-semibold tracking-tight text-white/70 uppercase tracking-widest mb-3 md:mb-4">
         {title}
       </h2>
       {children}
