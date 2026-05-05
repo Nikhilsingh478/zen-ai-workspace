@@ -24,6 +24,11 @@ export type InsightsData = {
   usageByDay: Array<{ day: string; label: string; tools: number; prompts: number }>;
   recentLogs: UsageLog[];
   aiInsights: string[];
+  streakDays: number;
+  avgPerDay: number;
+  busiestDayOfWeek: { name: string; count: number } | null;
+  hourlyDistribution: Array<{ hour: number; label: string; count: number }>;
+  weekOverWeek: { thisWeek: number; lastWeek: number; deltaPct: number };
 };
 
 // ─── Fire-and-forget log helpers ─────────────────────────────────────────────
@@ -172,6 +177,15 @@ export async function getInsightsData(): Promise<InsightsData> {
     usageByDay: getLast7Days().map((d) => ({ day: d.date, label: d.label, tools: 0, prompts: 0 })),
     recentLogs: [],
     aiInsights: ["Start using your tools and prompts — insights will appear here automatically."],
+    streakDays: 0,
+    avgPerDay: 0,
+    busiestDayOfWeek: null,
+    hourlyDistribution: Array.from({ length: 24 }, (_, h) => ({
+      hour: h,
+      label: h === 0 ? "12a" : h < 12 ? `${h}a` : h === 12 ? "12p" : `${h - 12}p`,
+      count: 0,
+    })),
+    weekOverWeek: { thisWeek: 0, lastWeek: 0, deltaPct: 0 },
   };
 
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
@@ -237,6 +251,48 @@ export async function getInsightsData(): Promise<InsightsData> {
   // ── AI Insights ────────────────────────────────────────────────────────────
   const aiInsights = generateAiInsights(typedLogs, topTools, topPrompts);
 
+  // ── Streak (consecutive days ending today with activity) ──
+  const activeDateSet = new Set(typedLogs.map((l) => l.timestamp.slice(0, 10)));
+  let streakDays = 0;
+  for (let i = 0; i < 60; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const ds = d.toISOString().slice(0, 10);
+    if (activeDateSet.has(ds)) streakDays++;
+    else break;
+  }
+
+  // ── Avg events / day over last 7 days ──
+  const avgPerDay = Math.round((weekEvents / 7) * 10) / 10;
+
+  // ── Busiest day of week (last 30 days) ──
+  const dowCounts = [0, 0, 0, 0, 0, 0, 0];
+  for (const log of typedLogs) {
+    dowCounts[new Date(log.timestamp).getDay()]++;
+  }
+  const dowNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  let busiestIdx = 0;
+  for (let i = 1; i < 7; i++) if (dowCounts[i] > dowCounts[busiestIdx]) busiestIdx = i;
+  const busiestDayOfWeek =
+    dowCounts[busiestIdx] > 0 ? { name: dowNames[busiestIdx], count: dowCounts[busiestIdx] } : null;
+
+  // ── Hourly distribution (last 30 days) ──
+  const hourCounts = Array.from({ length: 24 }, () => 0);
+  for (const log of typedLogs) hourCounts[new Date(log.timestamp).getHours()]++;
+  const hourlyDistribution = hourCounts.map((count, h) => ({
+    hour: h,
+    label: h === 0 ? "12a" : h < 12 ? `${h}a` : h === 12 ? "12p" : `${h - 12}p`,
+    count,
+  }));
+
+  // ── Week-over-week delta ──
+  const now = Date.now();
+  const weekAgo = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const twoWeeksAgo = new Date(now - 14 * 24 * 60 * 60 * 1000).toISOString();
+  const thisWeek = typedLogs.filter((l) => l.timestamp >= weekAgo).length;
+  const lastWeek = typedLogs.filter((l) => l.timestamp >= twoWeeksAgo && l.timestamp < weekAgo).length;
+  const deltaPct = lastWeek === 0 ? (thisWeek > 0 ? 100 : 0) : Math.round(((thisWeek - lastWeek) / lastWeek) * 100);
+
   return {
     tablesExist: true,
     todayOpens,
@@ -249,5 +305,10 @@ export async function getInsightsData(): Promise<InsightsData> {
     usageByDay,
     recentLogs: typedLogs.slice(0, 20),
     aiInsights,
+    streakDays,
+    avgPerDay,
+    busiestDayOfWeek,
+    hourlyDistribution,
+    weekOverWeek: { thisWeek, lastWeek, deltaPct },
   };
 }

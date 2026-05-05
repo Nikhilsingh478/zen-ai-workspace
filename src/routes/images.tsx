@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { motion } from "framer-motion";
-import { Image as ImageIcon, Pencil, Plus, Trash2 } from "lucide-react";
+import { Download, Image as ImageIcon, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { PageHeader } from "@/components/page-header";
 import { primaryButtonClass } from "@/components/matrix-modal";
@@ -51,7 +51,7 @@ function ImagesPage() {
       ) : images.length === 0 ? (
         <EmptyState onAdd={() => setUploadOpen(true)} />
       ) : (
-        <div className="columns-1 sm:columns-2 lg:columns-3 gap-4 [column-fill:_balance]">
+        <div className="columns-2 sm:columns-2 lg:columns-3 gap-2 sm:gap-4 [column-fill:_balance]">
           {images.map((img) => (
             <ImageCard
               key={img.id}
@@ -97,12 +97,29 @@ function ImageCard({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const handleDownload = async () => {
+    try {
+      const res = await fetch(image.publicUrl);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const ext = (image.publicUrl.split(".").pop() ?? "jpg").split("?")[0];
+      a.href = url;
+      a.download = `${image.name || "image"}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      window.open(image.publicUrl, "_blank");
+    }
+  };
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-      className="group relative mb-4 break-inside-avoid rounded-2xl border border-border bg-[var(--surface-2)] overflow-hidden hover:border-white/[0.13] transition"
+      className="group relative mb-2 sm:mb-4 break-inside-avoid rounded-xl sm:rounded-2xl border border-border bg-[var(--surface-2)] overflow-hidden hover:border-white/[0.13] transition"
     >
       <div className="relative">
         <img
@@ -111,10 +128,18 @@ function ImageCard({
           loading="lazy"
           className="w-full h-auto block object-cover"
         />
-        <div className="absolute right-2 top-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="absolute right-1.5 top-1.5 sm:right-2 sm:top-2 flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={handleDownload}
+            className="h-7 w-7 sm:h-8 sm:w-8 grid place-items-center rounded-lg bg-black/55 backdrop-blur text-white hover:bg-black/75 transition"
+            aria-label="Download image"
+            title="Download"
+          >
+            <Download className="h-3.5 w-3.5" />
+          </button>
           <button
             onClick={onEdit}
-            className="h-8 w-8 grid place-items-center rounded-lg bg-black/55 backdrop-blur text-white hover:bg-black/75 transition"
+            className="h-7 w-7 sm:h-8 sm:w-8 grid place-items-center rounded-lg bg-black/55 backdrop-blur text-white hover:bg-black/75 transition"
             aria-label="Rename image"
             title="Rename"
           >
@@ -122,7 +147,7 @@ function ImageCard({
           </button>
           <button
             onClick={onDelete}
-            className="h-8 w-8 grid place-items-center rounded-lg bg-black/55 backdrop-blur text-white hover:bg-red-500/80 transition"
+            className="h-7 w-7 sm:h-8 sm:w-8 grid place-items-center rounded-lg bg-black/55 backdrop-blur text-white hover:bg-red-500/80 transition"
             aria-label="Delete image"
             title="Delete"
           >
@@ -130,7 +155,7 @@ function ImageCard({
           </button>
         </div>
       </div>
-      <p className="px-3.5 py-2.5 text-[12.5px] text-foreground truncate border-t border-border/40">
+      <p className="px-2.5 sm:px-3.5 py-1.5 sm:py-2.5 text-[11px] sm:text-[12.5px] text-foreground truncate border-t border-border/40">
         {image.name}
       </p>
     </motion.div>
@@ -140,12 +165,12 @@ function ImageCard({
 function ImagesSkeleton() {
   const heights = ["h-48", "h-64", "h-40", "h-56", "h-72", "h-44"];
   return (
-    <div className="columns-1 sm:columns-2 lg:columns-3 gap-4 [column-fill:_balance]">
+    <div className="columns-2 sm:columns-2 lg:columns-3 gap-2 sm:gap-4 [column-fill:_balance]">
       {heights.map((h, i) => (
         <div
           key={i}
           className={cn(
-            "mb-4 break-inside-avoid rounded-2xl bg-white/[0.04] animate-pulse",
+            "mb-2 sm:mb-4 break-inside-avoid rounded-xl sm:rounded-2xl bg-white/[0.04] animate-pulse",
             h,
           )}
           style={{ animationDelay: `${i * 0.06}s` }}

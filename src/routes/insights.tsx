@@ -4,13 +4,15 @@ import { motion } from "framer-motion";
 import {
   ExternalLink,
   Brain,
-  Zap,
   Copy,
   TrendingUp,
-  BarChart2,
+  TrendingDown,
   RefreshCw,
   AlertCircle,
   Lightbulb,
+  Flame,
+  Calendar,
+  Clock,
 } from "lucide-react";
 import {
   LineChart,
@@ -82,10 +84,10 @@ function MetricCard({
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.35, delay, ease: [0.22, 1, 0.36, 1] }}
       whileHover={{ y: -2, transition: { duration: 0.15 } }}
-      className="rounded-2xl border border-white/[0.07] bg-[#18181B] p-5 flex flex-col gap-3 hover:border-white/[0.13] hover:shadow-[0_20px_40px_-20px_rgba(0,0,0,0.6)] transition-all duration-300"
+      className="rounded-2xl border border-white/[0.07] bg-[#18181B] p-3.5 md:p-5 flex flex-col gap-2.5 md:gap-3 hover:border-white/[0.13] hover:shadow-[0_20px_40px_-20px_rgba(0,0,0,0.6)] transition-all duration-300 min-w-0"
     >
       <div className="flex items-center justify-between">
-        <span className="text-xs text-white/40 uppercase tracking-widest font-medium">{label}</span>
+        <span className="text-[10px] md:text-xs text-white/40 uppercase tracking-widest font-medium truncate">{label}</span>
         <div
           className={cn(
             "h-7 w-7 rounded-lg grid place-items-center",
@@ -95,9 +97,9 @@ function MetricCard({
           <Icon className="h-3.5 w-3.5 text-white/60" />
         </div>
       </div>
-      <div>
-        <p className="text-2xl font-semibold tracking-tight text-foreground leading-none">{value}</p>
-        {sub && <p className="text-[11px] text-white/35 mt-1.5 truncate">{sub}</p>}
+      <div className="min-w-0">
+        <p className="text-lg md:text-2xl font-semibold tracking-tight text-foreground leading-tight truncate">{value}</p>
+        {sub && <p className="text-[10px] md:text-[11px] text-white/35 mt-1 md:mt-1.5 truncate">{sub}</p>}
       </div>
     </motion.div>
   );
@@ -115,8 +117,8 @@ function Section({
   className?: string;
 }) {
   return (
-    <div className={cn("rounded-2xl border border-white/[0.07] bg-[#18181B] p-5", className)}>
-      <h2 className="text-[13px] font-semibold tracking-tight text-white/70 uppercase tracking-widest mb-4">
+    <div className={cn("rounded-2xl border border-white/[0.07] bg-[#18181B] p-3.5 md:p-5", className)}>
+      <h2 className="text-[12px] md:text-[13px] font-semibold tracking-tight text-white/70 uppercase tracking-widest mb-3 md:mb-4">
         {title}
       </h2>
       {children}
@@ -233,34 +235,34 @@ function InsightsPage() {
   const d = data!;
 
   return (
-    <div className="px-6 md:px-12 py-10 md:py-14 max-w-7xl mx-auto">
+    <div className="px-4 md:px-12 py-6 md:py-14 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex items-start justify-between mb-8">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-semibold tracking-tight text-foreground">
+      <div className="flex items-start justify-between gap-3 mb-6 md:mb-8">
+        <div className="min-w-0">
+          <h1 className="text-xl md:text-3xl font-semibold tracking-tight text-foreground">
             Insights
           </h1>
-          <p className="text-sm text-white/40 mt-1">
+          <p className="text-xs md:text-sm text-white/40 mt-1 truncate">
             How you actually use AI
             {lastRefreshed && (
-              <span className="ml-2 text-white/20">· updated {formatTime(lastRefreshed)}</span>
+              <span className="ml-2 text-white/20 hidden sm:inline">· updated {formatTime(lastRefreshed)}</span>
             )}
           </p>
         </div>
         <button
           onClick={() => load(true)}
           disabled={refreshing}
-          className="flex items-center gap-2 text-xs text-white/30 hover:text-white/60 transition px-3 py-2 rounded-xl hover:bg-white/[0.04]"
+          className="flex items-center gap-2 text-xs text-white/30 hover:text-white/60 transition px-2.5 md:px-3 py-2 rounded-xl hover:bg-white/[0.04] shrink-0"
         >
           <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} />
-          Refresh
+          <span className="hidden sm:inline">Refresh</span>
         </button>
       </div>
 
       {!d.tablesExist && <SetupBanner />}
 
       {/* ── Section 1: Key Metrics ─────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 md:gap-3 mb-4 md:mb-6">
         <MetricCard
           label="Opens Today"
           value={d.todayOpens}
@@ -293,8 +295,43 @@ function InsightsPage() {
         />
       </div>
 
+      {/* ── Section 1b: Advanced Metrics ─────────────────────────────────── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 md:gap-3 mb-4 md:mb-6">
+        <MetricCard
+          label="Streak"
+          value={d.streakDays > 0 ? `${d.streakDays}d` : "—"}
+          sub={d.streakDays > 0 ? "consecutive active days" : "Start today"}
+          icon={Flame}
+          delay={0.18}
+          accent="bg-orange-400/10"
+        />
+        <MetricCard
+          label="Avg / Day"
+          value={d.avgPerDay}
+          sub="events per day (7d)"
+          icon={Calendar}
+          delay={0.2}
+        />
+        <MetricCard
+          label="Busiest Day"
+          value={d.busiestDayOfWeek?.name ?? "—"}
+          sub={d.busiestDayOfWeek ? `${d.busiestDayOfWeek.count} events (30d)` : "No data yet"}
+          icon={Calendar}
+          delay={0.22}
+          accent="bg-cyan-400/10"
+        />
+        <MetricCard
+          label="Week vs Last"
+          value={`${d.weekOverWeek.deltaPct >= 0 ? "+" : ""}${d.weekOverWeek.deltaPct}%`}
+          sub={`${d.weekOverWeek.thisWeek} vs ${d.weekOverWeek.lastWeek} events`}
+          icon={d.weekOverWeek.deltaPct >= 0 ? TrendingUp : TrendingDown}
+          delay={0.24}
+          accent={d.weekOverWeek.deltaPct >= 0 ? "bg-emerald-400/10" : "bg-red-400/10"}
+        />
+      </div>
+
       {/* ── Section 2: Top Tools + Usage Over Time ─────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4 mb-3 md:mb-4">
         <motion.div
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
@@ -378,7 +415,7 @@ function InsightsPage() {
       </div>
 
       {/* ── Section 3: Top Prompts + Activity Bar Chart ─────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4 mb-3 md:mb-4">
         <motion.div
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
@@ -444,6 +481,42 @@ function InsightsPage() {
           </Section>
         </motion.div>
       </div>
+
+      {/* ── Section 3b: Hour-of-day distribution ──────────────────────── */}
+      <motion.div
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, delay: 0.32, ease: [0.22, 1, 0.36, 1] }}
+      >
+        <Section title="Hour of Day — Last 30 Days" className="mb-3 md:mb-4">
+          {d.hourlyDistribution.every((h) => h.count === 0) ? (
+            <div className="flex items-center justify-center h-40 text-white/20 text-sm">
+              <Clock className="h-4 w-4 mr-2" /> No activity yet
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart data={d.hourlyDistribution} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fill: "rgba(255,255,255,0.3)", fontSize: 10 }}
+                  axisLine={false}
+                  tickLine={false}
+                  interval={2}
+                />
+                <YAxis
+                  tick={{ fill: "rgba(255,255,255,0.3)", fontSize: 10 }}
+                  axisLine={false}
+                  tickLine={false}
+                  allowDecimals={false}
+                />
+                <Tooltip content={<ChartTooltip />} />
+                <Bar dataKey="count" name="Events" fill="#34d399" radius={[3, 3, 0, 0]} maxBarSize={18} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </Section>
+      </motion.div>
 
       {/* ── Section 4: AI Insights ──────────────────────────────────────────── */}
       <motion.div
