@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { motion } from "framer-motion";
 import {
   DndContext,
   PointerSensor,
@@ -35,6 +36,23 @@ export const Route = createFileRoute("/links")({
   component: LinksPage,
 });
 
+const EASE = [0.22, 1, 0.36, 1] as const;
+
+const container = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.055 } },
+};
+
+const cardVariant = {
+  hidden: { opacity: 0, y: 16, scale: 0.97 },
+  show: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: { duration: 0.3, ease: EASE },
+  },
+};
+
 function LinksPage() {
   const { links, loaded, add, update, remove, reorder } = useLinkBoard();
   const [open, setOpen] = useState(false);
@@ -55,26 +73,15 @@ function LinksPage() {
     reorder(next.map((l) => l.id));
   };
 
-  const openAdd = () => {
-    setEditing(null);
-    setOpen(true);
-  };
-  const openEdit = (link: LinkItem) => {
-    setEditing(link);
-    setOpen(true);
-  };
-  const close = () => {
-    setOpen(false);
-    setEditing(null);
-  };
+  const openAdd = () => { setEditing(null); setOpen(true); };
+  const openEdit = (link: LinkItem) => { setEditing(link); setOpen(true); };
+  const close = () => { setOpen(false); setEditing(null); };
 
   return (
     <div className="px-4 md:px-10 py-8 md:py-14 max-w-6xl mx-auto">
       <PageHeader
         title="Link Board"
-        subtitle={
-          loaded ? `${links.length} saved · drag to reorder` : "Loading…"
-        }
+        subtitle={loaded ? `${links.length} saved · drag to reorder` : "Loading…"}
         action={
           <button onClick={openAdd} className={primaryButtonClass}>
             <Plus className="h-4 w-4" />
@@ -94,25 +101,24 @@ function LinksPage() {
           collisionDetection={closestCenter}
           onDragEnd={onDragEnd}
         >
-          <SortableContext
-            items={links.map((l) => l.id)}
-            strategy={rectSortingStrategy}
-          >
-            <div
+          <SortableContext items={links.map((l) => l.id)} strategy={rectSortingStrategy}>
+            <motion.div
+              variants={container}
+              initial="hidden"
+              animate="show"
               className="grid gap-4"
-              style={{
-                gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
-              }}
+              style={{ gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))" }}
             >
               {links.map((link) => (
-                <LinkCard
-                  key={link.id}
-                  link={link}
-                  onEdit={() => openEdit(link)}
-                  onRemove={() => remove(link.id)}
-                />
+                <motion.div key={link.id} variants={cardVariant}>
+                  <LinkCard
+                    link={link}
+                    onEdit={() => openEdit(link)}
+                    onRemove={() => remove(link.id)}
+                  />
+                </motion.div>
               ))}
-            </div>
+            </motion.div>
           </SortableContext>
         </DndContext>
       )}
@@ -149,17 +155,32 @@ function LinkSkeleton() {
 
 function EmptyState({ onAdd }: { onAdd: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center py-24 md:py-32 text-center">
-      <div className="h-14 w-14 rounded-2xl bg-[var(--surface-2)] border border-border grid place-items-center mb-5">
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, ease: EASE }}
+      className="flex flex-col items-center justify-center py-24 md:py-32 text-center"
+    >
+      <motion.div
+        initial={{ scale: 0.85, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ duration: 0.4, ease: EASE, delay: 0.1 }}
+        className="h-14 w-14 rounded-2xl bg-[var(--surface-2)] border border-border grid place-items-center mb-5"
+      >
         <Link2 className="h-6 w-6 text-copy-secondary" strokeWidth={1.5} />
-      </div>
+      </motion.div>
       <p className="text-[15px] font-medium text-foreground">No links yet</p>
       <p className="text-[13px] text-copy-secondary mt-1.5 mb-6">
         Build your personal board of must-keep URLs.
       </p>
-      <button onClick={onAdd} className={primaryButtonClass}>
+      <motion.button
+        whileHover={{ scale: 1.03, y: -1 }}
+        whileTap={{ scale: 0.97 }}
+        onClick={onAdd}
+        className={primaryButtonClass}
+      >
         <Plus className="h-4 w-4" /> Add your first link
-      </button>
-    </div>
+      </motion.button>
+    </motion.div>
   );
 }

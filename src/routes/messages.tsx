@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { motion } from "framer-motion";
 import { Bell, Plus } from "lucide-react";
 import { useState } from "react";
 import { PageHeader } from "@/components/page-header";
@@ -24,23 +25,31 @@ export const Route = createFileRoute("/messages")({
   component: MessagesPage,
 });
 
+const EASE = [0.22, 1, 0.36, 1] as const;
+
+const container = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.07 } },
+};
+
+const cardVariant = {
+  hidden: { opacity: 0, y: 18, scale: 0.97 },
+  show: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: { duration: 0.32, ease: EASE },
+  },
+};
+
 function MessagesPage() {
   const { messages, loaded, add, update, remove } = useImportantMessages();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<ImportantMessage | null>(null);
 
-  const openAdd = () => {
-    setEditing(null);
-    setOpen(true);
-  };
-  const openEdit = (m: ImportantMessage) => {
-    setEditing(m);
-    setOpen(true);
-  };
-  const close = () => {
-    setOpen(false);
-    setEditing(null);
-  };
+  const openAdd = () => { setEditing(null); setOpen(true); };
+  const openEdit = (m: ImportantMessage) => { setEditing(m); setOpen(true); };
+  const close = () => { setOpen(false); setEditing(null); };
 
   return (
     <div className="px-4 md:px-10 py-8 md:py-14 max-w-3xl mx-auto">
@@ -61,16 +70,22 @@ function MessagesPage() {
       ) : messages.length === 0 ? (
         <EmptyState onAdd={openAdd} />
       ) : (
-        <div className="flex flex-col gap-4">
+        <motion.div
+          variants={container}
+          initial="hidden"
+          animate="show"
+          className="flex flex-col gap-4"
+        >
           {messages.map((m) => (
-            <MessageCard
-              key={m.id}
-              message={m}
-              onEdit={() => openEdit(m)}
-              onRemove={() => remove(m.id)}
-            />
+            <motion.div key={m.id} variants={cardVariant}>
+              <MessageCard
+                message={m}
+                onEdit={() => openEdit(m)}
+                onRemove={() => remove(m.id)}
+              />
+            </motion.div>
           ))}
-        </div>
+        </motion.div>
       )}
 
       <MessageModal
@@ -102,17 +117,32 @@ function MessagesSkeleton() {
 
 function EmptyState({ onAdd }: { onAdd: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center py-24 md:py-32 text-center">
-      <div className="h-14 w-14 rounded-2xl bg-[var(--surface-2)] border border-border grid place-items-center mb-5">
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, ease: EASE }}
+      className="flex flex-col items-center justify-center py-24 md:py-32 text-center"
+    >
+      <motion.div
+        initial={{ scale: 0.85, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ duration: 0.4, ease: EASE, delay: 0.1 }}
+        className="h-14 w-14 rounded-2xl bg-[var(--surface-2)] border border-border grid place-items-center mb-5"
+      >
         <Bell className="h-6 w-6 text-copy-secondary" strokeWidth={1.5} />
-      </div>
+      </motion.div>
       <p className="text-[15px] font-medium text-foreground">No messages yet</p>
       <p className="text-[13px] text-copy-secondary mt-1.5 mb-6">
         Save important reminders with motive, time, and message.
       </p>
-      <button onClick={onAdd} className={primaryButtonClass}>
+      <motion.button
+        whileHover={{ scale: 1.03, y: -1 }}
+        whileTap={{ scale: 0.97 }}
+        onClick={onAdd}
+        className={primaryButtonClass}
+      >
         <Plus className="h-4 w-4" /> Add your first message
-      </button>
-    </div>
+      </motion.button>
+    </motion.div>
   );
 }

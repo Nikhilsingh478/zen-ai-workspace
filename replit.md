@@ -110,7 +110,9 @@ src/
 
 - **Fixed-px grid rows** — Desktop grid sets `gridTemplateRows: repeat(N, ${cellPx}px)` matching column cell size, not `auto`. This prevents rows from collapsing when sparse, eliminating layout shifts on drag.
 
-- **Web Speech API for voice** — Voice input in the Ask page uses the browser-native `SpeechRecognition` API (no external service, no cost). Gracefully hidden when unsupported (Firefox, some mobile browsers). Transcript appends to or replaces the textarea input.
+- **Web Speech API for voice + wake word** — Voice input uses browser-native `SpeechRecognition`. The wake word hook (`use-wake-word.ts`) runs a silent continuous background recognition loop that detects "jarvis", pauses itself during command recording, and auto-restarts with `resume()` after the command send completes.
+
+- **Gemini conversation history** — `ask.tsx` converts the `messages` display array to Gemini's `{role, parts}` format and passes full history on every call. The system/context prompt is only prepended on the *first* turn (`conversationHistory.length === 0`); subsequent turns are raw user text so context isn't duplicated.
 
 - **No SSR in practice** — The project has TanStack Start installed but the Vite config runs as a pure client-side SPA. The store hydrates from Supabase after mount; loading skeletons prevent flash of empty content.
 
@@ -127,7 +129,7 @@ src/
 | **Images** | Image board backed by Supabase Storage. |
 | **Messages** | Store and view important notes/messages. |
 | **Insights** | Usage analytics — tracks which tools you open and when (Recharts). |
-| **Ask** | Gemini AI chat with full conversation context from your saved websites and prompts. Includes voice input (mic button) that transcribes speech into the text field via Web Speech API. |
+| **Ask** | Gemini AI chat with full conversation history (no more amnesia between turns). Full workspace context: websites, prompts, links, messages, desktop folders. Voice mic button + "Hey Jarvis" wake word (wand button). |
 
 ---
 

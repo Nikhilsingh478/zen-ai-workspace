@@ -1,6 +1,6 @@
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface GeminiMessage {
+export interface GeminiMessage {
   role: "user" | "model";
   parts: { text: string }[];
 }
@@ -21,14 +21,14 @@ interface GeminiResponse {
     finishReason: string;
     index: number;
   }>;
-  promptFeedback?: {
-    blockReason?: string;
-  };
 }
 
 export interface UserContext {
   websites?: Array<{ name: string; url: string; description: string; tags: string[] }>;
   prompts?: Array<{ title: string; body: string }>;
+  links?: Array<{ name: string; url: string; description?: string | null }>;
+  messages?: Array<{ motive: string; time: string; message: string }>;
+  folders?: Array<{ name: string; items: string[] }>;
 }
 
 // ─── Error map ────────────────────────────────────────────────────────────────
@@ -46,17 +46,45 @@ function buildContextString(ctx: UserContext): string {
 
   if (ctx.websites?.length) {
     parts.push(
-      "\n\nUser's Websites:\n" +
+      "\n\n## Saved AI Tools & Websites\n" +
         ctx.websites
-          .map((s, i) => `${i + 1}. ${s.name} — ${s.url}\n   ${s.description}\n   Tags: ${s.tags.join(", ")}`)
+          .map(
+            (s, i) =>
+              `${i + 1}. **${s.name}** (${s.url})\n   ${s.description}${s.tags.length ? `\n   Tags: ${s.tags.join(", ")}` : ""}`,
+          )
           .join("\n"),
     );
   }
 
   if (ctx.prompts?.length) {
     parts.push(
-      "\n\nUser's Prompts:\n" +
-        ctx.prompts.map((p, i) => `${i + 1}. ${p.title}\n   ${p.body}`).join("\n"),
+      "\n\n## Saved Prompts\n" +
+        ctx.prompts.map((p, i) => `${i + 1}. **${p.title}**\n   ${p.body}`).join("\n"),
+    );
+  }
+
+  if (ctx.links?.length) {
+    parts.push(
+      "\n\n## Saved Links\n" +
+        ctx.links
+          .map((l, i) => `${i + 1}. ${l.name} — ${l.url}${l.description ? ` (${l.description})` : ""}`)
+          .join("\n"),
+    );
+  }
+
+  if (ctx.messages?.length) {
+    parts.push(
+      "\n\n## Important Messages / Reminders\n" +
+        ctx.messages
+          .map((m, i) => `${i + 1}. [${m.time}] ${m.motive}: ${m.message}`)
+          .join("\n"),
+    );
+  }
+
+  if (ctx.folders?.length) {
+    parts.push(
+      "\n\n## Desktop Folders\n" +
+        ctx.folders.map((f) => `• ${f.name} (${f.items.length} items)`).join("\n"),
     );
   }
 
@@ -81,38 +109,48 @@ class GeminiAPI {
   ): Promise<string> {
     if (!this.apiKey) return "API key not configured.";
 
-    const systemPrompt = `You are an AI assistant for the user's AI Metrics workspace.${userContext ? buildContextString(userContext) : ""}
+    // System context is sent only on the first message of a conversation.
+    // For subsequent turns, the model already has the context from its history.
+    const isFirstTurn = conversationHistory.length === 0;
 
-Provide helpful, contextual responses based on the user's saved data when relevant.
-
-User's question:`;
+    const userText = isFirstTurn && userContext
+      ? `You are Jarvis — a sharp, concise AI assistant embedded in the user's personal AI Metrics workspace. You know everything about the user's saved tools, prompts, links, and reminders. Be direct and helpful.${buildContextString(userContext)}\n\n---\n\nUser: ${prompt}`
+      : prompt;
 
     const body: GeminiRequest = {
       contents: [
         ...conversationHistory,
-        { role: "user", parts: [{ text: `${systemPrompt} ${prompt}` }] },
+        { role: "user", parts: [{ text: userText }] },
       ],
-      generationConfig: { temperature: 0.7, topK: 40, topP: 0.95, maxOutputTokens: 2048 },
+      generationConfig: {
+        temperature: 0.7,
+        topK: 40,
+        topP: 0.95,
+        maxOutputTokens: 2048,
+      },
     };
 
     try {
-      const res = await fetch(`${this.baseUrl}/gemini-flash-latest:generateContent?key=${this.apiKey}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
+      const res = await fetch(
+        `${this.baseUrl}/gemini-flash-latest:generateContent?key=${this.apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        },
+      );
 
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}) as { error?: { message?: string } });
+        const err = await res.json().catch(() => ({})) as { error?: { message?: string } };
         console.error("[Gemini] HTTP error:", err);
         return (
           HTTP_ERRORS[res.status] ??
-          `API error (${res.status}): ${(err as { error?: { message?: string } }).error?.message ?? "Unknown error"}`
+          `API error (${res.status}): ${err.error?.message ?? "Unknown error"}`
         );
       }
 
       const data: GeminiResponse = await res.json();
-      return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "No response received from Gemini.";
+      return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "No response received.";
     } catch (err) {
       console.error("[Gemini] Network error:", err);
       return "Failed to reach Gemini. Please check your internet connection.";

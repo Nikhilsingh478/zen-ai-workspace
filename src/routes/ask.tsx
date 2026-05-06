@@ -1,13 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowUp, Mic, Square, Sparkles } from "lucide-react";
+import { ArrowUp, Mic, Square, Sparkles, Wand2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { toast } from "sonner";
 import { geminiAPI } from "@/lib/gemini";
-import type { UserContext } from "@/lib/gemini";
-import { useWebsites, usePrompts } from "@/lib/store";
+import type { GeminiMessage, UserContext } from "@/lib/gemini";
+import { useWebsites, usePrompts, useDesktopStorage } from "@/lib/store";
+import { useLinkBoard } from "@/lib/link-board";
+import { useImportantMessages } from "@/lib/important-messages";
 import { useVoiceInput, isSpeechSupported } from "@/hooks/use-voice-input";
+import { useWakeWord, isWakeWordSupported } from "@/hooks/use-wake-word";
 import { cn } from "@/lib/utils";
 
 // ─── Route ────────────────────────────────────────────────────────────────────
@@ -43,14 +47,26 @@ function AskPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
+  const [wakeActivated, setWakeActivated] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Input value ref to avoid stale closures in callbacks
+  const inputValueRef = useRef("");
+  useEffect(() => { inputValueRef.current = input; }, [input]);
+
+  // Stable send ref for use inside effects
+  const sendRef = useRef<(text: string) => void>(() => {});
+
+  // Data stores — everything the workspace knows about
   const { websites } = useWebsites();
   const { prompts } = usePrompts();
+  const { desktop } = useDesktopStorage();
+  const { links } = useLinkBoard();
+  const { messages: importantMessages } = useImportantMessages();
 
-  // Auto-scroll to bottom when new messages arrive
+  // Auto-scroll to bottom on new messages
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, thinking]);
@@ -63,22 +79,42 @@ function AskPage() {
     ta.style.height = `${Math.min(ta.scrollHeight, 128)}px`;
   }, [input]);
 
-  const send = async (text: string) => {
+  const send = useCallback(async (text: string) => {
     const value = text.trim();
     if (!value || thinking) return;
 
     const userMsg: Message = { id: crypto.randomUUID(), role: "user", content: value };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
-
     if (textareaRef.current) textareaRef.current.style.height = "auto";
 
     setThinking(true);
     try {
-      const context: UserContext = { websites, prompts };
-      const reply = await geminiAPI.generateContent(value, [], context);
-      const assistantMsg: Message = { id: crypto.randomUUID(), role: "assistant", content: reply };
-      setMessages((prev) => [...prev, assistantMsg]);
+      // Build full context from all workspace data
+      const context: UserContext = {
+        websites,
+        prompts,
+        links,
+        messages: importantMessages,
+        folders: desktop.folders.map((f) => ({
+          name: f.name,
+          items: f.children,
+        })),
+      };
+
+      // Convert display messages → Gemini history format
+      // (The first user message carries the system context; subsequent turns are raw)
+      const geminiHistory: GeminiMessage[] = messages.map((m) => ({
+        role: m.role === "user" ? "user" : "model",
+        parts: [{ text: m.content }],
+      }));
+
+      const reply = await geminiAPI.generateContent(value, geminiHistory, context);
+
+      setMessages((prev) => [
+        ...prev,
+        { id: crypto.randomUUID(), role: "assistant", content: reply },
+      ]);
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -87,29 +123,97 @@ function AskPage() {
     } finally {
       setThinking(false);
     }
-  };
+  }, [thinking, websites, prompts, links, importantMessages, desktop.folders, messages]);
+
+  // Keep sendRef stable for use in effects
+  useEffect(() => { sendRef.current = send; }, [send]);
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     send(input);
   };
 
+  // ─── Voice input ───────────────────────────────────────────────────────────
+
+  const wakeTriggeredRef = useRef(false);
+
   const handleTranscript = useCallback((text: string) => {
-    setInput((prev) => (prev.trim() ? `${prev} ${text}` : text));
+    const newInput = inputValueRef.current.trim()
+      ? `${inputValueRef.current} ${text}`
+      : text;
+    setInput(newInput);
     textareaRef.current?.focus();
+
+    // If triggered by wake word → auto-send
+    if (wakeTriggeredRef.current) {
+      wakeTriggeredRef.current = false;
+      setTimeout(() => {
+        if (newInput.trim()) sendRef.current(newInput);
+      }, 80);
+    }
   }, []);
 
   const { voiceState, toggle: toggleVoice } = useVoiceInput({ onTranscript: handleTranscript });
   const isListening = voiceState === "listening";
 
+  // ─── Wake word "Hey Jarvis" ────────────────────────────────────────────────
+
+  const handleWakeDetected = useCallback(() => {
+    wakeTriggeredRef.current = true;
+    // Visual feedback
+    setWakeActivated(true);
+    setTimeout(() => setWakeActivated(false), 1200);
+    toast("Jarvis activated — speak your command", {
+      duration: 2000,
+      icon: "🎙️",
+    });
+    // Start recording after brief delay for UX
+    setTimeout(() => toggleVoice(), 250);
+  }, [toggleVoice]);
+
+  const wakeWord = useWakeWord({ onDetected: handleWakeDetected });
+
+  // After command recording ends, resume wake word listener
+  const prevVoiceStateRef = useRef(voiceState);
+  useEffect(() => {
+    const prev = prevVoiceStateRef.current;
+    prevVoiceStateRef.current = voiceState;
+    if ((prev === "listening" || prev === "processing") && voiceState === "idle" && wakeWord.enabled) {
+      // Resume after auto-send completes
+      setTimeout(() => wakeWord.resume(), 1800);
+    }
+  }, [voiceState, wakeWord.enabled, wakeWord.resume]);
+
   const empty = messages.length === 0;
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
+      {/* Wake word status banner */}
+      <AnimatePresence>
+        {wakeWord.enabled && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.22, ease: EASE }}
+            className="shrink-0 flex items-center justify-center gap-2 py-1.5 text-[11px] text-copy-muted bg-transparent"
+          >
+            <motion.span
+              className="h-1.5 w-1.5 rounded-full bg-violet-400"
+              animate={{ opacity: wakeWord.isWatching ? [0.4, 1, 0.4] : 1 }}
+              transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+            />
+            {wakeWord.isWatching ? 'Listening for "Hey Jarvis"' : "Wake word ready"}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Scrollable messages area */}
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto">
-        <div className="max-w-3xl mx-auto px-4 md:px-8 pt-10 pb-4">
-          {empty ? <EmptyState onStarter={send} /> : (
+        <div className="max-w-3xl mx-auto px-4 md:px-8 pt-8 pb-4">
+          {empty ? (
+            <EmptyState onStarter={send} wakeEnabled={wakeWord.enabled} />
+          ) : (
             <div className="space-y-5">
               <AnimatePresence initial={false}>
                 {messages.map((m) => <Bubble key={m.id} message={m} />)}
@@ -123,13 +227,21 @@ function AskPage() {
       {/* Input bar */}
       <div className="shrink-0 bg-gradient-to-t from-background via-background/95 to-transparent pt-3 pb-3 md:pb-5">
         <form onSubmit={onSubmit} className="max-w-3xl mx-auto px-4 md:px-8">
-          <div
+          <motion.div
+            animate={
+              wakeActivated
+                ? { boxShadow: "0 0 0 2px rgba(167,139,250,0.5), 0 8px 32px -16px rgba(0,0,0,0.4)" }
+                : { boxShadow: "0 8px 32px -16px rgba(0,0,0,0.4)" }
+            }
+            transition={{ duration: 0.3 }}
             className={cn(
-              "flex items-end gap-2 rounded-3xl border px-4 py-3 transition-all duration-300",
-              "bg-[var(--surface-1)] shadow-[0_8px_32px_-16px_rgba(0,0,0,0.4)]",
-              isListening
-                ? "border-red-500/30 bg-red-500/[0.03]"
-                : "border-border/30 focus-within:border-white/20 focus-within:bg-[var(--surface-2)]",
+              "flex items-end gap-2 rounded-3xl border px-4 py-3 transition-colors duration-300",
+              "bg-[var(--surface-1)]",
+              wakeActivated
+                ? "border-violet-500/40 bg-violet-500/[0.03]"
+                : isListening
+                  ? "border-red-500/30 bg-red-500/[0.03]"
+                  : "border-border/30 focus-within:border-white/20 focus-within:bg-[var(--surface-2)]",
             )}
           >
             <textarea
@@ -143,25 +255,58 @@ function AskPage() {
                 }
               }}
               rows={1}
-              placeholder={isListening ? "Listening…" : "Ask anything…"}
+              placeholder={
+                wakeActivated ? "Jarvis activated…"
+                : isListening ? "Listening…"
+                : "Ask anything…"
+              }
               className="flex-1 bg-transparent resize-none outline-none text-[15px] leading-relaxed py-1.5 px-1 max-h-32 text-foreground placeholder:text-copy-muted overflow-y-auto"
             />
 
             {/* Waveform — visible while listening */}
-            {isListening && (
-              <div className="flex items-end gap-0.5 mb-2.5 shrink-0">
-                {[0, 0.12, 0.24, 0.36].map((delay, i) => (
-                  <motion.span
-                    key={i}
-                    className="w-[3px] rounded-full bg-red-400"
-                    animate={{ height: ["4px", "14px", "4px"] }}
-                    transition={{ duration: 0.7, repeat: Infinity, delay, ease: "easeInOut" }}
-                  />
-                ))}
-              </div>
+            <AnimatePresence>
+              {isListening && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  className="flex items-end gap-0.5 mb-2.5 shrink-0"
+                >
+                  {[0, 0.12, 0.24, 0.36].map((delay, i) => (
+                    <motion.span
+                      key={i}
+                      className="w-[3px] rounded-full bg-red-400"
+                      animate={{ height: ["4px", "14px", "4px"] }}
+                      transition={{ duration: 0.7, repeat: Infinity, delay, ease: "easeInOut" }}
+                    />
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Wake word toggle — only shown when speech is supported */}
+            {isWakeWordSupported && (
+              <motion.button
+                type="button"
+                onClick={wakeWord.enabled ? wakeWord.disable : wakeWord.enable}
+                whileTap={{ scale: 0.92 }}
+                title={wakeWord.enabled ? 'Disable "Hey Jarvis"' : 'Enable "Hey Jarvis" wake word'}
+                className={cn(
+                  "relative h-9 w-9 shrink-0 grid place-items-center rounded-xl transition-all duration-200 mb-0.5",
+                  wakeWord.enabled
+                    ? "text-violet-400 bg-violet-500/10"
+                    : "text-copy-muted hover:text-foreground hover:bg-white/[0.06]",
+                )}
+                aria-label={wakeWord.enabled ? "Disable wake word" : "Enable wake word"}
+              >
+                {wakeWord.enabled && wakeWord.isWatching && (
+                  <span className="absolute inset-0 rounded-xl bg-violet-500/15 animate-ping opacity-60" />
+                )}
+                <Wand2 className="h-4 w-4 relative z-10" />
+              </motion.button>
             )}
 
-            {/* Mic button — only shown when browser supports speech */}
+            {/* Mic button */}
             {isSpeechSupported && (
               <motion.button
                 type="button"
@@ -197,10 +342,12 @@ function AskPage() {
             >
               <ArrowUp className="h-4 w-4" />
             </motion.button>
-          </div>
+          </motion.div>
 
           <p className="text-[11px] text-copy-muted text-center mt-2 opacity-60 hidden md:block">
-            Enter to send · Shift+Enter for newline{isSpeechSupported ? " · Click mic to speak" : ""}
+            Enter to send · Shift+Enter for newline
+            {isSpeechSupported ? " · Click mic to speak" : ""}
+            {isWakeWordSupported ? ' · Click wand for "Hey Jarvis"' : ""}
           </p>
         </form>
       </div>
@@ -210,7 +357,13 @@ function AskPage() {
 
 // ─── Empty state ──────────────────────────────────────────────────────────────
 
-function EmptyState({ onStarter }: { onStarter: (s: string) => void }) {
+function EmptyState({
+  onStarter,
+  wakeEnabled,
+}: {
+  onStarter: (s: string) => void;
+  wakeEnabled: boolean;
+}) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -233,7 +386,7 @@ function EmptyState({ onStarter }: { onStarter: (s: string) => void }) {
         transition={{ duration: 0.4, ease: EASE, delay: 0.2 }}
         className="text-2xl md:text-[32px] font-semibold tracking-tight text-foreground"
       >
-        What's on your mind?
+        {wakeEnabled ? "Listening for Jarvis…" : "What's on your mind?"}
       </motion.h1>
 
       <motion.p
@@ -242,7 +395,9 @@ function EmptyState({ onStarter }: { onStarter: (s: string) => void }) {
         transition={{ duration: 0.4, ease: EASE, delay: 0.3 }}
         className="text-sm text-copy-secondary mt-2"
       >
-        A calm space to think, draft, and explore.
+        {wakeEnabled
+          ? 'Say "Hey Jarvis" to activate voice input'
+          : "A calm space to think, draft, and explore."}
       </motion.p>
 
       <motion.div
@@ -256,7 +411,7 @@ function EmptyState({ onStarter }: { onStarter: (s: string) => void }) {
             key={s}
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, ease: EASE, delay: 0.5 + i * 0.05 }}
+            transition={{ duration: 0.3, ease: EASE, delay: 0.5 + i * 0.06 }}
             whileHover={{ scale: 1.02, y: -1 }}
             whileTap={{ scale: 0.98 }}
             onClick={() => onStarter(s)}
@@ -277,9 +432,9 @@ function Bubble({ message }: { message: Message }) {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3, ease: EASE }}
+      initial={{ opacity: 0, y: 10, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.28, ease: EASE }}
       className={cn("flex", isUser ? "justify-end" : "justify-start")}
     >
       <div
@@ -333,8 +488,12 @@ function AssistantMarkdown({ content }: { content: string }) {
           strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
           em: ({ children }) => <em className="italic">{children}</em>,
           a: ({ href, children }) => (
-            <a href={href} target="_blank" rel="noopener noreferrer"
-              className="text-copy-secondary hover:text-foreground underline transition-colors">
+            <a
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-copy-secondary hover:text-foreground underline transition-colors"
+            >
               {children}
             </a>
           ),
@@ -351,10 +510,10 @@ function AssistantMarkdown({ content }: { content: string }) {
 function ThinkingIndicator() {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8 }}
+      initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -8 }}
-      transition={{ duration: 0.3, ease: EASE }}
+      exit={{ opacity: 0, y: -4, scale: 0.95 }}
+      transition={{ duration: 0.25, ease: EASE }}
       className="flex"
     >
       <div className="rounded-2xl bg-[var(--surface-2)] border border-border/50 px-4 py-3 flex items-center gap-1.5">

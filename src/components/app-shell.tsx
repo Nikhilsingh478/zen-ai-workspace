@@ -10,6 +10,7 @@ import {
   Bell,
   Menu,
 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import { useState, type ReactNode, type ComponentType } from "react";
 import { cn } from "@/lib/utils";
 import { SyncIndicator } from "@/components/sync-indicator";
@@ -60,13 +61,17 @@ export function AppShell({ children }: { children: ReactNode }) {
       <aside className="hidden md:flex flex-col w-56 shrink-0 border-r border-border bg-[var(--surface-1)]">
         <div className="px-6 pt-7 pb-10">
           <Link to="/" className="flex items-center gap-2.5 group">
-            <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-white/90 to-white/40 grid place-items-center">
+            <motion.div
+              className="h-7 w-7 rounded-lg bg-gradient-to-br from-white/90 to-white/40 grid place-items-center"
+              whileHover={{ scale: 1.08 }}
+              transition={{ type: "spring", stiffness: 400, damping: 20 }}
+            >
               <div className="h-3 w-3 rounded-[3px] bg-background" />
-            </div>
+            </motion.div>
             <span className="text-[15px] font-semibold tracking-tight">AI Metrics</span>
           </Link>
         </div>
-        <nav className="px-3 flex flex-col gap-1">
+        <nav className="px-3 flex flex-col gap-0.5">
           {NAV.map((item) => {
             const active = isActive(item.to);
             const Icon = item.icon;
@@ -75,17 +80,30 @@ export function AppShell({ children }: { children: ReactNode }) {
                 key={item.to}
                 to={item.to}
                 className={cn(
-                  "relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all duration-200",
+                  "relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors duration-150",
                   active
-                    ? "bg-white/[0.07] text-foreground"
-                    : "text-copy-secondary hover:text-foreground hover:bg-white/[0.04]",
+                    ? "text-foreground"
+                    : "text-copy-secondary hover:text-foreground",
                 )}
               >
-                <Icon className="h-[18px] w-[18px]" strokeWidth={1.75} />
-                <span className="font-medium">{item.label}</span>
+                {/* Animated active background pill */}
                 {active && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[2px] rounded-r-full bg-foreground/80" />
+                  <motion.span
+                    layoutId="sidebar-active-bg"
+                    className="absolute inset-0 rounded-lg bg-white/[0.07]"
+                    transition={{ type: "spring", stiffness: 380, damping: 32 }}
+                  />
                 )}
+                {/* Animated left bar */}
+                {active && (
+                  <motion.span
+                    layoutId="sidebar-active-bar"
+                    className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[2px] rounded-r-full bg-foreground/80"
+                    transition={{ type: "spring", stiffness: 380, damping: 32 }}
+                  />
+                )}
+                <Icon className="h-[18px] w-[18px] relative z-10 shrink-0" strokeWidth={1.75} />
+                <span className="font-medium relative z-10">{item.label}</span>
               </Link>
             );
           })}
@@ -100,7 +118,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <main className="flex-1 min-h-0 overflow-y-auto">{children}</main>
       </div>
 
-      {/* Mobile bottom nav — 4 primary + More */}
+      {/* Mobile bottom nav */}
       <nav className="md:hidden fixed bottom-3 left-3 right-3 z-50 rounded-2xl border border-border bg-[var(--surface-2)]/90 backdrop-blur-xl shadow-[0_8px_30px_rgba(0,0,0,0.4)]">
         <div className="grid grid-cols-5">
           {MOBILE_PRIMARY.map((item) => {
@@ -111,14 +129,18 @@ export function AppShell({ children }: { children: ReactNode }) {
                 key={item.to}
                 to={item.to}
                 className={cn(
-                  "relative flex flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors",
+                  "relative flex flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors duration-150",
                   active ? "text-foreground" : "text-copy-secondary hover:text-foreground",
                 )}
               >
                 <Icon className="h-[18px] w-[18px]" strokeWidth={1.75} />
                 <span className="truncate max-w-full px-0.5">{item.label}</span>
                 {active && (
-                  <span className="absolute top-1 h-0.5 w-5 rounded-full bg-foreground/80" />
+                  <motion.span
+                    layoutId="mobile-active-dot"
+                    className="absolute top-1 h-0.5 w-5 rounded-full bg-foreground/80"
+                    transition={{ type: "spring", stiffness: 380, damping: 32 }}
+                  />
                 )}
               </Link>
             );
@@ -136,7 +158,11 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <Menu className="h-[18px] w-[18px]" strokeWidth={1.75} />
                 <span>More</span>
                 {moreActive && (
-                  <span className="absolute top-1 h-0.5 w-5 rounded-full bg-foreground/80" />
+                  <motion.span
+                    layoutId="mobile-active-dot"
+                    className="absolute top-1 h-0.5 w-5 rounded-full bg-foreground/80"
+                    transition={{ type: "spring", stiffness: 380, damping: 32 }}
+                  />
                 )}
               </button>
             </SheetTrigger>
@@ -184,11 +210,15 @@ export function AppShell({ children }: { children: ReactNode }) {
           </Sheet>
         </div>
       </nav>
-      <div className="fixed bottom-24 right-4 z-50 md:bottom-4">
-        <div className="rounded-full border border-border bg-[var(--surface-2)] px-3 py-2 shadow-[0_8px_30px_rgba(0,0,0,0.35)]">
-          <SyncIndicator compact />
+
+      {/* Sync indicator (mobile floating) */}
+      <AnimatePresence>
+        <div className="fixed bottom-24 right-4 z-50 md:bottom-4">
+          <div className="rounded-full border border-border bg-[var(--surface-2)] px-3 py-2 shadow-[0_8px_30px_rgba(0,0,0,0.35)]">
+            <SyncIndicator compact />
+          </div>
         </div>
-      </div>
+      </AnimatePresence>
     </div>
   );
 }
