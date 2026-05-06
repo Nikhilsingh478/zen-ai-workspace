@@ -1,0 +1,135 @@
+I need you to perform a COMPLETE forensic-level audit of this entire Replit project and explain EXACTLY how the application was able to load dynamic Supabase database data even though I NEVER manually added the Supabase environment variables in Replit Secrets.
+
+IMPORTANT:
+Do NOT give generic explanations.
+I want a precise technical investigation of THIS SPECIFIC PROJECT.
+
+Context:
+
+* I imported a GitHub repository into Replit.
+* Replit only asked me for the Gemini API key.
+* I NEVER manually added any Supabase URL or Supabase anon/service role key.
+* Despite that, the application successfully opened and loaded REAL dynamic database data locally.
+* I need to understand EXACTLY how this happened.
+
+I want a FULL investigation covering ALL possible paths.
+
+Please systematically inspect and verify the following:
+
+1. Check if Supabase credentials already exist anywhere in the repository
+
+* Search entire codebase for:
+
+  * SUPABASE
+  * VITE_SUPABASE
+  * NEXT_PUBLIC_SUPABASE
+  * REACT_APP_SUPABASE
+  * createClient(
+  * supabase.co
+  * anon key
+  * service_role
+  * process.env
+  * import.meta.env
+* Check ALL frontend, backend, config, build, and hidden files.
+* Tell me EXACTLY which files contain credentials or URLs.
+
+2. Check whether any `.env` files already existed
+   Inspect:
+
+* .env
+* .env.local
+* .env.production
+* .env.development
+* .env.example
+* hidden config files
+* ignored git files
+* build cache directories
+
+Tell me:
+
+* whether any env file already existed after import
+* whether Replit auto-detected/imported them
+* whether any values were pre-populated
+
+3. Check Replit Secrets and workspace inheritance
+   Investigate whether:
+
+* Secrets were inherited from a template/fork
+* Replit auto-restored previous secrets
+* secrets came from deployment settings
+* hidden workspace variables existed
+* secrets were mounted automatically
+
+Explain EXACTLY what secrets currently exist and where they originated from.
+
+4. Check if frontend is directly using public Supabase credentials
+   Verify whether:
+
+* the frontend contains hardcoded anon keys
+* the frontend directly connects to Supabase
+* the database is publicly accessible
+* Row Level Security (RLS) is disabled
+* the frontend can fetch data using only public anon credentials
+
+I want exact files and exact code responsible.
+
+5. Check if app is secretly connecting to an external deployed backend
+   Verify whether:
+
+* frontend API URLs point to production servers
+* requests are hitting Railway/Vercel/Render/AWS instead of localhost
+* environment configs already point to deployed APIs
+* data is coming from remote APIs rather than local backend
+
+Inspect:
+
+* axios configs
+* fetch base URLs
+* API client files
+* proxy configs
+* vite.config
+* next.config
+* nginx configs
+* deployment configs
+
+Tell me EXACTLY where requests are going.
+
+6. Check browser/service worker/cache behavior
+   Investigate whether:
+
+* cached API responses existed
+* service workers restored old data
+* localStorage/sessionStorage contained persisted state
+* IndexedDB stored previous database results
+
+7. Trace the ACTUAL runtime flow
+   I want a complete runtime trace:
+
+* where frontend starts
+* where Supabase client initializes
+* where credentials come from
+* how requests are authenticated
+* which endpoint is called
+* how data is returned
+
+Show the ENTIRE chain step-by-step.
+
+8. Security audit
+   After identifying the cause:
+
+* explain whether this is secure or dangerous
+* explain whether credentials are exposed publicly
+* explain whether production secrets are leaked
+* explain whether the architecture is incorrect
+* explain best practices
+
+9. Final conclusion
+   At the end, give:
+
+* the SINGLE REAL reason why the app worked without me manually adding Supabase secrets
+* confidence level for the explanation
+* exact files responsible
+* exact fix if this behavior is unintended
+
+Do NOT give vague answers.
+I want a real technical root-cause investigation of THIS specific repository.

@@ -1,84 +1,150 @@
 # AI Metrics — Personal AI Operating System
 
-## Overview
+A dark-themed personal workspace for managing AI tools, prompts, a drag-and-drop desktop launcher, links, images, messages, and an AI chat powered by Google Gemini. All data persists in real time via Supabase.
 
-A full-stack React web app built with TanStack Router/React Start (SSR). It serves as a personal workspace for managing AI tools, prompts, and a drag-and-drop desktop launcher. All data is persisted to **Supabase** (PostgreSQL) with real-time sync.
+---
 
-## Tech Stack
+## Run & Operate
 
-- **Frontend/SSR Framework:** React 19 + TanStack Router + @tanstack/react-start
-- **Build Tool:** Vite 7
-- **Styling:** Tailwind CSS v4 + Radix UI + shadcn/ui component patterns
-- **Drag & Drop:** @dnd-kit/core
-- **Animations:** framer-motion
-- **Data Layer:** Supabase (PostgreSQL) — 3 tables: `items`, `desktop_layout`, `desktop_folders`
-- **Realtime:** Supabase realtime channel `db-changes`
-- **Toasts:** sonner
-- **Package Manager:** npm
+| Command | Purpose |
+|---|---|
+| `npm run dev` | Start dev server on port 5000 |
+| `npm run build` | Production Vite build → `dist/` |
+| `npm run preview` | Preview production build locally |
+| `npm run lint` | ESLint |
+| `npm run format` | Prettier |
 
-## Environment Variables
+**Required env vars:**
 
-- `VITE_SUPABASE_URL` — Supabase project URL
-- `VITE_SUPABASE_ANON_KEY` — Supabase public anon key
+| Key | Description |
+|---|---|
+| `VITE_SUPABASE_URL` | Supabase project URL |
+| `VITE_SUPABASE_ANON_KEY` | Supabase public anon key (publishable) |
+| `VITE_GEMINI_API_KEY` | Google Gemini API key (for Ask page) |
 
-## Project Structure
+---
+
+## Stack
+
+- **Runtime:** Node 20, browser-side SPA (no SSR active)
+- **Framework:** React 19 + TanStack Router v1 (file-based routing)
+- **Build:** Vite 7
+- **Styling:** Tailwind CSS v4 (`@tailwindcss/vite` plugin) + design token system in `styles.css`
+- **UI primitives:** Radix UI + shadcn/ui patterns
+- **Animations:** Framer Motion
+- **Drag & Drop:** @dnd-kit/core + @dnd-kit/modifiers + @dnd-kit/sortable
+- **Data / Realtime:** Supabase JS v2 (`@supabase/supabase-js`)
+- **AI:** Google Gemini REST API (`gemini-flash-latest`)
+- **Voice:** Web Speech API (browser-native, no external dependency)
+- **Toasts:** Sonner
+- **Markdown:** react-markdown + remark-gfm
+- **Charts:** Recharts
+- **Package manager:** npm
+
+---
+
+## Where Things Live
 
 ```
 src/
-  routes/           # TanStack Router route modules
-    __root.tsx      # Root HTML shell + Toaster
-    index.tsx       # Websites page (skeleton while loading)
-    ask.tsx         # Ask page (Gemini integration)
-    desktop.tsx     # Desktop launcher page (skeleton while loading)
-    prompts.tsx     # Prompts page (skeleton while loading)
-  components/
-    desktop/        # Desktop launcher system
-      desktop-grid.tsx    # Main DnD grid with dnd-kit
-      desktop-item.tsx    # Draggable/droppable website icon
-      folder-icon.tsx     # Draggable/droppable folder icon
-      folder-overlay.tsx  # Folder modal (open, rename, delete)
-      drag-ghost.tsx      # Lightweight DragOverlay ghost clone
-    app-shell.tsx   # Main app layout/sidebar
-    sync-indicator.tsx    # Cloud sync status indicator
-  hooks/
-    use-mobile.ts   # Responsive breakpoint hook
-  lib/
-    github-data.ts  # Types and SEED_DATA (kept for types only)
-    supabase.ts     # Supabase client init
-    supabase-data.ts # All Supabase read/write operations
-    store.ts        # Global external store (useSyncExternalStore)
-                    # Optimistic updates + toast on error/success
-                    # Realtime subscription cleanup on unmount
-    desktop-layout.ts # Grid position helpers and layout normalizer
-    gemini.ts       # Gemini AI integration
-  styles.css        # Tailwind CSS entry
-  router.tsx        # TanStack Router setup
+├── routes/               # TanStack Router pages (one file per route)
+│   ├── __root.tsx        # Root layout — AppShell + Toaster
+│   ├── index.tsx         # /          Websites directory
+│   ├── desktop.tsx       # /desktop   Drag-and-drop launcher
+│   ├── prompts.tsx       # /prompts   Prompt library
+│   ├── links.tsx         # /links     Link board
+│   ├── images.tsx        # /images    Image board (Supabase Storage)
+│   ├── messages.tsx      # /messages  Important messages
+│   ├── insights.tsx      # /insights  Usage analytics (Recharts)
+│   └── ask.tsx           # /ask       Gemini AI chat + voice input
+│
+├── components/
+│   ├── app-shell.tsx         # Sidebar + mobile bottom nav layout
+│   ├── matrix-modal.tsx      # Shared modal (React Portal, framer-motion)
+│   ├── page-header.tsx       # Page title + action slot
+│   ├── sync-indicator.tsx    # Supabase sync status badge
+│   ├── desktop/
+│   │   ├── desktop-grid.tsx  # DnD grid orchestrator (dnd-kit DndContext)
+│   │   ├── desktop-item.tsx  # Draggable website icon
+│   │   ├── folder-icon.tsx   # Draggable + droppable folder
+│   │   ├── folder-overlay.tsx# Folder detail modal (rename, delete, remove items)
+│   │   ├── drag-ghost.tsx    # DragOverlay ghost clone (lightweight)
+│   │   └── command-palette.tsx
+│   ├── image-board/          # Image upload/rename/delete modals
+│   ├── link-board/           # Link card + modal
+│   ├── messages/             # Message card + modal
+│   └── ui/                   # shadcn/ui generated components
+│
+├── hooks/
+│   ├── use-mobile.tsx        # Breakpoint hook (≤768px → mobile)
+│   └── use-voice-input.ts    # Web Speech API hook (VoiceState: idle|listening|processing)
+│
+└── lib/
+    ├── github-data.ts        # Domain types + seed data (source of truth for types)
+    ├── supabase.ts           # Supabase client singleton
+    ├── supabase-data.ts      # All DB read/write functions (typed, no ORM)
+    ├── store.ts              # Global store (useSyncExternalStore) — optimistic mutations + realtime
+    ├── desktop-layout.ts     # Grid math: buildLauncherEntries, normalizeDesktopLayout
+    ├── gemini.ts             # Gemini REST API wrapper (UserContext, error map)
+    ├── usage-tracking.ts     # Tool open event logging
+    └── utils.ts              # cn() Tailwind merge helper
 ```
 
-## Data & Persistence
+**Source-of-truth files:**
+- DB schema: `SETUP.sql` / `SETUP_NEW_TABS.sql`
+- Design tokens: `src/styles.css` (`:root` block — all colors in oklch)
+- Types: `src/lib/github-data.ts`
+- Route tree: `src/routeTree.gen.ts` (auto-generated by TanStack Router plugin)
 
-- **Storage:** Supabase PostgreSQL
-  - `public.items` — websites and prompts (type field distinguishes them)
-  - `public.desktop_layout` — per-item x/y grid positions
-  - `public.desktop_folders` — folder metadata + children array
-  - RLS disabled on all three tables
-- **Hydration:** Store starts with empty state. After mount, fetches from Supabase. Loading skeletons shown while `loaded === false`.
-- **Mutations:** Optimistic (UI updates instantly), then async persist to Supabase. On error, state rolls back + toast.error shown.
-- **Realtime:** Supabase channel subscribed after initial load; any change to any table triggers a full refetch.
+---
 
-## Desktop Launcher
+## Architecture Decisions
 
-- 8-col grid on desktop, 4-col on mobile
-- Drag items to reposition (snap-to-grid, swap on collision)
-- Drag item onto existing folder → adds to folder
-- Right-click empty space → "New Folder" context menu (desktop)
-- Mobile: "New Folder" button in top-right
-- Folder overlay: click to open, remove items, rename, delete
-- No auto folder creation from drag (manual only)
-- DragOverlay: plain `<DragOverlay dropAnimation={null}>` — dnd-kit handles cursor tracking natively
+- **Global external store over Context API** — `store.ts` uses `useSyncExternalStore` so all subscribers get the same snapshot synchronously. Avoids Context cascading re-renders across the whole tree for every keystroke.
 
-## Dev Notes
+- **Optimistic mutations** — Every write updates local state instantly, then persists to Supabase async. On failure, state rolls back and `toast.error` is shown. Users never wait for network round-trips.
 
-- Port: 5000 (`npm run dev` = `vite dev --port 5000 --host 0.0.0.0`)
-- Workflow: `npm run dev`
-- Hydration note: SSR renders with empty state; client hydrates with Supabase data after mount. Loading skeletons prevent flash of empty content.
+- **React Portal for modals** — `MatrixModal` renders via `createPortal(…, document.body)` to escape any transform/overflow ancestor that would break `position: fixed` centering. This is critical because framer-motion applies transforms on animated page wrappers.
+
+- **Cursor-based DnD collision** — Desktop grid ignores dnd-kit's collision rect (which lags the visual by grab-offset) and instead recomputes the target cell from `activatorEvent.clientX + delta.x`. This makes folder drops and grid snaps land exactly where the ghost appears visually.
+
+- **Fixed-px grid rows** — Desktop grid sets `gridTemplateRows: repeat(N, ${cellPx}px)` matching column cell size, not `auto`. This prevents rows from collapsing when sparse, eliminating layout shifts on drag.
+
+- **Web Speech API for voice** — Voice input in the Ask page uses the browser-native `SpeechRecognition` API (no external service, no cost). Gracefully hidden when unsupported (Firefox, some mobile browsers). Transcript appends to or replaces the textarea input.
+
+- **No SSR in practice** — The project has TanStack Start installed but the Vite config runs as a pure client-side SPA. The store hydrates from Supabase after mount; loading skeletons prevent flash of empty content.
+
+---
+
+## Product
+
+| Page | What it does |
+|---|---|
+| **Websites** | Curated directory of AI tools. Add/edit/delete, tag filter, sort, favicon auto-fetch. |
+| **Desktop** | macOS-style icon grid. Drag to reposition (snap-to-grid + swap). Drag onto folder to group. Right-click → New Folder. Scrolls when icons overflow. |
+| **Prompts** | Personal prompt library with copy-to-clipboard. |
+| **Links** | Simple link board. |
+| **Images** | Image board backed by Supabase Storage. |
+| **Messages** | Store and view important notes/messages. |
+| **Insights** | Usage analytics — tracks which tools you open and when (Recharts). |
+| **Ask** | Gemini AI chat with full conversation context from your saved websites and prompts. Includes voice input (mic button) that transcribes speech into the text field via Web Speech API. |
+
+---
+
+## User Preferences
+
+- Code style: clean, non-cluttered, senior-level — no verbose comments in JSX, no redundant CSS, typed properly (no `any` unless unavoidable)
+- Modals must always appear centered regardless of page scroll position (use React Portal)
+- Desktop grid must not shift layout on load or during drag (fixed row heights)
+- Desktop page must scroll when items overflow the viewport
+
+---
+
+## Gotchas
+
+- **`VITE_` prefix required** — Supabase and Gemini keys must have the `VITE_` prefix to be injected by Vite into client code.
+- **RLS is disabled** on all Supabase tables (`items`, `desktop_layout`, `desktop_folders`). Anyone with the anon key can read/write. Fine for a personal tool; add RLS + auth before making multi-user.
+- **Voice input is Chrome/Edge only** — `SpeechRecognition` is not available in Firefox or Safari (partial). The `isSpeechSupported` export from `use-voice-input.ts` gates the mic button so it only renders when supported.
+- **Realtime triggers full refetch** — Supabase realtime fires on any table change and calls `fetchAllData()` (all three tables in parallel). This is intentionally simple; for high-frequency writes, debounce or use incremental updates.
+- **`normalizeDesktopLayout` auto-places new items** — Any item without a layout entry gets placed in the next free cell. This can cause temporary position shifts until Supabase persists the layout. The fixed `gridTemplateRows` prevents visual glitches.
+- **Port 5000** — Configured in both `package.json` (`vite dev --port 5000`) and `.replit` (`waitForPort = 5000`). Do not change without updating both.

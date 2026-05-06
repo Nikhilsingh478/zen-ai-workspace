@@ -4,51 +4,44 @@ import type { ReactNode } from "react";
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
 
-export function MatrixModal({
-  open,
-  onClose,
-  title,
-  children,
-}: {
+interface MatrixModalProps {
   open: boolean;
   onClose: () => void;
   title: string;
   children: ReactNode;
-}) {
+}
+
+export function MatrixModal({ open, onClose, title, children }: MatrixModalProps) {
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
+    const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
   }, [open, onClose]);
 
-  const modal = (
+  return createPortal(
     <AnimatePresence>
       {open && (
         <motion.div
           className="fixed inset-0 z-[100] flex items-center justify-center p-4"
-          style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0 }}
-          initial={{ opacity: 0.88 }}
+          initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          exit={{ opacity: 0.88 }}
+          exit={{ opacity: 0 }}
           transition={{ duration: 0.18 }}
         >
           <motion.div
             className="absolute inset-0 bg-black/60 backdrop-blur-md"
             onClick={onClose}
-            initial={{ opacity: 0.88 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0.88 }}
           />
           <motion.div
             role="dialog"
             aria-modal="true"
             aria-label={title}
-            initial={{ scale: 0.96, opacity: 0.88, y: 6 }}
+            initial={{ scale: 0.96, opacity: 0, y: 6 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 0.97, opacity: 0.88 }}
+            exit={{ scale: 0.97, opacity: 0 }}
             transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
             className="relative w-full max-w-md rounded-2xl border border-border bg-[var(--surface-2)] p-6 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.7)]"
           >
@@ -66,10 +59,9 @@ export function MatrixModal({
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
-
-  return createPortal(modal, document.body);
 }
 
 export const fieldClass =

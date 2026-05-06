@@ -1,11 +1,11 @@
-// Gemini API integration
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface GeminiMessage {
+interface GeminiMessage {
   role: "user" | "model";
   parts: { text: string }[];
 }
 
-export interface GeminiRequest {
+interface GeminiRequest {
   contents: GeminiMessage[];
   generationConfig?: {
     temperature?: number;
@@ -15,134 +15,113 @@ export interface GeminiRequest {
   };
 }
 
-export interface GeminiResponse {
-  candidates: Array<{
-    content: {
-      parts: { text: string }[];
-      role: string;
-    };
+interface GeminiResponse {
+  candidates?: Array<{
+    content: { parts: { text: string }[]; role: string };
     finishReason: string;
     index: number;
   }>;
   promptFeedback?: {
     blockReason?: string;
-    safetyRatings?: Array<{
-      category: string;
-      probability: string;
-      blocked: boolean;
-    }>;
   };
 }
 
-export class GeminiAPI {
-  private apiKey: string;
-  private baseUrl = "https://generativelanguage.googleapis.com/v1beta/models";
+export interface UserContext {
+  websites?: Array<{ name: string; url: string; description: string; tags: string[] }>;
+  prompts?: Array<{ title: string; body: string }>;
+}
+
+// ─── Error map ────────────────────────────────────────────────────────────────
+
+const HTTP_ERRORS: Record<number, string> = {
+  400: "Invalid request. Please check your API key and try again.",
+  403: "API key is invalid or permissions are insufficient.",
+  429: "Rate limit exceeded. Please try again in a moment.",
+};
+
+// ─── Context builder ──────────────────────────────────────────────────────────
+
+function buildContextString(ctx: UserContext): string {
+  const parts: string[] = [];
+
+  if (ctx.websites?.length) {
+    parts.push(
+      "\n\nUser's Websites:\n" +
+        ctx.websites
+          .map((s, i) => `${i + 1}. ${s.name} — ${s.url}\n   ${s.description}\n   Tags: ${s.tags.join(", ")}`)
+          .join("\n"),
+    );
+  }
+
+  if (ctx.prompts?.length) {
+    parts.push(
+      "\n\nUser's Prompts:\n" +
+        ctx.prompts.map((p, i) => `${i + 1}. ${p.title}\n   ${p.body}`).join("\n"),
+    );
+  }
+
+  return parts.join("");
+}
+
+// ─── API class ────────────────────────────────────────────────────────────────
+
+class GeminiAPI {
+  private readonly apiKey: string;
+  private readonly baseUrl = "https://generativelanguage.googleapis.com/v1beta/models";
 
   constructor() {
-    this.apiKey = import.meta.env.VITE_GEMINI_API_KEY || "";
-
-    if (!this.apiKey) {
-      console.warn("Gemini API key not found in environment variables");
-    }
+    this.apiKey = import.meta.env.VITE_GEMINI_API_KEY ?? "";
+    if (!this.apiKey) console.warn("[Gemini] API key not configured.");
   }
 
   async generateContent(
     prompt: string,
     conversationHistory: GeminiMessage[] = [],
-    userContext?: { websites: any[]; prompts: any[] },
+    userContext?: UserContext,
   ): Promise<string> {
-    if (!this.apiKey) {
-      return "API key not configured. Please add your Gemini API key to the .env file.";
-    }
+    if (!this.apiKey) return "API key not configured.";
 
-    try {
-      // Build context string from user's data
-      let contextString = "";
-      if (userContext) {
-        if (userContext.websites && userContext.websites.length > 0) {
-          contextString += "\n\nUser's Websites:\n";
-          userContext.websites.forEach((site, i) => {
-            contextString += `${i + 1}. ${site.name} - ${site.url}\n   Description: ${site.description}\n   Tags: ${site.tags.join(", ")}\n`;
-          });
-        }
+    const systemPrompt = `You are an AI assistant for the user's AI Metrics workspace.${userContext ? buildContextString(userContext) : ""}
 
-        if (userContext.prompts && userContext.prompts.length > 0) {
-          contextString += "\n\nUser's Prompts:\n";
-          userContext.prompts.forEach((prompt, i) => {
-            contextString += `${i + 1}. ${prompt.title}\n   ${prompt.body}\n`;
-          });
-        }
-      }
-
-      // Add system context
-      const systemPrompt = `You are an AI assistant helping with the user's AI Metrics workspace. ${contextString}
-
-The user is asking for help with their AI tools and prompts. Provide helpful, contextual responses based on their saved data when relevant.
+Provide helpful, contextual responses based on the user's saved data when relevant.
 
 User's question:`;
 
-      const requestBody: GeminiRequest = {
-        contents: [
-          ...conversationHistory,
-          {
-            role: "user",
-            parts: [{ text: systemPrompt + " " + prompt }],
-          },
-        ],
-        generationConfig: {
-          temperature: 0.7,
-          topK: 40,
-          topP: 0.95,
-          maxOutputTokens: 2048,
-        },
-      };
+    const body: GeminiRequest = {
+      contents: [
+        ...conversationHistory,
+        { role: "user", parts: [{ text: `${systemPrompt} ${prompt}` }] },
+      ],
+      generationConfig: { temperature: 0.7, topK: 40, topP: 0.95, maxOutputTokens: 2048 },
+    };
 
-      const response = await fetch(
-        `${this.baseUrl}/gemini-flash-latest:generateContent?key=${this.apiKey}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(requestBody),
-        },
-      );
+    try {
+      const res = await fetch(`${this.baseUrl}/gemini-flash-latest:generateContent?key=${this.apiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error("Gemini API error:", errorData);
-
-        if (response.status === 400) {
-          return "Invalid request. Please check your API key and try again.";
-        } else if (response.status === 403) {
-          return "API key is invalid or permissions are insufficient.";
-        } else if (response.status === 429) {
-          return "Rate limit exceeded. Please try again in a moment.";
-        } else {
-          return `API error (${response.status}): ${errorData.error?.message || "Unknown error"}`;
-        }
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}) as { error?: { message?: string } });
+        console.error("[Gemini] HTTP error:", err);
+        return (
+          HTTP_ERRORS[res.status] ??
+          `API error (${res.status}): ${(err as { error?: { message?: string } }).error?.message ?? "Unknown error"}`
+        );
       }
 
-      const data: GeminiResponse = await response.json();
-
-      if (data.candidates && data.candidates.length > 0) {
-        const candidate = data.candidates[0];
-        if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
-          return candidate.content.parts[0].text;
-        }
-      }
-
-      return "No response received from Gemini.";
-    } catch (error) {
-      console.error("Error calling Gemini API:", error);
-      return "Failed to connect to Gemini API. Please check your internet connection.";
+      const data: GeminiResponse = await res.json();
+      return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "No response received from Gemini.";
+    } catch (err) {
+      console.error("[Gemini] Network error:", err);
+      return "Failed to reach Gemini. Please check your internet connection.";
     }
   }
 
-  isConfigured(): boolean {
-    return !!this.apiKey;
+  get configured(): boolean {
+    return Boolean(this.apiKey);
   }
 }
 
-// Export singleton instance
 export const geminiAPI = new GeminiAPI();

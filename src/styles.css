@@ -9,17 +9,9 @@
 }
 
 /*
- * Design system definition.
- *
- * The @theme inline block maps CSS custom properties to Tailwind utility
- * classes (e.g. --color-primary -> bg-primary, text-primary).
- *
- * The :root and .dark blocks define the actual color values using oklch.
- * All colors MUST use oklch format.
- *
- * To add a new semantic color:
- * 1. Add the variable to :root (light value) and .dark (dark value)
- * 2. Register it in @theme inline as --color-<name>: var(--<name>)
+ * Design tokens.
+ * --color-* maps CSS variables to Tailwind utility classes.
+ * All color values use oklch format.
  */
 
 @theme inline {
@@ -70,13 +62,12 @@
 :root {
   --radius: 0.875rem;
 
-  /* AI Matrix dark palette (always dark) — strict spec */
-  /* #0B0B0C */
+  /* Background: #0B0B0C */
   --background: oklch(0.135 0 0);
-  /* #EDEDED — primary text */
+  /* Primary text: #EDEDED */
   --foreground: oklch(0.94 0 0);
 
-  /* cards: #141416 / #18181B */
+  /* Cards: #141416 / #18181B */
   --card: oklch(0.175 0 0);
   --card-foreground: oklch(0.94 0 0);
   --popover: oklch(0.185 0 0);
@@ -88,7 +79,6 @@
   --secondary: oklch(0.185 0 0);
   --secondary-foreground: oklch(0.94 0 0);
 
-  /* #71717A — muted text */
   --muted: oklch(0.185 0 0);
   --muted-foreground: oklch(0.54 0.005 286);
 
@@ -102,18 +92,15 @@
   --input: oklch(1 0 0 / 10%);
   --ring: oklch(1 0 0 / 18%);
 
-  /* #A1A1AA — secondary text */
+  /* Secondary text: #A1A1AA */
   --text-secondary: oklch(0.71 0.005 286);
-  /* #71717A — tertiary/muted text */
+  /* Muted text: #71717A */
   --text-muted: oklch(0.54 0.005 286);
 
-  /* #141416, #18181B, #1F1F23 */
+  /* Surfaces: #141416, #18181B, #1F1F23 */
   --surface-1: oklch(0.175 0 0);
   --surface-2: oklch(0.195 0 0);
   --surface-3: oklch(0.23 0 0);
-
-  --shadow-glow: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 12px 40px -12px rgba(0, 0, 0, 0.6);
-  --shadow-soft: 0 8px 24px -12px rgba(0, 0, 0, 0.5);
 
   --chart-1: oklch(0.7 0.15 250);
   --chart-2: oklch(0.7 0.15 160);
@@ -135,6 +122,11 @@
   color-scheme: dark;
 }
 
+html {
+  color-scheme: dark;
+  background: var(--color-background);
+}
+
 @layer base {
   * {
     border-color: var(--color-border);
@@ -149,47 +141,7 @@
   }
 }
 
-/* Prevent layout shifts during navigation */
-main {
-  contain: layout;
-  min-height: 0;
-}
-
-/* Smooth transitions for navigation items */
-nav a {
-  will-change: transform, opacity;
-}
-
-/* Prevent layout shift in animated elements */
-* {
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
-}
-
-/* Prevent layout shift in containers */
-.flex-1 {
-  min-width: 0;
-  min-height: 0;
-}
-
-/* Ensure consistent layout during transitions */
-.grid,
-.flex {
-  contain: layout style;
-}
-
-/* Prevent content reflow */
-.max-w-7xl,
-.max-w-3xl {
-  contain: layout;
-}
-
-html {
-  color-scheme: dark;
-  background: var(--color-background);
-}
-
-/* Premium scrollbar */
+/* Scrollbar */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
@@ -205,6 +157,7 @@ html {
   background: rgba(255, 255, 255, 0.12);
 }
 
+/* Surface utilities */
 @utility surface-1 {
   background-color: var(--surface-1);
 }
