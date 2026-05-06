@@ -20,7 +20,7 @@ function DesktopPage() {
   const [searchQuery, setSearchQuery] = useState("");
 
   return (
-    <div className="min-h-[calc(100vh-2rem)] px-4 py-6 md:px-10 md:py-10">
+    <div className="px-4 py-6 md:px-10 md:py-10 pb-10">
       <div className="mx-auto max-w-7xl">
         {/* Header row */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-6">

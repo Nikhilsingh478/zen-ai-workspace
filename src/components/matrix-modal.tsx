@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 
 export function MatrixModal({
   open,
@@ -23,11 +24,12 @@ export function MatrixModal({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  return (
+  const modal = (
     <AnimatePresence>
       {open && (
         <motion.div
           className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+          style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0 }}
           initial={{ opacity: 0.88 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0.88 }}
@@ -66,6 +68,8 @@ export function MatrixModal({
       )}
     </AnimatePresence>
   );
+
+  return createPortal(modal, document.body);
 }
 
 export const fieldClass =

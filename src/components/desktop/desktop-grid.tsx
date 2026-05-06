@@ -238,10 +238,10 @@ export function DesktopGrid({ searchQuery = "" }: DesktopGridProps) {
           style={{
             display: "grid",
             gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
-            gridTemplateRows: `repeat(${gridRows}, auto)`,
+            gridTemplateRows: `repeat(${gridRows}, ${cellPx}px)`,
             gap: `${GRID_GAP}px`,
           }}
-          className="min-h-[240px] rounded-2xl"
+          className="rounded-2xl"
         >
           {positioned.map((entry, i) => {
             const isActive = entry.id === activeId;
