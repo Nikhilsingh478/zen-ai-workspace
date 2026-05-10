@@ -1,0 +1,499 @@
+We are upgrading AI Metrics with a brand new premium productivity and scheduling system called “Horizon”.
+
+IMPORTANT:
+This implementation must feel like a natural part of the existing AI Metrics ecosystem.
+
+The app already has:
+
+* Websites
+* Desktop
+* Prompts
+* Link Board
+* Image Board
+* Important Messages
+* Insights
+* Ask
+
+Horizon must visually and architecturally match this ecosystem perfectly.
+
+==================================================
+PRIMARY GOAL
+============
+
+Build a premium calendar + task management system called:
+
+“Horizon”
+
+This is NOT a generic todo list.
+This is NOT a cluttered productivity SaaS page.
+This is NOT a Google Calendar clone.
+
+It should feel:
+
+* cinematic
+* premium
+* minimal
+* elegant
+* responsive
+* app-like
+* modern AI operating system quality
+
+Reference inspiration:
+
+* Linear
+* Arc Browser
+* Raycast
+* Notion Calendar
+* modern AI productivity tools
+
+==================================================
+NEW ROUTE + NAVIGATION
+======================
+
+Create new route:
+`/horizon`
+
+Add Horizon to:
+
+* desktop sidebar
+* mobile bottom nav
+* router configuration
+* routeTree generation
+
+Suggested icons:
+
+* Orbit
+* CalendarDays
+* Sparkles
+* Target
+
+Choose whichever best fits the existing design language.
+
+==================================================
+PAGE STRUCTURE
+==============
+
+The Horizon page should contain:
+
+1. Animated header
+2. Responsive monthly calendar
+3. Sliding task panel
+4. Task creation/edit system
+
+Everything must be:
+
+* fully responsive
+* mobile-first
+* smooth
+* visually spacious
+* uncluttered
+
+==================================================
+HEADER SECTION
+==============
+
+At the top:
+Display:
+
+* current month
+* current year
+
+Example:
+“May 2026”
+
+Add:
+
+* previous month button
+* next month button
+* Today shortcut button
+
+Transitions between months:
+
+* animated
+* smooth fade
+* slight horizontal motion
+* premium easing
+
+==================================================
+CALENDAR SYSTEM
+===============
+
+Build a fully responsive monthly calendar UI.
+
+Requirements:
+
+* desktop optimized
+* mobile optimized
+* touch friendly
+* clean spacing
+* premium aesthetics
+
+Calendar cells:
+
+* rounded corners
+* subtle hover states
+* smooth transitions
+* soft border glow
+* clean typography
+
+TODAY’S DATE:
+
+* highlighted elegantly
+* premium glow/ring
+* slightly brighter background
+* visually distinct but minimal
+
+DATES WITH TASKS:
+
+* show tiny indicator dots
+  OR
+* subtle task count badge
+
+SELECTED DATE:
+
+* persistent highlighted state
+
+Hover interactions:
+
+* slight lift
+* soft glow
+* motion-based transitions
+
+==================================================
+DATE INTERACTION
+================
+
+When clicking a date:
+
+DO NOT open tiny popup modals.
+
+Desktop:
+
+* open premium right-side sliding panel
+
+Mobile:
+
+* open bottom sheet or fullscreen overlay
+
+Animations:
+
+* Framer Motion
+* spring easing
+* smooth opacity transitions
+* smooth slide transitions
+
+==================================================
+TASK PANEL
+==========
+
+Panel header should display:
+
+* selected date
+* number of tasks
+* Add Task button
+
+Example:
+“May 11, 2026”
+“3 Tasks”
+
+==================================================
+TASK CREATION SYSTEM
+====================
+
+When user clicks Add Task:
+
+Open premium task creation UI.
+
+Required fields:
+
+1. Task Title
+
+* required
+* single-line input
+
+2. Task Time
+
+* required
+* MUST use 12-hour format
+* MUST support AM/PM
+* DO NOT use 24-hour format
+
+Use:
+
+* shadcn/ui popover
+* elegant time picker
+* mobile-friendly interaction
+
+Examples:
+9:30 AM
+2:15 PM
+
+3. Task Description
+
+* multiline textarea
+* expandable
+* optional
+
+4. Priority Selector
+   Options:
+
+* Low
+* Medium
+* High
+
+5. Notification Toggle
+   Enable/disable reminder notifications.
+
+==================================================
+TASK CARD SYSTEM
+================
+
+Tasks should display as premium expandable cards.
+
+Collapsed state:
+
+* title
+* time
+* completion checkbox
+* priority indicator
+
+Expanded state:
+
+* full description
+* edit button
+* delete button
+* notification status
+* created time
+
+Expansion:
+
+* smooth Framer Motion height animation
+* premium transitions
+
+Completed tasks:
+
+* reduced opacity
+* strike-through title
+* elegant state transition
+
+==================================================
+TASK SORTING
+============
+
+Tasks should automatically sort by:
+
+1. task time
+2. creation order
+
+==================================================
+SUPABASE DATABASE
+=================
+
+Create a new table:
+
+`horizon_tasks`
+
+Suggested schema:
+
+id uuid primary key default gen_random_uuid()
+title text not null
+description text
+task_date date not null
+task_time text not null
+priority text default 'medium'
+completed boolean default false
+notification_enabled boolean default false
+created_at timestamptz default now()
+
+==================================================
+SUPABASE REALTIME
+=================
+
+Use realtime subscriptions.
+
+Changes must instantly sync:
+
+* add
+* edit
+* delete
+* completion toggle
+
+==================================================
+NOTIFICATION SYSTEM
+===================
+
+IMPORTANT:
+We are using:
+
+* Supabase
+* Firebase Cloud Messaging (FCM)
+* Vercel
+
+Firebase is ONLY for push notifications.
+
+DO NOT use:
+
+* Firebase Auth
+* Firestore
+* Firebase Hosting
+
+==================================================
+NOTIFICATION FLOW
+=================
+
+Required architecture:
+
+Task Created
+→ stored in Supabase
+→ scheduled task checker runs
+→ Firebase push notification sent
+→ browser/PWA receives push notification
+
+==================================================
+FCM IMPLEMENTATION
+==================
+
+Implement:
+
+* Firebase Cloud Messaging setup
+* service worker setup
+* browser notification permissions
+* FCM token registration
+* foreground notifications
+* background notifications
+
+Examples:
+“Task starts in 15 minutes”
+“Upcoming task reminder”
+“Task due now”
+
+==================================================
+IMPORTANT SERVER ARCHITECTURE
+=============================
+
+DO NOT rely on long-running Vercel serverless functions.
+
+Instead:
+
+* use Supabase Edge Functions
+* use scheduled cron-style jobs
+* query upcoming tasks
+* trigger FCM sends
+
+==================================================
+PWA UPGRADE
+===========
+
+Upgrade PWA support properly.
+
+Requirements:
+
+* installable experience
+* proper manifest
+* service worker support
+* notification compatibility
+* app-like feel on mobile
+
+Ensure compatibility with:
+
+* Android Chrome
+* desktop Chrome/Edge
+* iOS PWA support where possible
+
+==================================================
+DESIGN SYSTEM REQUIREMENTS
+==========================
+
+Maintain existing AI Metrics visual identity:
+
+* dark premium surfaces
+* soft borders
+* subtle gradients
+* smooth typography
+* elegant spacing
+* cinematic motion
+* modern operating system aesthetic
+
+Use existing:
+
+* Tailwind v4 tokens
+* Framer Motion patterns
+* shadcn/ui components
+* existing spacing system
+* existing border radius system
+
+==================================================
+ANIMATION REQUIREMENTS
+======================
+
+Animations should feel:
+
+* premium
+* cinematic
+* smooth
+* responsive
+
+Use:
+
+* Framer Motion
+* staggered transitions
+* smooth layout animations
+* spring easing
+* subtle hover movement
+
+DO NOT over-animate.
+
+==================================================
+RESPONSIVENESS
+==============
+
+Verify:
+
+* desktop responsiveness
+* tablet responsiveness
+* mobile responsiveness
+* no overflow issues
+* no clipping issues
+* touch-friendly interactions
+
+Desktop:
+
+* spacious layouts
+
+Mobile:
+
+* adaptive spacing
+* larger touch targets
+* optimized overlays
+
+==================================================
+IMPORTANT
+=========
+
+DO NOT break:
+
+* existing tabs
+* existing realtime systems
+* existing responsiveness
+* existing animations
+* existing Supabase integrations
+
+Everything must feel like Horizon was always part of AI Metrics from the beginning.
+
+==================================================
+FINAL VERIFICATION
+==================
+
+Before finishing:
+
+* verify realtime sync
+* verify task persistence
+* verify responsive behavior
+* verify notification permissions
+* verify FCM token generation
+* verify service worker behavior
+* verify smooth animations
+* verify no hydration/layout issues
+* verify calendar transitions
+* verify task sorting
+* verify mobile UX
