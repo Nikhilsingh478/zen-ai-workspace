@@ -111,9 +111,15 @@ async function ensureBooted() {
   try {
     await refetch();
     setupRealtime();
-  } catch (err) {
-    console.error("[horizon] load error", err);
-    toast.error("Failed to load Horizon tasks");
+  } catch (err: unknown) {
+    const code = (err as { code?: string })?.code;
+    // PGRST205 = table doesn't exist yet — silent fallback, no toast
+    if (code !== "PGRST205") {
+      console.error("[horizon] load error", err);
+      toast.error("Failed to load Horizon tasks");
+    } else {
+      console.debug("[horizon] table not set up yet — run HORIZON_SETUP.sql");
+    }
     setState({ loaded: true });
   }
 }
@@ -268,7 +274,7 @@ export function format12Hour(time: string): string {
 }
 
 export const PRIORITY_CONFIG: Record<Priority, { label: string; color: string; dot: string }> = {
-  low: { label: "Low", color: "text-emerald-400", dot: "bg-emerald-400" },
-  medium: { label: "Medium", color: "text-amber-400", dot: "bg-amber-400" },
-  high: { label: "High", color: "text-red-400", dot: "bg-red-400" },
+  low: { label: "Low", color: "text-white/40", dot: "bg-white/25" },
+  medium: { label: "Medium", color: "text-white/65", dot: "bg-white/50" },
+  high: { label: "High", color: "text-white/90", dot: "bg-white/85" },
 };

@@ -5,7 +5,7 @@ import {
   ChevronRight,
   CalendarDays,
   Plus,
-  X,
+  ArrowLeft,
   Check,
   Trash2,
   Pencil,
@@ -32,6 +32,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -62,15 +63,18 @@ const MONTHS = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
 ];
-const EASE = [0.22, 1, 0.36, 1] as const;
+const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
+
+const HOURS_12 = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, "0"));
+const ALL_MINUTES = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, "0"));
 
 // ─── Task form schema ─────────────────────────────────────────────────────────
 
 const taskSchema = z.object({
   title: z.string().min(1, "Title is required"),
   description: z.string().optional(),
-  taskTimeHour: z.string().min(1, "Hour required"),
-  taskTimeMinute: z.string().min(1, "Minute required"),
+  taskTimeHour: z.string().min(1),
+  taskTimeMinute: z.string().min(1),
   taskTimeAmpm: z.enum(["AM", "PM"]),
   priority: z.enum(["low", "medium", "high"]),
   notificationEnabled: z.boolean(),
@@ -78,23 +82,20 @@ const taskSchema = z.object({
 
 type TaskFormValues = z.infer<typeof taskSchema>;
 
-const HOURS = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, "0"));
-const MINUTES = ["00", "15", "30", "45"];
-
 // ─── Main page ───────────────────────────────────────────────────────────────
 
 function HorizonPage() {
   const today = new Date();
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
-  const [selectedDate, setSelectedDate] = useState<string>(formatDateKey(today));
-  const [panelOpen, setPanelOpen] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [direction, setDirection] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<HorizonTask | null>(null);
 
   const { tasksForDate, datesWithTasks, add, update, toggle, remove } = useHorizon();
-  const selectedTasks = tasksForDate(selectedDate);
+
+  const selectedTasks = selectedDate ? tasksForDate(selectedDate) : [];
 
   const prevMonth = useCallback(() => {
     setDirection(-1);
@@ -116,33 +117,16 @@ function HorizonPage() {
     setDirection(0);
     setViewYear(today.getFullYear());
     setViewMonth(today.getMonth());
-    const key = formatDateKey(today);
-    setSelectedDate(key);
-    setPanelOpen(true);
+    setSelectedDate(formatDateKey(today));
   }, [today]);
 
-  const selectDate = (dateStr: string) => {
-    setSelectedDate(dateStr);
-    setPanelOpen(true);
-  };
+  const todayKey = formatDateKey(today);
 
-  const openAdd = () => {
-    setEditingTask(null);
-    setModalOpen(true);
-  };
-
-  const openEdit = (task: HorizonTask) => {
-    setEditingTask(task);
-    setModalOpen(true);
-  };
-
-  // Calendar grid computation
+  // Calendar grid
   const firstDayOfMonth = new Date(viewYear, viewMonth, 1).getDay();
   const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
   const daysInPrevMonth = new Date(viewYear, viewMonth, 0).getDate();
-  const todayKey = formatDateKey(today);
 
-  // Build grid cells: previous month overflow + current month + next month overflow
   const cells: { dateStr: string; currentMonth: boolean; day: number }[] = [];
   for (let i = firstDayOfMonth - 1; i >= 0; i--) {
     const d = daysInPrevMonth - i;
@@ -163,205 +147,232 @@ function HorizonPage() {
   const monthKey = `${viewYear}-${viewMonth}`;
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
-      {/* Header */}
-      <div className="shrink-0 px-5 md:px-8 pt-6 pb-4 flex items-center gap-4">
+    <div className="h-full flex flex-col overflow-hidden relative">
+      {/* ── Calendar view ─────────────────────────────────────────────── */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 md:px-10 pt-6 pb-6">
+        {/* Page header */}
         <motion.div
-          initial={{ opacity: 0, y: -8 }}
+          initial={{ opacity: 0, y: -6 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, ease: EASE }}
-          className="flex items-center gap-3"
+          transition={{ duration: 0.35, ease: EASE }}
+          className="flex items-center gap-3 mb-8"
         >
-          <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-violet-500/30 to-violet-500/5 border border-violet-500/20 grid place-items-center">
-            <CalendarDays className="h-4 w-4 text-violet-400" strokeWidth={1.75} />
+          <div className="h-8 w-8 rounded-xl bg-white/[0.06] border border-white/[0.08] grid place-items-center">
+            <CalendarDays className="h-4 w-4 text-white/60" strokeWidth={1.75} />
           </div>
           <div>
             <h1 className="text-[17px] font-semibold tracking-tight leading-none">Horizon</h1>
             <p className="text-[11px] text-copy-muted mt-0.5">Calendar & tasks</p>
           </div>
         </motion.div>
-      </div>
 
-      {/* Body: calendar + panel */}
-      <div className="flex-1 min-h-0 flex flex-col md:flex-row overflow-hidden">
-        {/* Calendar column */}
-        <div className="flex-1 min-w-0 overflow-y-auto px-4 md:px-8 pb-6">
-          {/* Month nav */}
-          <motion.div
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35, ease: EASE }}
-            className="flex items-center justify-between mb-6"
-          >
-            <AnimatePresence mode="wait" custom={direction}>
-              <motion.h2
-                key={monthKey}
-                custom={direction}
-                variants={monthVariants}
-                initial="enter"
-                animate="center"
-                exit="exit"
-                className="text-xl md:text-2xl font-semibold tracking-tight"
-              >
-                {MONTHS[viewMonth]} {viewYear}
-              </motion.h2>
-            </AnimatePresence>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={goToday}
-                className="hidden sm:flex items-center px-3 py-1.5 rounded-lg text-xs font-medium text-copy-secondary border border-border/50 hover:border-border hover:text-foreground transition-all duration-200"
-              >
-                Today
-              </button>
-              <button
-                onClick={prevMonth}
-                className="h-8 w-8 rounded-lg border border-border/50 hover:border-border grid place-items-center text-copy-secondary hover:text-foreground transition-all duration-200"
-                aria-label="Previous month"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-              <button
-                onClick={nextMonth}
-                className="h-8 w-8 rounded-lg border border-border/50 hover:border-border grid place-items-center text-copy-secondary hover:text-foreground transition-all duration-200"
-                aria-label="Next month"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </button>
-            </div>
-          </motion.div>
-
-          {/* Day labels */}
-          <div className="grid grid-cols-7 mb-2">
-            {DAYS.map((d) => (
-              <div key={d} className="text-[11px] font-medium text-copy-muted text-center pb-2">
-                {d}
-              </div>
-            ))}
-          </div>
-
-          {/* Calendar grid */}
+        {/* Month navigation */}
+        <motion.div
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, ease: EASE }}
+          className="flex items-center justify-between mb-6"
+        >
           <AnimatePresence mode="wait" custom={direction}>
-            <motion.div
+            <motion.h2
               key={monthKey}
               custom={direction}
-              variants={gridVariants}
+              variants={monthVariants}
               initial="enter"
               animate="center"
               exit="exit"
-              className="grid grid-cols-7 gap-1"
+              className="text-xl md:text-2xl font-semibold tracking-tight"
             >
-              {cells.map(({ dateStr, currentMonth, day }) => {
-                const isToday = dateStr === todayKey;
-                const isSelected = dateStr === selectedDate;
-                const hasTasks = datesWithTasks.has(dateStr);
-
-                return (
-                  <motion.button
-                    key={dateStr}
-                    onClick={() => selectDate(dateStr)}
-                    whileHover={{ scale: 1.04, y: -1 }}
-                    whileTap={{ scale: 0.96 }}
-                    transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                    className={cn(
-                      "relative aspect-square flex flex-col items-center justify-center rounded-xl text-sm font-medium transition-colors duration-150 group",
-                      !currentMonth && "opacity-25",
-                      isSelected && !isToday
-                        ? "bg-white/[0.08] border border-white/10 text-foreground"
-                        : isToday
-                          ? "bg-violet-500/15 border border-violet-500/30 text-violet-300"
-                          : "hover:bg-white/[0.05] text-copy-secondary hover:text-foreground border border-transparent",
-                    )}
-                  >
-                    {isToday && (
-                      <motion.span
-                        layoutId="today-glow"
-                        className="absolute inset-0 rounded-xl bg-violet-500/10 blur-sm"
-                      />
-                    )}
-                    <span className={cn("relative z-10 text-[13px]", isToday && "text-violet-300 font-semibold")}>
-                      {day}
-                    </span>
-                    {hasTasks && (
-                      <span
-                        className={cn(
-                          "relative z-10 mt-0.5 h-1 w-1 rounded-full",
-                          isSelected || isToday ? "bg-violet-400" : "bg-copy-muted group-hover:bg-copy-secondary",
-                        )}
-                      />
-                    )}
-                  </motion.button>
-                );
-              })}
-            </motion.div>
+              {MONTHS[viewMonth]} {viewYear}
+            </motion.h2>
           </AnimatePresence>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={goToday}
+              className="hidden sm:flex items-center px-3 py-1.5 rounded-lg text-xs font-medium text-copy-secondary border border-white/[0.08] hover:border-white/[0.15] hover:text-foreground transition-all duration-200"
+            >
+              Today
+            </button>
+            <button
+              onClick={prevMonth}
+              className="h-8 w-8 rounded-lg border border-white/[0.08] hover:border-white/[0.15] grid place-items-center text-copy-secondary hover:text-foreground transition-all duration-200"
+              aria-label="Previous month"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <button
+              onClick={nextMonth}
+              className="h-8 w-8 rounded-lg border border-white/[0.08] hover:border-white/[0.15] grid place-items-center text-copy-secondary hover:text-foreground transition-all duration-200"
+              aria-label="Next month"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        </motion.div>
+
+        {/* Day headers */}
+        <div className="grid grid-cols-7 mb-2">
+          {DAYS.map((d) => (
+            <div key={d} className="text-[11px] font-medium text-copy-muted text-center pb-2">
+              {d}
+            </div>
+          ))}
         </div>
 
-        {/* Task panel — desktop: right side; mobile: bottom overlay */}
-        <>
-          {/* Desktop panel */}
-          <AnimatePresence>
-            {panelOpen && (
-              <motion.aside
-                initial={{ opacity: 0, x: 24 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 24 }}
-                transition={{ type: "spring", stiffness: 320, damping: 32 }}
-                className="hidden md:flex flex-col w-80 shrink-0 border-l border-border bg-[var(--surface-1)] overflow-hidden"
-              >
-                <TaskPanel
-                  dateStr={selectedDate}
-                  tasks={selectedTasks}
-                  onAdd={openAdd}
-                  onEdit={openEdit}
-                  onToggle={toggle}
-                  onDelete={remove}
-                  onClose={() => setPanelOpen(false)}
-                />
-              </motion.aside>
-            )}
-          </AnimatePresence>
+        {/* Calendar grid */}
+        <AnimatePresence mode="wait" custom={direction}>
+          <motion.div
+            key={monthKey}
+            custom={direction}
+            variants={gridVariants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            className="grid grid-cols-7 gap-1"
+          >
+            {cells.map(({ dateStr, currentMonth, day }) => {
+              const isToday = dateStr === todayKey;
+              const isSelected = dateStr === selectedDate;
+              const hasTasks = datesWithTasks.has(dateStr);
+              const taskCount = hasTasks ? tasksForDate(dateStr).length : 0;
 
-          {/* Mobile bottom sheet */}
-          <AnimatePresence>
-            {panelOpen && (
-              <>
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="md:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
-                  onClick={() => setPanelOpen(false)}
-                />
-                <motion.div
-                  initial={{ y: "100%" }}
-                  animate={{ y: 0 }}
-                  exit={{ y: "100%" }}
-                  transition={{ type: "spring", stiffness: 300, damping: 32 }}
-                  className="md:hidden fixed bottom-0 inset-x-0 z-50 rounded-t-2xl border-t border-border bg-[var(--surface-1)] max-h-[80dvh] flex flex-col"
+              return (
+                <motion.button
+                  key={dateStr}
+                  onClick={() => setSelectedDate(dateStr)}
+                  whileHover={{ scale: 1.04, y: -1 }}
+                  whileTap={{ scale: 0.96 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                  className={cn(
+                    "relative aspect-square flex flex-col items-center justify-center rounded-xl text-sm font-medium transition-all duration-150 group",
+                    !currentMonth && "opacity-20",
+                    isSelected && !isToday
+                      ? "bg-white/[0.09] border border-white/[0.14] text-foreground shadow-[0_0_0_1px_rgba(255,255,255,0.06)_inset]"
+                      : isToday
+                        ? "bg-white/[0.1] border border-white/[0.18] text-foreground font-semibold shadow-[0_0_16px_rgba(255,255,255,0.04)]"
+                        : "hover:bg-white/[0.04] text-copy-secondary hover:text-foreground border border-transparent",
+                  )}
                 >
-                  <div className="w-10 h-1 rounded-full bg-border mx-auto mt-3 mb-1 shrink-0" />
-                  <TaskPanel
-                    dateStr={selectedDate}
-                    tasks={selectedTasks}
-                    onAdd={openAdd}
-                    onEdit={openEdit}
-                    onToggle={toggle}
-                    onDelete={remove}
-                    onClose={() => setPanelOpen(false)}
-                  />
-                </motion.div>
-              </>
-            )}
-          </AnimatePresence>
-        </>
+                  <span className="relative z-10 text-[13px]">{day}</span>
+                  {hasTasks && (
+                    <span className={cn(
+                      "relative z-10 mt-0.5 h-1 w-1 rounded-full transition-colors",
+                      isSelected || isToday ? "bg-white/70" : "bg-white/25 group-hover:bg-white/40",
+                    )} />
+                  )}
+                  {taskCount > 1 && (
+                    <span className={cn(
+                      "absolute top-1 right-1 text-[9px] font-medium leading-none",
+                      isSelected || isToday ? "text-white/60" : "text-white/20",
+                    )}>
+                      {taskCount}
+                    </span>
+                  )}
+                </motion.button>
+              );
+            })}
+          </motion.div>
+        </AnimatePresence>
       </div>
+
+      {/* ── Fullscreen task experience ─────────────────────────────────── */}
+      <AnimatePresence>
+        {selectedDate && (
+          <motion.div
+            key="fullscreen-tasks"
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.98 }}
+            transition={{ duration: 0.28, ease: EASE }}
+            className="absolute inset-0 z-30 bg-background flex flex-col overflow-hidden"
+          >
+            {/* Subtle top gradient */}
+            <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-white/[0.015] to-transparent pointer-events-none" />
+
+            {/* Header */}
+            <div className="shrink-0 flex items-center justify-between px-5 md:px-10 pt-6 pb-5 border-b border-white/[0.06]">
+              <div className="flex items-center gap-4">
+                <motion.button
+                  onClick={() => setSelectedDate(null)}
+                  whileHover={{ x: -2 }}
+                  whileTap={{ scale: 0.95 }}
+                  className="flex items-center gap-2 text-copy-secondary hover:text-foreground transition-colors duration-150"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  <span className="text-sm font-medium">Calendar</span>
+                </motion.button>
+                <div className="h-4 w-px bg-white/[0.1]" />
+                <div>
+                  <motion.h2
+                    key={selectedDate}
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="text-[15px] font-semibold tracking-tight"
+                  >
+                    {formatDisplayDate(selectedDate)}
+                  </motion.h2>
+                  <p className="text-xs text-copy-muted">
+                    {selectedTasks.length === 0
+                      ? "No tasks"
+                      : `${selectedTasks.filter((t) => !t.completed).length} of ${selectedTasks.length} remaining`}
+                  </p>
+                </div>
+              </div>
+              <motion.button
+                onClick={() => { setEditingTask(null); setModalOpen(true); }}
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/[0.07] border border-white/[0.1] hover:bg-white/[0.1] hover:border-white/[0.15] text-sm font-medium transition-all duration-200"
+              >
+                <Plus className="h-4 w-4" />
+                Add Task
+              </motion.button>
+            </div>
+
+            {/* Task list */}
+            <div className="flex-1 min-h-0 overflow-y-auto px-5 md:px-10 py-6">
+              <AnimatePresence initial={false} mode="popLayout">
+                {selectedTasks.length === 0 ? (
+                  <motion.div
+                    key="empty"
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.3, ease: EASE }}
+                    className="flex flex-col items-center justify-center py-24 text-center"
+                  >
+                    <div className="h-14 w-14 rounded-2xl bg-white/[0.04] border border-white/[0.07] grid place-items-center mb-5">
+                      <CalendarDays className="h-6 w-6 text-white/20" strokeWidth={1.5} />
+                    </div>
+                    <p className="text-sm font-medium text-copy-secondary">No tasks for this day</p>
+                    <p className="text-xs text-copy-muted mt-1.5">Click Add Task to create one</p>
+                  </motion.div>
+                ) : (
+                  <div className="max-w-2xl mx-auto space-y-2.5">
+                    {selectedTasks.map((task, i) => (
+                      <TaskCard
+                        key={task.id}
+                        task={task}
+                        index={i}
+                        onToggle={() => toggle(task.id)}
+                        onEdit={() => { setEditingTask(task); setModalOpen(true); }}
+                        onDelete={() => remove(task.id)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </AnimatePresence>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Task modal */}
       <TaskModal
         open={modalOpen}
         onClose={() => { setModalOpen(false); setEditingTask(null); }}
-        defaultDate={selectedDate}
+        defaultDate={selectedDate ?? todayKey}
         editingTask={editingTask}
         onSubmit={async (input) => {
           if (editingTask) {
@@ -369,7 +380,7 @@ function HorizonPage() {
             if (ok) { setModalOpen(false); setEditingTask(null); }
           } else {
             const ok = await add(input);
-            if (ok) { setModalOpen(false); }
+            if (ok) setModalOpen(false);
           }
         }}
       />
@@ -381,114 +392,15 @@ function HorizonPage() {
 
 const monthVariants = {
   enter: (dir: number) => ({ opacity: 0, x: dir === 0 ? 0 : dir > 0 ? 20 : -20 }),
-  center: { opacity: 1, x: 0, transition: { duration: 0.28, ease: [0.22, 1, 0.36, 1] } },
-  exit: (dir: number) => ({ opacity: 0, x: dir === 0 ? 0 : dir > 0 ? -20 : 20, transition: { duration: 0.2 } }),
+  center: { opacity: 1, x: 0, transition: { duration: 0.26, ease: [0.22, 1, 0.36, 1] } },
+  exit: (dir: number) => ({ opacity: 0, x: dir === 0 ? 0 : dir > 0 ? -20 : 20, transition: { duration: 0.18 } }),
 };
 
 const gridVariants = {
   enter: (dir: number) => ({ opacity: 0, x: dir === 0 ? 0 : dir > 0 ? 32 : -32 }),
   center: { opacity: 1, x: 0, transition: { duration: 0.3, ease: [0.22, 1, 0.36, 1] } },
-  exit: (dir: number) => ({ opacity: 0, x: dir === 0 ? 0 : dir > 0 ? -32 : 32, transition: { duration: 0.2 } }),
+  exit: (dir: number) => ({ opacity: 0, x: dir === 0 ? 0 : dir > 0 ? -32 : 32, transition: { duration: 0.18 } }),
 };
-
-// ─── Task panel ───────────────────────────────────────────────────────────────
-
-function TaskPanel({
-  dateStr,
-  tasks,
-  onAdd,
-  onEdit,
-  onToggle,
-  onDelete,
-  onClose,
-}: {
-  dateStr: string;
-  tasks: HorizonTask[];
-  onAdd: () => void;
-  onEdit: (t: HorizonTask) => void;
-  onToggle: (id: string) => void;
-  onDelete: (id: string) => void;
-  onClose: () => void;
-}) {
-  const incomplete = tasks.filter((t) => !t.completed).length;
-
-  return (
-    <>
-      {/* Panel header */}
-      <div className="shrink-0 px-5 pt-5 pb-4 border-b border-border flex items-start justify-between gap-3">
-        <div>
-          <motion.h3
-            key={dateStr}
-            initial={{ opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.22 }}
-            className="text-[15px] font-semibold tracking-tight"
-          >
-            {formatDisplayDate(dateStr)}
-          </motion.h3>
-          <motion.p
-            key={dateStr + "-count"}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="text-xs text-copy-muted mt-0.5"
-          >
-            {tasks.length === 0
-              ? "No tasks"
-              : `${incomplete} of ${tasks.length} remaining`}
-          </motion.p>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <motion.button
-            onClick={onAdd}
-            whileHover={{ scale: 1.04 }}
-            whileTap={{ scale: 0.96 }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-foreground text-background text-xs font-medium transition-opacity hover:opacity-90"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Add
-          </motion.button>
-          <button
-            onClick={onClose}
-            className="h-7 w-7 grid place-items-center rounded-lg text-copy-muted hover:text-foreground hover:bg-white/[0.06] transition-colors"
-            aria-label="Close panel"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      </div>
-
-      {/* Task list */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
-        <AnimatePresence initial={false}>
-          {tasks.length === 0 ? (
-            <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="flex flex-col items-center justify-center py-10 text-center"
-            >
-              <div className="h-10 w-10 rounded-xl bg-white/[0.04] border border-border grid place-items-center mb-3">
-                <CalendarDays className="h-4 w-4 text-copy-muted" strokeWidth={1.5} />
-              </div>
-              <p className="text-sm text-copy-secondary">No tasks yet</p>
-              <p className="text-xs text-copy-muted mt-1">Click Add to create one</p>
-            </motion.div>
-          ) : (
-            tasks.map((task, i) => (
-              <TaskCard
-                key={task.id}
-                task={task}
-                index={i}
-                onToggle={() => onToggle(task.id)}
-                onEdit={() => onEdit(task)}
-                onDelete={() => onDelete(task.id)}
-              />
-            ))
-          )}
-        </AnimatePresence>
-      </div>
-    </>
-  );
-}
 
 // ─── Task card ────────────────────────────────────────────────────────────────
 
@@ -510,32 +422,35 @@ function TaskCard({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -4, scale: 0.97 }}
-      transition={{ duration: 0.22, delay: index * 0.04, ease: [0.22, 1, 0.36, 1] }}
       layout
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -6, scale: 0.97 }}
+      transition={{ duration: 0.22, delay: index * 0.04, ease: [0.22, 1, 0.36, 1] }}
+      whileHover={{ y: -1, transition: { duration: 0.15 } }}
       className={cn(
-        "rounded-xl border border-border/60 bg-[var(--surface-2)] overflow-hidden transition-opacity duration-300",
-        task.completed && "opacity-50",
+        "rounded-2xl border bg-white/[0.03] hover:bg-white/[0.05] overflow-hidden transition-all duration-300",
+        task.completed
+          ? "opacity-45 border-white/[0.05]"
+          : "border-white/[0.08] hover:border-white/[0.12] hover:shadow-[0_8px_32px_-8px_rgba(0,0,0,0.5)]",
       )}
     >
       {/* Collapsed row */}
       <button
         type="button"
         onClick={() => setExpanded((e) => !e)}
-        className="w-full flex items-center gap-3 px-3.5 py-3 text-left"
+        className="w-full flex items-center gap-3.5 px-4 py-3.5 text-left"
       >
         {/* Checkbox */}
         <motion.button
           type="button"
           onClick={(e) => { e.stopPropagation(); onToggle(); }}
-          whileTap={{ scale: 0.88 }}
+          whileTap={{ scale: 0.85 }}
           className={cn(
             "h-5 w-5 shrink-0 rounded-md border-[1.5px] grid place-items-center transition-all duration-200",
             task.completed
-              ? "bg-foreground border-foreground"
-              : "border-border/60 hover:border-copy-secondary",
+              ? "bg-white/80 border-white/80"
+              : "border-white/20 hover:border-white/40",
           )}
         >
           {task.completed && <Check className="h-3 w-3 text-background" strokeWidth={2.5} />}
@@ -546,10 +461,13 @@ function TaskCard({
 
         {/* Title + time */}
         <div className="flex-1 min-w-0">
-          <p className={cn("text-[13px] font-medium truncate", task.completed && "line-through text-copy-secondary")}>
+          <p className={cn(
+            "text-[13px] font-medium truncate transition-all duration-200",
+            task.completed ? "line-through text-copy-muted" : "text-foreground",
+          )}>
             {task.title}
           </p>
-          <div className="flex items-center gap-1 mt-0.5">
+          <div className="flex items-center gap-1.5 mt-0.5">
             <Clock className="h-2.5 w-2.5 text-copy-muted" />
             <span className="text-[11px] text-copy-muted">{format12Hour(task.taskTime)}</span>
           </div>
@@ -573,26 +491,22 @@ function TaskCard({
             transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
             className="overflow-hidden"
           >
-            <div className="px-3.5 pb-3.5 pt-0 border-t border-border/40">
+            <div className="px-4 pb-4 border-t border-white/[0.05]">
               {task.description && (
                 <p className="text-xs text-copy-secondary mt-3 mb-3 leading-relaxed">
                   {task.description}
                 </p>
               )}
-              <div className="flex items-center gap-2 mt-2 flex-wrap">
-                <span className={cn("text-[11px] font-medium px-2 py-0.5 rounded-md bg-white/[0.05]", p.color)}>
+              <div className="flex items-center gap-2 mt-3 flex-wrap">
+                <span className={cn("text-[11px] font-medium px-2 py-0.5 rounded-md bg-white/[0.05] border border-white/[0.06]", p.color)}>
                   {p.label}
                 </span>
                 <span className="flex items-center gap-1 text-[11px] text-copy-muted">
-                  {task.notificationEnabled ? (
-                    <Bell className="h-2.5 w-2.5" />
-                  ) : (
-                    <BellOff className="h-2.5 w-2.5" />
-                  )}
+                  {task.notificationEnabled ? <Bell className="h-2.5 w-2.5" /> : <BellOff className="h-2.5 w-2.5" />}
                   {task.notificationEnabled ? "Reminder on" : "No reminder"}
                 </span>
               </div>
-              <div className="flex items-center gap-2 mt-3">
+              <div className="flex items-center gap-1.5 mt-3.5">
                 <button
                   onClick={onEdit}
                   className="flex items-center gap-1.5 text-[11px] text-copy-secondary hover:text-foreground px-2.5 py-1.5 rounded-lg hover:bg-white/[0.06] transition-all duration-150"
@@ -602,7 +516,7 @@ function TaskCard({
                 </button>
                 <button
                   onClick={onDelete}
-                  className="flex items-center gap-1.5 text-[11px] text-red-400/70 hover:text-red-400 px-2.5 py-1.5 rounded-lg hover:bg-red-500/[0.08] transition-all duration-150"
+                  className="flex items-center gap-1.5 text-[11px] text-copy-secondary hover:text-red-400 px-2.5 py-1.5 rounded-lg hover:bg-red-500/[0.07] transition-all duration-150"
                 >
                   <Trash2 className="h-3 w-3" />
                   Delete
@@ -672,9 +586,10 @@ function TaskModal({
   const onValid = async (values: TaskFormValues) => {
     setSubmitting(true);
     const h = parseInt(values.taskTimeHour, 10);
-    const h24 = values.taskTimeAmpm === "PM"
-      ? (h === 12 ? 12 : h + 12)
-      : (h === 12 ? 0 : h);
+    const h24 =
+      values.taskTimeAmpm === "PM"
+        ? h === 12 ? 12 : h + 12
+        : h === 12 ? 0 : h;
     const taskTime = `${String(h24).padStart(2, "0")}:${values.taskTimeMinute}`;
     await onSubmit({
       title: values.title,
@@ -689,41 +604,42 @@ function TaskModal({
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="sm:max-w-md bg-[var(--surface-1)] border-border gap-0 p-0 overflow-hidden">
-        <DialogHeader className="px-6 pt-6 pb-4 border-b border-border">
+      <DialogContent className="sm:max-w-md bg-[var(--surface-1)] border border-white/[0.09] gap-0 p-0 overflow-hidden">
+        <DialogHeader className="px-6 pt-6 pb-4 border-b border-white/[0.06]">
           <DialogTitle className="text-[15px] font-semibold">
             {editingTask ? "Edit task" : "New task"}
           </DialogTitle>
-          <p className="text-xs text-copy-muted mt-0.5">
+          <DialogDescription className="text-xs text-copy-muted mt-0.5">
             {formatDisplayDate(defaultDate)}
-          </p>
+          </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onValid)} className="px-6 py-5 space-y-4">
           {/* Title */}
           <div>
             <label className="text-xs font-medium text-copy-secondary mb-1.5 block">
-              Title <span className="text-red-400">*</span>
+              Title <span className="text-white/30">*</span>
             </label>
             <input
               {...register("title")}
               placeholder="What needs to be done?"
+              autoFocus
               className={cn(
-                "w-full rounded-lg border bg-[var(--surface-2)] px-3.5 py-2.5 text-sm outline-none transition-colors duration-150 placeholder:text-copy-muted",
+                "w-full rounded-xl border bg-white/[0.04] px-3.5 py-2.5 text-sm outline-none transition-all duration-150 placeholder:text-copy-muted",
                 errors.title
-                  ? "border-red-500/50 focus:border-red-500"
-                  : "border-border/60 focus:border-white/20",
+                  ? "border-red-400/40 focus:border-red-400/60"
+                  : "border-white/[0.08] focus:border-white/[0.18] focus:bg-white/[0.06]",
               )}
             />
             {errors.title && (
-              <p className="text-[11px] text-red-400 mt-1">{errors.title.message}</p>
+              <p className="text-[11px] text-red-400/80 mt-1">{errors.title.message}</p>
             )}
           </div>
 
-          {/* Time — 12-hour picker */}
+          {/* Time — full 12-hour picker with all 60 minutes */}
           <div>
             <label className="text-xs font-medium text-copy-secondary mb-1.5 block">
-              Time <span className="text-red-400">*</span>
+              Time <span className="text-white/30">*</span>
             </label>
             <div className="flex items-center gap-2">
               <Controller
@@ -731,28 +647,28 @@ function TaskModal({
                 control={control}
                 render={({ field }) => (
                   <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger className="flex-1 bg-[var(--surface-2)] border-border/60 text-sm">
-                      <SelectValue placeholder="HH" />
+                    <SelectTrigger className="flex-1 bg-white/[0.04] border-white/[0.08] hover:border-white/[0.15] text-sm rounded-xl">
+                      <SelectValue placeholder="Hr" />
                     </SelectTrigger>
-                    <SelectContent className="bg-[var(--surface-2)] border-border">
-                      {HOURS.map((h) => (
+                    <SelectContent className="bg-[var(--surface-2)] border-white/[0.09] max-h-48">
+                      {HOURS_12.map((h) => (
                         <SelectItem key={h} value={h} className="text-sm">{h}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 )}
               />
-              <span className="text-copy-muted text-sm font-medium">:</span>
+              <span className="text-copy-muted text-sm font-medium shrink-0">:</span>
               <Controller
                 name="taskTimeMinute"
                 control={control}
                 render={({ field }) => (
                   <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger className="flex-1 bg-[var(--surface-2)] border-border/60 text-sm">
-                      <SelectValue placeholder="MM" />
+                    <SelectTrigger className="flex-1 bg-white/[0.04] border-white/[0.08] hover:border-white/[0.15] text-sm rounded-xl">
+                      <SelectValue placeholder="Min" />
                     </SelectTrigger>
-                    <SelectContent className="bg-[var(--surface-2)] border-border">
-                      {MINUTES.map((m) => (
+                    <SelectContent className="bg-[var(--surface-2)] border-white/[0.09] max-h-48">
+                      {ALL_MINUTES.map((m) => (
                         <SelectItem key={m} value={m} className="text-sm">{m}</SelectItem>
                       ))}
                     </SelectContent>
@@ -764,10 +680,10 @@ function TaskModal({
                 control={control}
                 render={({ field }) => (
                   <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger className="w-20 bg-[var(--surface-2)] border-border/60 text-sm">
+                    <SelectTrigger className="w-20 bg-white/[0.04] border-white/[0.08] hover:border-white/[0.15] text-sm rounded-xl">
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent className="bg-[var(--surface-2)] border-border">
+                    <SelectContent className="bg-[var(--surface-2)] border-white/[0.09]">
                       <SelectItem value="AM" className="text-sm">AM</SelectItem>
                       <SelectItem value="PM" className="text-sm">PM</SelectItem>
                     </SelectContent>
@@ -786,7 +702,7 @@ function TaskModal({
               {...register("description")}
               rows={3}
               placeholder="Add details…"
-              className="w-full rounded-lg border border-border/60 bg-[var(--surface-2)] px-3.5 py-2.5 text-sm outline-none transition-colors duration-150 placeholder:text-copy-muted focus:border-white/20 resize-none"
+              className="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-3.5 py-2.5 text-sm outline-none transition-all duration-150 placeholder:text-copy-muted focus:border-white/[0.18] focus:bg-white/[0.06] resize-none"
             />
           </div>
 
@@ -807,10 +723,10 @@ function TaskModal({
                         type="button"
                         onClick={() => field.onChange(p)}
                         className={cn(
-                          "flex-1 py-2 rounded-lg border text-xs font-medium transition-all duration-150",
+                          "flex-1 py-2 rounded-xl border text-xs font-medium transition-all duration-150",
                           active
-                            ? `border-current bg-white/[0.06] ${cfg.color}`
-                            : "border-border/50 text-copy-secondary hover:text-foreground hover:border-border",
+                            ? `border-white/[0.18] bg-white/[0.07] ${cfg.color}`
+                            : "border-white/[0.07] text-copy-secondary hover:text-foreground hover:border-white/[0.12]",
                         )}
                       >
                         {cfg.label}
@@ -831,17 +747,13 @@ function TaskModal({
                 type="button"
                 onClick={() => field.onChange(!field.value)}
                 className={cn(
-                  "w-full flex items-center gap-3 rounded-lg border px-3.5 py-3 text-sm transition-all duration-150",
+                  "w-full flex items-center gap-3 rounded-xl border px-3.5 py-3 text-sm transition-all duration-200",
                   field.value
-                    ? "border-violet-500/30 bg-violet-500/[0.05] text-violet-300"
-                    : "border-border/50 text-copy-secondary hover:border-border hover:text-foreground",
+                    ? "border-white/[0.18] bg-white/[0.05] text-foreground"
+                    : "border-white/[0.07] text-copy-secondary hover:border-white/[0.12] hover:text-foreground",
                 )}
               >
-                {field.value ? (
-                  <Bell className="h-4 w-4 shrink-0" />
-                ) : (
-                  <BellOff className="h-4 w-4 shrink-0" />
-                )}
+                {field.value ? <Bell className="h-4 w-4 shrink-0" /> : <BellOff className="h-4 w-4 shrink-0" />}
                 <div className="text-left flex-1">
                   <p className="text-[13px] font-medium leading-none">
                     {field.value ? "Reminder enabled" : "Enable reminder"}
@@ -850,18 +762,14 @@ function TaskModal({
                     {field.value ? "You'll be notified before this task" : "No notification"}
                   </p>
                 </div>
-                <div
-                  className={cn(
-                    "h-5 w-9 rounded-full border transition-all duration-200 relative shrink-0",
-                    field.value ? "bg-violet-500 border-violet-500" : "bg-transparent border-border",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all duration-200 shadow-sm",
-                      field.value ? "left-4" : "left-0.5",
-                    )}
-                  />
+                <div className={cn(
+                  "h-5 w-9 rounded-full border relative shrink-0 transition-all duration-200",
+                  field.value ? "bg-white/80 border-white/80" : "bg-transparent border-white/20",
+                )}>
+                  <span className={cn(
+                    "absolute top-0.5 h-4 w-4 rounded-full shadow-sm transition-all duration-200",
+                    field.value ? "left-4 bg-background" : "left-0.5 bg-white/40",
+                  )} />
                 </div>
               </button>
             )}
@@ -872,7 +780,7 @@ function TaskModal({
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-2.5 rounded-lg border border-border/60 text-sm font-medium text-copy-secondary hover:text-foreground hover:border-border transition-all duration-150"
+              className="flex-1 py-2.5 rounded-xl border border-white/[0.08] text-sm font-medium text-copy-secondary hover:text-foreground hover:border-white/[0.14] transition-all duration-150"
             >
               Cancel
             </button>
@@ -880,7 +788,7 @@ function TaskModal({
               type="submit"
               disabled={submitting}
               whileTap={{ scale: 0.97 }}
-              className="flex-1 py-2.5 rounded-lg bg-foreground text-background text-sm font-medium disabled:opacity-50 transition-opacity hover:opacity-90"
+              className="flex-1 py-2.5 rounded-xl bg-foreground text-background text-sm font-medium disabled:opacity-40 transition-opacity hover:opacity-90"
             >
               {submitting ? "Saving…" : editingTask ? "Save changes" : "Add task"}
             </motion.button>

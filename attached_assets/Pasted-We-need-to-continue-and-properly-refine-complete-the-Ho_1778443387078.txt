@@ -1,0 +1,511 @@
+We need to continue and properly refine + complete the Horizon system implementation inside AI Metrics. The current implementation direction is good, but several critical UI/UX, database, and notification architecture improvements are required.
+
+IMPORTANT:
+This is NOT just a visual refinement pass anymore.
+
+This task now includes:
+
+* advanced UI refinement
+* interaction redesign
+* full-screen task experience
+* proper Supabase integration
+* proper Firebase Cloud Messaging integration
+* realtime sync improvements
+* Insights integration
+* mobile UX improvements
+* flexible time input system
+
+Everything must feel premium, cinematic, minimal, elegant, responsive, and fully integrated into the AI Metrics ecosystem.
+
+==================================================
+CRITICAL UI DESIGN CHANGE
+=========================
+
+IMPORTANT:
+REMOVE ALL PURPLE / BLUE HIGHLIGHT COLORS.
+
+The current implementation uses purple-style highlighting.
+This breaks the visual language of AI Metrics.
+
+DO NOT use:
+
+* purple
+* blue
+* neon accent colors
+* bright gradients
+
+Instead:
+use ONLY:
+
+* soft white highlights
+* low-opacity white overlays
+* subtle white glow
+* muted translucent borders
+
+Examples:
+
+* rgba(255,255,255,0.06)
+* rgba(255,255,255,0.08)
+* rgba(255,255,255,0.12)
+
+The design system should remain:
+
+* monochrome
+* cinematic
+* premium dark
+* elegant
+* subtle
+
+Reference:
+
+* Linear dark mode
+* Arc Browser
+* Raycast
+* Apple dark UI
+* modern cinematic productivity apps
+
+==================================================
+CRITICAL UX CHANGE — REMOVE SIDEBAR TASK PANEL
+==============================================
+
+The current Horizon implementation opens a sidebar when clicking a date.
+
+THIS IS NOT THE DESIRED UX.
+
+REMOVE the sidebar task panel entirely.
+
+==================================================
+NEW REQUIRED UX
+===============
+
+When a user clicks a date:
+
+OPEN A FULL-SCREEN TASK EXPERIENCE.
+
+NOT:
+
+* sidebar
+* tiny modal
+* small popup
+
+YES:
+
+* immersive full-screen task view
+* dedicated fullscreen overlay/page
+* cinematic transition
+
+==================================================
+FULLSCREEN TASK EXPERIENCE
+==========================
+
+Desktop:
+
+* smooth fullscreen overlay
+* fade + slight scale transition
+* premium motion
+
+Mobile:
+
+* fullscreen overlay as well
+* no bottom sheet
+* no partial modal
+
+The experience should feel:
+
+* immersive
+* focused
+* distraction-free
+
+==================================================
+FULLSCREEN TASK PAGE STRUCTURE
+==============================
+
+Header:
+
+* selected date
+* task count
+* back button
+* add task button
+
+Example:
+
+May 11, 2026
+3 Tasks
+
+[← Back]         [+ Add Task]
+
+==================================================
+TASK LAYOUT
+===========
+
+Tasks should appear as premium cards in a vertical stack.
+
+Card design:
+
+* rounded corners
+* subtle borders
+* soft hover transitions
+* spacious padding
+* premium typography
+* clean hierarchy
+
+Collapsed state:
+
+* task title
+* task time
+* completion checkbox
+* priority indicator
+
+Expanded state:
+
+* full description
+* edit button
+* delete button
+* reminder status
+* created timestamp
+
+Expansion animation:
+
+* smooth Framer Motion layout animation
+* premium easing
+* no janky height jumps
+
+==================================================
+MINIMALISTIC ANIMATIONS
+=======================
+
+Add subtle premium animations:
+
+* fade-in transitions
+* staggered task appearance
+* hover lift
+* smooth scale transitions
+* smooth fullscreen open/close transitions
+
+DO NOT overanimate.
+
+Motion should feel:
+
+* expensive
+* cinematic
+* modern
+* subtle
+
+==================================================
+CRITICAL TIME INPUT FIX
+=======================
+
+The current implementation restricts minutes to:
+0 / 15 / 30 / 45
+
+THIS MUST BE REMOVED.
+
+This kills flexibility.
+
+==================================================
+NEW TIME INPUT REQUIREMENTS
+===========================
+
+Allow users to select ANY minute value.
+
+Examples:
+9:07 AM
+2:13 PM
+11:58 PM
+
+NOT only:
+
+* 00
+* 15
+* 30
+* 45
+
+==================================================
+TIME PICKER REQUIREMENTS
+========================
+
+Build a flexible premium time picker with:
+
+* 12-hour format ONLY
+* AM/PM selector
+* custom minute selection
+* smooth interaction
+* mobile-friendly behavior
+
+Allowed:
+
+* manual typing
+* wheel picker
+* dropdown
+* hybrid input
+
+But:
+minutes MUST support:
+00–59 fully.
+
+==================================================
+SUPABASE INTEGRATION — REQUIRED
+===============================
+
+IMPORTANT:
+The implementation must now include REAL backend integration.
+
+NOT mock state.
+NOT temporary arrays.
+
+==================================================
+DATABASE REQUIREMENTS
+=====================
+
+Create and fully integrate:
+
+`horizon_tasks`
+
+Required schema:
+
+id uuid primary key default gen_random_uuid()
+title text not null
+description text
+task_date date not null
+task_time text not null
+priority text default 'medium'
+completed boolean default false
+notification_enabled boolean default false
+created_at timestamptz default now()
+
+==================================================
+REALTIME REQUIREMENTS
+=====================
+
+Enable proper Supabase realtime subscriptions.
+
+Realtime sync must work for:
+
+* add task
+* edit task
+* delete task
+* completion toggle
+* reminder updates
+
+Changes should instantly appear across tabs/devices.
+
+==================================================
+FIREBASE CLOUD MESSAGING — REQUIRED
+===================================
+
+The previous implementation only prepared notification UI.
+
+NOW implement the REAL notification system properly.
+
+==================================================
+FCM ARCHITECTURE
+================
+
+Firebase is ONLY being used for:
+
+* push notifications
+
+DO NOT implement:
+
+* Firebase Auth
+* Firestore
+* Firebase Hosting
+
+==================================================
+REQUIRED IMPLEMENTATION
+=======================
+
+Implement:
+
+* Firebase Cloud Messaging setup
+* service worker registration
+* browser notification permissions
+* FCM token generation
+* foreground notifications
+* background notifications
+
+==================================================
+NOTIFICATION FLOW
+=================
+
+Required architecture:
+
+Task created
+→ stored in Supabase
+→ scheduled task checker runs
+→ Firebase push notification sent
+→ browser/PWA receives push notification
+
+==================================================
+IMPORTANT SERVER ARCHITECTURE
+=============================
+
+DO NOT use long-running Vercel serverless logic.
+
+Instead:
+
+* use Supabase Edge Functions
+* use scheduled jobs/cron
+* query upcoming tasks
+* trigger FCM notifications
+
+==================================================
+REMINDER FEATURES
+=================
+
+Support:
+
+* task due notifications
+* upcoming reminders
+* optional reminder toggles
+
+Examples:
+“Task starts in 15 minutes”
+“Upcoming task reminder”
+“Task due now”
+
+==================================================
+PWA REQUIREMENTS
+================
+
+Upgrade PWA functionality properly.
+
+Required:
+
+* installable experience
+* proper manifest
+* service worker support
+* notification compatibility
+* app-like behavior
+
+Ensure support for:
+
+* desktop Chrome/Edge
+* Android Chrome
+* iOS PWA support where possible
+
+==================================================
+INSIGHTS TAB — MAJOR UPGRADE
+============================
+
+The Insights tab currently feels too basic.
+
+Upgrade it significantly and integrate Horizon analytics.
+
+==================================================
+NEW INSIGHTS FEATURES
+=====================
+
+Add Horizon-related analytics such as:
+
+* completed tasks today
+* completed tasks this week
+* upcoming tasks
+* productivity streaks
+* busiest days
+* task completion rate
+* monthly productivity overview
+* priority distribution
+* completion trends
+* pending vs completed ratio
+
+==================================================
+INSIGHTS UI REQUIREMENTS
+========================
+
+Keep the Insights UI:
+
+* premium
+* minimal
+* cinematic
+* data-rich but uncluttered
+
+Use:
+
+* subtle charts
+* elegant cards
+* clean typography
+* smooth motion
+* soft borders
+
+DO NOT create:
+
+* loud dashboards
+* colorful analytics SaaS visuals
+
+==================================================
+DESIGN LANGUAGE
+===============
+
+Everything must continue using:
+
+* existing AI Metrics tokens
+* existing Tailwind v4 setup
+* existing dark surfaces
+* existing border system
+* existing typography system
+* existing spacing system
+
+Maintain consistency with:
+
+* Desktop
+* Ask
+* Prompts
+* Image Board
+
+==================================================
+RESPONSIVENESS
+==============
+
+Verify:
+
+* desktop responsiveness
+* tablet responsiveness
+* mobile responsiveness
+* no clipping
+* no overflow
+* touch-friendly interactions
+
+Fullscreen task UI must work perfectly on:
+
+* mobile
+* desktop
+* PWA mode
+
+==================================================
+FINAL REQUIREMENTS
+==================
+
+DO NOT stop at partial UI work this time.
+
+This task now requires:
+
+* complete UI refinement
+* Supabase integration
+* Firebase notification integration
+* realtime synchronization
+* PWA support
+* Insights integration
+* mobile optimization
+
+Everything should feel production-grade and fully integrated into AI Metrics.
+
+==================================================
+FINAL VERIFICATION
+==================
+
+Before finishing:
+
+* verify fullscreen task experience
+* verify no sidebar remains
+* verify white-only highlight system
+* verify realtime sync
+* verify Firebase notifications
+* verify service worker behavior
+* verify Supabase persistence
+* verify task sorting
+* verify flexible time input
+* verify responsive behavior
+* verify Insights integration
+* verify animations
+* verify no hydration/layout issues

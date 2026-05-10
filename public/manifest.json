@@ -1,0 +1,41 @@
+{
+  "name": "AI Metrics",
+  "short_name": "AI Metrics",
+  "description": "Personal AI operating system — tools, prompts, tasks, and insights.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/favicon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "utilities"],
+  "shortcuts": [
+    {
+      "name": "Horizon",
+      "short_name": "Calendar",
+      "description": "Open your task calendar",
+      "url": "/horizon",
+      "icons": [{ "src": "/favicon.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Ask Jarvis",
+      "short_name": "Ask",
+      "description": "Open AI chat",
+      "url": "/ask",
+      "icons": [{ "src": "/favicon.png", "sizes": "192x192" }]
+    }
+  ]
+}
