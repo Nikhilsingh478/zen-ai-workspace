@@ -9,6 +9,7 @@ import {
   Image as ImageIcon,
   Bell,
   Menu,
+  CalendarDays,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, type ReactNode, type ComponentType } from "react";
@@ -29,6 +30,7 @@ const NAV = [
   { to: "/links", label: "Links", icon: Link2 },
   { to: "/images", label: "Images", icon: ImageIcon },
   { to: "/messages", label: "Messages", icon: Bell },
+  { to: "/horizon", label: "Horizon", icon: CalendarDays },
   { to: "/insights", label: "Insights", icon: BarChart2 },
   { to: "/ask", label: "Ask", icon: MessageSquare },
 ] as const;
@@ -38,11 +40,12 @@ type NavItem = { to: string; label: string; icon: ComponentType<{ className?: st
 const MOBILE_PRIMARY: readonly NavItem[] = [
   { to: "/", label: "Websites", icon: Globe },
   { to: "/desktop", label: "Desktop", icon: LayoutGrid },
-  { to: "/prompts", label: "Prompts", icon: Sparkles },
+  { to: "/horizon", label: "Horizon", icon: CalendarDays },
   { to: "/ask", label: "Ask", icon: MessageSquare },
 ];
 
 const MOBILE_SECONDARY: readonly NavItem[] = [
+  { to: "/prompts", label: "Prompts", icon: Sparkles },
   { to: "/links", label: "Links", icon: Link2 },
   { to: "/images", label: "Images", icon: ImageIcon },
   { to: "/messages", label: "Messages", icon: Bell },
@@ -86,7 +89,6 @@ export function AppShell({ children }: { children: ReactNode }) {
                     : "text-copy-secondary hover:text-foreground",
                 )}
               >
-                {/* Animated active background pill */}
                 {active && (
                   <motion.span
                     layoutId="sidebar-active-bg"
@@ -94,7 +96,6 @@ export function AppShell({ children }: { children: ReactNode }) {
                     transition={{ type: "spring", stiffness: 380, damping: 32 }}
                   />
                 )}
-                {/* Animated left bar */}
                 {active && (
                   <motion.span
                     layoutId="sidebar-active-bar"

@@ -14,6 +14,7 @@ import { Route as MessagesRouteImport } from './routes/messages'
 import { Route as LinksRouteImport } from './routes/links'
 import { Route as InsightsRouteImport } from './routes/insights'
 import { Route as ImagesRouteImport } from './routes/images'
+import { Route as HorizonRouteImport } from './routes/horizon'
 import { Route as DesktopRouteImport } from './routes/desktop'
 import { Route as AskRouteImport } from './routes/ask'
 import { Route as IndexRouteImport } from './routes/index'
@@ -43,6 +44,11 @@ const ImagesRoute = ImagesRouteImport.update({
   path: '/images',
   getParentRoute: () => rootRouteImport,
 } as any)
+const HorizonRoute = HorizonRouteImport.update({
+  id: '/horizon',
+  path: '/horizon',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DesktopRoute = DesktopRouteImport.update({
   id: '/desktop',
   path: '/desktop',
@@ -63,6 +69,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/ask': typeof AskRoute
   '/desktop': typeof DesktopRoute
+  '/horizon': typeof HorizonRoute
   '/images': typeof ImagesRoute
   '/insights': typeof InsightsRoute
   '/links': typeof LinksRoute
@@ -73,6 +80,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/ask': typeof AskRoute
   '/desktop': typeof DesktopRoute
+  '/horizon': typeof HorizonRoute
   '/images': typeof ImagesRoute
   '/insights': typeof InsightsRoute
   '/links': typeof LinksRoute
@@ -84,6 +92,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/ask': typeof AskRoute
   '/desktop': typeof DesktopRoute
+  '/horizon': typeof HorizonRoute
   '/images': typeof ImagesRoute
   '/insights': typeof InsightsRoute
   '/links': typeof LinksRoute
@@ -96,6 +105,7 @@ export interface FileRouteTypes {
     | '/'
     | '/ask'
     | '/desktop'
+    | '/horizon'
     | '/images'
     | '/insights'
     | '/links'
@@ -106,6 +116,7 @@ export interface FileRouteTypes {
     | '/'
     | '/ask'
     | '/desktop'
+    | '/horizon'
     | '/images'
     | '/insights'
     | '/links'
@@ -116,6 +127,7 @@ export interface FileRouteTypes {
     | '/'
     | '/ask'
     | '/desktop'
+    | '/horizon'
     | '/images'
     | '/insights'
     | '/links'
@@ -127,6 +139,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AskRoute: typeof AskRoute
   DesktopRoute: typeof DesktopRoute
+  HorizonRoute: typeof HorizonRoute
   ImagesRoute: typeof ImagesRoute
   InsightsRoute: typeof InsightsRoute
   LinksRoute: typeof LinksRoute
@@ -171,6 +184,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ImagesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/horizon': {
+      id: '/horizon'
+      path: '/horizon'
+      fullPath: '/horizon'
+      preLoaderRoute: typeof HorizonRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/desktop': {
       id: '/desktop'
       path: '/desktop'
@@ -199,6 +219,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AskRoute: AskRoute,
   DesktopRoute: DesktopRoute,
+  HorizonRoute: HorizonRoute,
   ImagesRoute: ImagesRoute,
   InsightsRoute: InsightsRoute,
   LinksRoute: LinksRoute,
