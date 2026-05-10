@@ -1,0 +1,434 @@
+We are continuing the Horizon + FCM implementation for AI Metrics.
+
+The current implementation direction is good, but before proceeding further with full notification rollout, we need a MAJOR UI/UX refinement pass focused on:
+
+* mobile polish
+* task visualization
+* task timeline experience
+* splashscreen quality
+* spacing/layout refinement
+* premium productivity feel
+
+IMPORTANT:
+This refinement is EXTREMELY important because Horizon is now becoming one of the core identity features of AI Metrics.
+
+The UI quality must feel:
+
+* premium
+* cinematic
+* minimal
+* elegant
+* modern
+* highly polished
+* app-level quality
+
+DO NOT create generic productivity SaaS visuals.
+
+Reference feel:
+
+* Linear
+* Notion Calendar
+* Arc Browser
+* Raycast
+* Apple Calendar dark mode
+* modern AI operating systems
+
+==================================================
+CRITICAL TASK DISPLAY REDESIGN
+==============================
+
+IMPORTANT:
+The current vertical task list is functional but visually too basic.
+
+We need a MAJOR redesign of the task display system.
+
+==================================================
+NEW REQUIRED TASK EXPERIENCE
+============================
+
+Transform Horizon task display into a:
+FULL TIMELINE-STYLE TASK LAYOUT.
+
+This is VERY important.
+
+==================================================
+TIMELINE STRUCTURE
+==================
+
+Tasks should appear ordered chronologically.
+
+Example:
+
+2 PM
+│
+├── Task Card
+
+3 PM
+│
+├── Task Card
+
+4 PM
+│
+├── Task Card
+
+etc.
+
+==================================================
+VISUAL STRUCTURE
+================
+
+LEFT SIDE:
+
+* timeline line
+* connected nodes
+* time labels
+
+RIGHT SIDE:
+
+* premium task cards
+
+The left-side times should visually connect vertically using elegant lines.
+
+The timeline should feel:
+
+* clean
+* minimal
+* structured
+* visually organized
+* premium
+
+==================================================
+TIMELINE DESIGN REQUIREMENTS
+============================
+
+Use:
+
+* subtle white timeline lines
+* elegant circular nodes
+* soft white glows
+* clean spacing
+* monochrome palette
+
+DO NOT use:
+
+* bright colors
+* neon accents
+* thick lines
+* cluttered visuals
+
+==================================================
+TASK CARD POSITIONING
+=====================
+
+Each task card should align horizontally with its timeline time node.
+
+Example structure:
+
+[TIME NODE + LINE]      [TASK CARD]
+
+Timeline nodes connect vertically down the page.
+
+Cards should feel visually attached to the timeline.
+
+==================================================
+TASK SORTING
+============
+
+Tasks MUST always sort chronologically.
+
+Examples:
+2 PM
+3 PM
+4 PM
+5 PM
+
+NOT random order.
+
+==================================================
+TASK CARD DESIGN UPGRADE
+========================
+
+Upgrade task cards significantly.
+
+Requirements:
+
+* larger spacing
+* cleaner typography
+* stronger hierarchy
+* premium dark surfaces
+* soft white borders
+* hover lift
+* smooth animations
+* subtle gradients
+* cleaner padding
+
+Cards should feel:
+
+* expensive
+* premium
+* modern
+* cinematic
+
+==================================================
+PRIORITY COLORS
+===============
+
+IMPORTANT:
+Priority colors ARE allowed.
+
+Unlike the general monochrome system, semantic priority indicators may use subtle color accents.
+
+Examples:
+
+* low → muted blue/gray
+* medium → muted amber
+* high → muted red
+
+BUT:
+keep them subtle and elegant.
+
+DO NOT:
+
+* oversaturate
+* use neon colors
+* overpower the monochrome design system
+
+The overall UI must still remain:
+
+* mostly monochrome
+* cinematic
+* premium
+
+==================================================
+MOBILE HORIZON UI — MAJOR REFINEMENT
+====================================
+
+The mobile Horizon experience needs significant polishing.
+
+IMPORTANT:
+The mobile task UI currently feels too cramped/basic.
+
+==================================================
+MOBILE REQUIREMENTS
+===================
+
+Improve:
+
+* spacing
+* touch targets
+* task card hierarchy
+* vertical rhythm
+* typography scaling
+* overlay structure
+* fullscreen layout
+
+The mobile experience should feel:
+
+* native-app quality
+* smooth
+* uncluttered
+* premium
+* comfortable to use
+
+==================================================
+MOBILE TIMELINE LAYOUT
+======================
+
+On mobile:
+
+* preserve timeline concept
+* simplify spacing intelligently
+* avoid cramped visuals
+* maintain readability
+
+Timeline should remain:
+
+* visually connected
+* elegant
+* touch friendly
+
+==================================================
+MOBILE TASK OVERLAY
+===================
+
+The fullscreen task experience on mobile should feel:
+
+* immersive
+* polished
+* app-like
+
+Improve:
+
+* transitions
+* safe-area spacing
+* top spacing
+* bottom spacing
+* scrolling smoothness
+
+==================================================
+ANIMATION REFINEMENT
+====================
+
+Refine all Horizon animations further.
+
+Use:
+
+* Framer Motion
+* smooth stagger
+* subtle hover lift
+* elegant fade transitions
+* smooth fullscreen transitions
+* premium easing
+
+Motion should feel:
+
+* expensive
+* cinematic
+* modern
+* subtle
+
+DO NOT overanimate.
+
+==================================================
+SPLASHSCREEN / PWA STARTUP UPGRADE
+==================================
+
+IMPORTANT:
+Improve the splashscreen / startup experience significantly.
+
+The current startup/loading experience feels too plain.
+
+==================================================
+SPLASHSCREEN REQUIREMENTS
+=========================
+
+Create a more aesthetic and professional splashscreen.
+
+Requirements:
+
+* premium dark background
+* centered AI Metrics branding
+* elegant motion
+* subtle glow
+* cinematic feel
+* smooth fade-in/fade-out
+
+The splashscreen should feel:
+
+* premium software quality
+* polished
+* modern
+* elegant
+
+==================================================
+PWA STARTUP EXPERIENCE
+======================
+
+Improve:
+
+* startup transition
+* loading feel
+* install experience
+* icon rendering
+* initial animation smoothness
+
+==================================================
+FCM IMPLEMENTATION CONTINUES
+============================
+
+Continue implementing:
+
+* Firebase Cloud Messaging
+* service worker integration
+* notification scheduling
+* Supabase token persistence
+* realtime reminder system
+
+BUT:
+do NOT sacrifice UI quality while implementing backend systems.
+
+==================================================
+SUPABASE + FCM REQUIREMENTS
+===========================
+
+Ensure:
+
+* realtime sync works properly
+* token persistence works properly
+* notifications work in background
+* notifications work in foreground
+* duplicate sends prevented
+
+==================================================
+INSIGHTS REFINEMENT
+===================
+
+Further polish Insights UI.
+
+Especially:
+
+* Horizon analytics section
+* spacing
+* charts
+* visual hierarchy
+* monochrome consistency
+
+Ensure:
+
+* subtle chart visuals
+* premium typography
+* clean spacing
+* elegant cards
+
+==================================================
+DESIGN LANGUAGE
+===============
+
+Everything MUST remain consistent with:
+
+* Desktop tab
+* Ask tab
+* Prompts
+* overall AI Metrics visual identity
+
+Maintain:
+
+* dark premium surfaces
+* white-only core palette
+* subtle borders
+* cinematic spacing
+* smooth motion
+
+==================================================
+IMPORTANT
+=========
+
+DO NOT:
+
+* clutter the interface
+* add excessive colors
+* create generic productivity SaaS visuals
+* break responsiveness
+* break realtime sync
+* break PWA functionality
+* break existing routing
+
+==================================================
+FINAL VERIFICATION
+==================
+
+Before finishing:
+
+* verify timeline task layout
+* verify connected timeline nodes
+* verify chronological sorting
+* verify mobile timeline readability
+* verify fullscreen task experience
+* verify mobile spacing
+* verify splashscreen quality
+* verify smooth animations
+* verify FCM integration
+* verify realtime sync
+* verify service worker behavior
+* verify Insights refinement
+* verify premium visual consistency

@@ -1,0 +1,544 @@
+We are now implementing FULL PRODUCTION-GRADE Firebase Cloud Messaging (FCM) support for AI Metrics Horizon.
+
+IMPORTANT:
+This is NOT a mock notification system.
+This is NOT local browser-only reminder logic.
+
+This implementation must be:
+
+* real
+* scalable
+* production-grade
+* background-capable
+* PWA-compatible
+* integrated properly with Supabase
+
+==================================================
+CURRENT STACK
+=============
+
+Frontend:
+
+* React 19
+* Vite 7
+* TanStack Router
+* Tailwind v4
+* Framer Motion
+
+Backend:
+
+* Supabase Postgres
+* Supabase Realtime
+* Supabase Edge Functions
+
+Hosting:
+
+* Vercel
+
+Push Notifications:
+
+* Firebase Cloud Messaging (FCM)
+
+PWA:
+
+* manifest.json
+* service worker setup already exists
+
+==================================================
+IMPORTANT ARCHITECTURE RULES
+============================
+
+Firebase is ONLY being used for:
+
+* push notifications
+
+DO NOT implement:
+
+* Firebase Auth
+* Firestore
+* Firebase Hosting
+* Realtime Database
+
+Keep Firebase usage minimal and focused.
+
+==================================================
+PRIMARY GOAL
+============
+
+Enable REAL Horizon reminder notifications that work:
+
+* while app is open
+* while app is closed
+* while app is in background
+* in installed PWA mode
+* on desktop Chrome/Edge
+* on Android Chrome
+
+Implement best-effort iOS PWA support where possible.
+
+==================================================
+REQUIRED FEATURES
+=================
+
+Implement:
+
+* Firebase initialization
+* FCM token generation
+* notification permission flow
+* foreground notifications
+* background notifications
+* notification click handling
+* Supabase token persistence
+* scheduled reminder delivery
+* duplicate notification prevention
+* graceful fallback behavior
+
+==================================================
+ENVIRONMENT VARIABLES
+=====================
+
+Support these environment variables:
+
+VITE_FIREBASE_API_KEY
+VITE_FIREBASE_AUTH_DOMAIN
+VITE_FIREBASE_PROJECT_ID
+VITE_FIREBASE_STORAGE_BUCKET
+VITE_FIREBASE_MESSAGING_SENDER_ID
+VITE_FIREBASE_APP_ID
+VITE_FIREBASE_VAPID_KEY
+
+DO NOT hardcode secrets.
+
+Use environment variables properly.
+
+==================================================
+FOLDER STRUCTURE
+================
+
+Create clean modular structure:
+
+src/lib/firebase.ts
+src/lib/notifications.ts
+src/lib/fcm.ts
+
+public/firebase-messaging-sw.js
+
+Keep architecture clean and maintainable.
+
+==================================================
+FIREBASE INITIALIZATION
+=======================
+
+Create reusable Firebase initialization layer.
+
+Requirements:
+
+* initialize safely
+* avoid duplicate initialization
+* avoid hydration issues
+* avoid SSR/browser crashes
+* fail gracefully if unsupported
+
+==================================================
+NOTIFICATION SUPPORT DETECTION
+==============================
+
+Before initialization:
+check browser support for:
+
+* Notification API
+* service workers
+* PushManager
+* Firebase messaging
+
+If unsupported:
+
+* fail gracefully
+* no toast spam
+* subtle fallback behavior
+
+==================================================
+NOTIFICATION PERMISSION FLOW
+============================
+
+IMPORTANT:
+DO NOT aggressively request notification permission on app startup.
+
+Instead:
+
+* request permission contextually
+* preferably when user enables reminders
+* or when user explicitly enables notifications
+
+==================================================
+PERMISSION UX
+=============
+
+Implement elegant permission UX.
+
+Examples:
+
+* subtle notification banner
+* enable reminders CTA
+* minimal dialog
+
+DO NOT:
+
+* force intrusive popups
+* spam permission requests
+
+==================================================
+PERMISSION STATES
+=================
+
+Handle:
+
+* granted
+* denied
+* default
+
+If denied:
+
+* show subtle fallback state
+* allow retry instructions
+* no aggressive warnings
+
+==================================================
+FCM TOKEN GENERATION
+====================
+
+Implement:
+
+* token generation
+* token refresh handling
+* token persistence
+* token deduplication
+
+==================================================
+SUPABASE TOKEN TABLE
+====================
+
+Create table:
+
+notification_tokens
+
+Suggested schema:
+
+id uuid primary key default gen_random_uuid()
+token text not null unique
+platform text
+created_at timestamptz default now()
+
+==================================================
+TOKEN FLOW
+==========
+
+Flow:
+
+User enables notifications
+→ permission granted
+→ FCM token generated
+→ token stored in Supabase
+→ token reused later for reminders
+
+==================================================
+FOREGROUND NOTIFICATIONS
+========================
+
+Implement notifications while app is OPEN.
+
+Requirements:
+
+* elegant browser notifications
+* proper title/body
+* premium payloads
+* proper icon support
+* route-aware behavior
+
+==================================================
+NOTIFICATION DESIGN
+===================
+
+Notification examples:
+
+Title:
+“Horizon Reminder”
+
+Body:
+“Client Call starts in 15 minutes”
+
+OR
+
+Title:
+“Task Due”
+
+Body:
+“Finish redesign presentation”
+
+Keep notifications:
+
+* clean
+* minimal
+* premium
+
+==================================================
+BACKGROUND NOTIFICATIONS
+========================
+
+Implement background notifications using:
+firebase-messaging-sw.js
+
+Requirements:
+
+* receive pushes while app closed
+* proper notification display
+* click-to-open support
+* route-aware navigation
+
+==================================================
+NOTIFICATION CLICK BEHAVIOR
+===========================
+
+Clicking notification should:
+
+* reopen app if closed
+* focus existing tab if open
+* navigate directly to Horizon
+
+Optional:
+open directly into relevant task date.
+
+==================================================
+SERVICE WORKER REQUIREMENTS
+===========================
+
+IMPORTANT:
+DO NOT break existing PWA setup.
+
+Ensure:
+
+* firebase messaging service worker coexists correctly
+* no registration conflicts
+* no caching conflicts
+* no duplicate service workers
+
+==================================================
+PWA COMPATIBILITY
+=================
+
+Verify:
+
+* installability remains working
+* notifications work in installed PWA
+* manifest remains valid
+* startup behavior remains clean
+
+==================================================
+SUPABASE EDGE FUNCTIONS
+=======================
+
+IMPORTANT:
+DO NOT rely on long-running Vercel serverless logic.
+
+Use:
+
+* Supabase Edge Functions
+* scheduled cron jobs
+
+==================================================
+REMINDER SCHEDULER
+==================
+
+Implement scheduled reminder architecture.
+
+Flow:
+
+Supabase cron job runs
+→ checks upcoming Horizon tasks
+→ filters reminder-enabled tasks
+→ ignores completed tasks
+→ checks reminder timing
+→ finds FCM tokens
+→ sends Firebase push notifications
+
+==================================================
+REMINDER TYPES
+==============
+
+Support:
+
+* due now
+* upcoming reminders
+* optional reminder toggle
+
+Examples:
+
+* 15 minutes before
+* due now
+* custom reminder timing later
+
+==================================================
+DUPLICATE PREVENTION
+====================
+
+IMPORTANT:
+Prevent duplicate notification sends.
+
+Implement:
+
+* send tracking
+* cooldown logic
+* reminder status checks
+
+A reminder must NOT fire multiple times accidentally.
+
+==================================================
+TASK QUERY LOGIC
+================
+
+Reminder scheduler should:
+
+* ignore completed tasks
+* ignore disabled reminders
+* ignore past reminders already sent
+* properly compare timestamps
+
+==================================================
+TIME HANDLING
+=============
+
+IMPORTANT:
+Handle time parsing carefully.
+
+Current Horizon uses:
+
+* 12-hour task format
+
+Ensure:
+
+* AM/PM parsing works correctly
+* timezone handling remains stable
+* browser locale issues avoided
+
+==================================================
+ERROR HANDLING
+==============
+
+Gracefully handle:
+
+* denied permissions
+* unsupported browsers
+* invalid FCM tokens
+* expired tokens
+* network failures
+* Firebase initialization failures
+* missing env variables
+
+DO NOT spam toasts.
+
+Use:
+
+* subtle fallback UI
+* debug logging
+* graceful degradation
+
+==================================================
+INSIGHTS INTEGRATION
+====================
+
+Extend Insights with notification analytics:
+
+* reminders sent
+* reminders opened
+* reminders completed
+* notification engagement
+
+Keep visuals:
+
+* monochrome
+* subtle
+* premium
+* cinematic
+
+==================================================
+HORIZON UI INTEGRATION
+======================
+
+Inside Horizon:
+
+* reminder toggles must fully work
+* notification state should display properly
+* failed notification setup should fail gracefully
+
+Optional:
+small notification status indicator.
+
+==================================================
+MOBILE/PWA BEHAVIOR
+===================
+
+Verify:
+
+* Android Chrome notifications
+* installed PWA notifications
+* mobile reopening behavior
+* background delivery
+
+Ensure:
+
+* no broken fullscreen overlays
+* no mobile routing issues
+
+==================================================
+SECURITY + PERFORMANCE
+======================
+
+Ensure:
+
+* no exposed secrets
+* no unnecessary Firebase usage
+* lightweight implementation
+* minimal bundle impact
+* efficient token handling
+
+==================================================
+IMPORTANT
+=========
+
+DO NOT:
+
+* introduce visual clutter
+* add colorful Firebase branding
+* create notification spam
+* break existing PWA behavior
+* overcomplicate architecture
+* add unnecessary dependencies
+
+Everything must continue feeling:
+
+* premium
+* cinematic
+* modern
+* integrated naturally into AI Metrics
+
+==================================================
+FINAL VERIFICATION
+==================
+
+Before finishing:
+
+* verify Firebase initialization
+* verify permission flow
+* verify token generation
+* verify Supabase token storage
+* verify foreground notifications
+* verify background notifications
+* verify notification click behavior
+* verify scheduled reminders
+* verify duplicate prevention
+* verify Edge Function scheduling
+* verify PWA compatibility
+* verify mobile notification behavior
+* verify graceful fallbacks
+* verify Insights integration
+* verify no service worker conflicts

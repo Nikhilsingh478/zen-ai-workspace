@@ -273,8 +273,32 @@ export function format12Hour(time: string): string {
   return `${h12}:${m} ${ampm}`;
 }
 
-export const PRIORITY_CONFIG: Record<Priority, { label: string; color: string; dot: string }> = {
-  low: { label: "Low", color: "text-white/40", dot: "bg-white/25" },
-  medium: { label: "Medium", color: "text-white/65", dot: "bg-white/50" },
-  high: { label: "High", color: "text-white/90", dot: "bg-white/85" },
+export const PRIORITY_CONFIG: Record<Priority, {
+  label: string;
+  color: string;
+  dot: string;
+  bg: string;
+  border: string;
+}> = {
+  low: {
+    label: "Low",
+    color: "text-blue-300/60",
+    dot: "bg-blue-400/50",
+    bg: "bg-blue-500/[0.08]",
+    border: "border-blue-400/[0.18]",
+  },
+  medium: {
+    label: "Medium",
+    color: "text-amber-300/70",
+    dot: "bg-amber-400/60",
+    bg: "bg-amber-500/[0.08]",
+    border: "border-amber-400/[0.18]",
+  },
+  high: {
+    label: "High",
+    color: "text-red-300/70",
+    dot: "bg-red-400/60",
+    bg: "bg-red-500/[0.07]",
+    border: "border-red-400/[0.15]",
+  },
 };

@@ -28,7 +28,7 @@ export function useWakeWord({ onDetected, keyword = "jarvis" }: UseWakeWordOptio
   const enabledRef = useRef(false);
   const pausedRef = useRef(false);
   const recRef = useRef<any>(null); // eslint-disable-line @typescript-eslint/no-explicit-any
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const onDetectedRef = useRef(onDetected);
   useEffect(() => { onDetectedRef.current = onDetected; }, [onDetected]);
 

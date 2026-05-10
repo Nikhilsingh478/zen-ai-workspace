@@ -11,7 +11,6 @@ import {
   Pencil,
   Bell,
   BellOff,
-  ChevronDown,
   Clock,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
@@ -44,7 +43,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-// ─── Route ───────────────────────────────────────────────────────────────────
+// ─── Route ────────────────────────────────────────────────────────────────────
 
 export const Route = createFileRoute("/horizon")({
   head: () => ({
@@ -56,7 +55,7 @@ export const Route = createFileRoute("/horizon")({
   component: HorizonPage,
 });
 
-// ─── Constants ───────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = [
@@ -64,7 +63,6 @@ const MONTHS = [
   "July", "August", "September", "October", "November", "December",
 ];
 const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
-
 const HOURS_12 = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, "0"));
 const ALL_MINUTES = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, "0"));
 
@@ -79,10 +77,39 @@ const taskSchema = z.object({
   priority: z.enum(["low", "medium", "high"]),
   notificationEnabled: z.boolean(),
 });
-
 type TaskFormValues = z.infer<typeof taskSchema>;
 
-// ─── Main page ───────────────────────────────────────────────────────────────
+// ─── Month animation variants ─────────────────────────────────────────────────
+
+const monthVariants = {
+  enter: (dir: number) => ({ opacity: 0, x: dir === 0 ? 0 : dir > 0 ? 20 : -20 }),
+  center: { opacity: 1, x: 0, transition: { duration: 0.26, ease: EASE } },
+  exit: (dir: number) => ({ opacity: 0, x: dir === 0 ? 0 : dir > 0 ? -20 : 20, transition: { duration: 0.18 } }),
+};
+const gridVariants = {
+  enter: (dir: number) => ({ opacity: 0, x: dir === 0 ? 0 : dir > 0 ? 28 : -28 }),
+  center: { opacity: 1, x: 0, transition: { duration: 0.3, ease: EASE } },
+  exit: (dir: number) => ({ opacity: 0, x: dir === 0 ? 0 : dir > 0 ? -28 : 28, transition: { duration: 0.18 } }),
+};
+
+// ─── Group tasks by hour ──────────────────────────────────────────────────────
+
+function groupByHour(tasks: HorizonTask[]): { label: string; tasks: HorizonTask[] }[] {
+  const map = new Map<string, HorizonTask[]>();
+  const sorted = [...tasks].sort((a, b) => a.taskTime.localeCompare(b.taskTime));
+  for (const task of sorted) {
+    const [h] = task.taskTime.split(":");
+    const hour = parseInt(h, 10);
+    const ampm = hour >= 12 ? "PM" : "AM";
+    const h12 = hour % 12 === 0 ? 12 : hour % 12;
+    const label = `${h12} ${ampm}`;
+    if (!map.has(label)) map.set(label, []);
+    map.get(label)!.push(task);
+  }
+  return Array.from(map.entries()).map(([label, tasks]) => ({ label, tasks }));
+}
+
+// ─── Main page ────────────────────────────────────────────────────────────────
 
 function HorizonPage() {
   const today = new Date();
@@ -96,6 +123,7 @@ function HorizonPage() {
   const { tasksForDate, datesWithTasks, add, update, toggle, remove } = useHorizon();
 
   const selectedTasks = selectedDate ? tasksForDate(selectedDate) : [];
+  const timelineGroups = groupByHour(selectedTasks);
 
   const prevMonth = useCallback(() => {
     setDirection(-1);
@@ -122,11 +150,10 @@ function HorizonPage() {
 
   const todayKey = formatDateKey(today);
 
-  // Calendar grid
+  // Calendar cells
   const firstDayOfMonth = new Date(viewYear, viewMonth, 1).getDay();
   const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
   const daysInPrevMonth = new Date(viewYear, viewMonth, 0).getDate();
-
   const cells: { dateStr: string; currentMonth: boolean; day: number }[] = [];
   for (let i = firstDayOfMonth - 1; i >= 0; i--) {
     const d = daysInPrevMonth - i;
@@ -148,20 +175,21 @@ function HorizonPage() {
 
   return (
     <div className="h-full flex flex-col overflow-hidden relative">
-      {/* ── Calendar view ─────────────────────────────────────────────── */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-4 md:px-10 pt-6 pb-6">
+      {/* ── Calendar ──────────────────────────────────────────────────────── */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 md:px-10 pt-5 pb-6">
+
         {/* Page header */}
         <motion.div
           initial={{ opacity: 0, y: -6 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35, ease: EASE }}
-          className="flex items-center gap-3 mb-8"
+          transition={{ duration: 0.32, ease: EASE }}
+          className="flex items-center gap-3 mb-7"
         >
-          <div className="h-8 w-8 rounded-xl bg-white/[0.06] border border-white/[0.08] grid place-items-center">
-            <CalendarDays className="h-4 w-4 text-white/60" strokeWidth={1.75} />
+          <div className="h-8 w-8 rounded-xl bg-white/[0.05] border border-white/[0.07] grid place-items-center">
+            <CalendarDays className="h-4 w-4 text-white/50" strokeWidth={1.75} />
           </div>
           <div>
-            <h1 className="text-[17px] font-semibold tracking-tight leading-none">Horizon</h1>
+            <h1 className="text-[16px] font-semibold tracking-tight leading-none">Horizon</h1>
             <p className="text-[11px] text-copy-muted mt-0.5">Calendar & tasks</p>
           </div>
         </motion.div>
@@ -170,50 +198,44 @@ function HorizonPage() {
         <motion.div
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35, ease: EASE }}
-          className="flex items-center justify-between mb-6"
+          transition={{ duration: 0.32, ease: EASE }}
+          className="flex items-center justify-between mb-5"
         >
           <AnimatePresence mode="wait" custom={direction}>
             <motion.h2
               key={monthKey}
               custom={direction}
               variants={monthVariants}
-              initial="enter"
-              animate="center"
-              exit="exit"
-              className="text-xl md:text-2xl font-semibold tracking-tight"
+              initial="enter" animate="center" exit="exit"
+              className="text-xl md:text-[22px] font-semibold tracking-tight"
             >
               {MONTHS[viewMonth]} {viewYear}
             </motion.h2>
           </AnimatePresence>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <button
               onClick={goToday}
-              className="hidden sm:flex items-center px-3 py-1.5 rounded-lg text-xs font-medium text-copy-secondary border border-white/[0.08] hover:border-white/[0.15] hover:text-foreground transition-all duration-200"
+              className="hidden sm:flex items-center px-3 py-1.5 rounded-lg text-xs font-medium text-white/40 border border-white/[0.07] hover:border-white/[0.14] hover:text-white/70 transition-all duration-200"
             >
               Today
             </button>
-            <button
-              onClick={prevMonth}
-              className="h-8 w-8 rounded-lg border border-white/[0.08] hover:border-white/[0.15] grid place-items-center text-copy-secondary hover:text-foreground transition-all duration-200"
-              aria-label="Previous month"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <button
-              onClick={nextMonth}
-              className="h-8 w-8 rounded-lg border border-white/[0.08] hover:border-white/[0.15] grid place-items-center text-copy-secondary hover:text-foreground transition-all duration-200"
-              aria-label="Next month"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
+            {[{ action: prevMonth, icon: ChevronLeft, label: "Previous" }, { action: nextMonth, icon: ChevronRight, label: "Next" }].map(({ action, icon: Icon, label }) => (
+              <button
+                key={label}
+                onClick={action}
+                className="h-8 w-8 rounded-lg border border-white/[0.07] hover:border-white/[0.14] grid place-items-center text-white/35 hover:text-white/70 transition-all duration-200"
+                aria-label={label}
+              >
+                <Icon className="h-4 w-4" />
+              </button>
+            ))}
           </div>
         </motion.div>
 
         {/* Day headers */}
-        <div className="grid grid-cols-7 mb-2">
+        <div className="grid grid-cols-7 mb-1.5">
           {DAYS.map((d) => (
-            <div key={d} className="text-[11px] font-medium text-copy-muted text-center pb-2">
+            <div key={d} className="text-[10px] font-medium text-white/25 text-center pb-2 tracking-widest uppercase">
               {d}
             </div>
           ))}
@@ -225,9 +247,7 @@ function HorizonPage() {
             key={monthKey}
             custom={direction}
             variants={gridVariants}
-            initial="enter"
-            animate="center"
-            exit="exit"
+            initial="enter" animate="center" exit="exit"
             className="grid grid-cols-7 gap-1"
           >
             {cells.map(({ dateStr, currentMonth, day }) => {
@@ -240,30 +260,30 @@ function HorizonPage() {
                 <motion.button
                   key={dateStr}
                   onClick={() => setSelectedDate(dateStr)}
-                  whileHover={{ scale: 1.04, y: -1 }}
-                  whileTap={{ scale: 0.96 }}
-                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                  whileHover={{ scale: 1.06, y: -1 }}
+                  whileTap={{ scale: 0.94 }}
+                  transition={{ type: "spring", stiffness: 450, damping: 26 }}
                   className={cn(
-                    "relative aspect-square flex flex-col items-center justify-center rounded-xl text-sm font-medium transition-all duration-150 group",
-                    !currentMonth && "opacity-20",
-                    isSelected && !isToday
-                      ? "bg-white/[0.09] border border-white/[0.14] text-foreground shadow-[0_0_0_1px_rgba(255,255,255,0.06)_inset]"
-                      : isToday
-                        ? "bg-white/[0.1] border border-white/[0.18] text-foreground font-semibold shadow-[0_0_16px_rgba(255,255,255,0.04)]"
-                        : "hover:bg-white/[0.04] text-copy-secondary hover:text-foreground border border-transparent",
+                    "relative aspect-square flex flex-col items-center justify-center rounded-xl text-sm transition-all duration-150",
+                    !currentMonth && "opacity-[0.18]",
+                    isToday
+                      ? "bg-white/[0.11] border border-white/[0.2] font-semibold text-foreground shadow-[0_0_20px_rgba(255,255,255,0.03)]"
+                      : isSelected
+                        ? "bg-white/[0.08] border border-white/[0.12] text-foreground"
+                        : "hover:bg-white/[0.04] text-white/50 hover:text-white/80 border border-transparent",
                   )}
                 >
-                  <span className="relative z-10 text-[13px]">{day}</span>
+                  <span className="text-[12px] md:text-[13px]">{day}</span>
                   {hasTasks && (
                     <span className={cn(
-                      "relative z-10 mt-0.5 h-1 w-1 rounded-full transition-colors",
-                      isSelected || isToday ? "bg-white/70" : "bg-white/25 group-hover:bg-white/40",
+                      "mt-0.5 h-[3px] w-[3px] rounded-full",
+                      isToday || isSelected ? "bg-white/60" : "bg-white/20",
                     )} />
                   )}
                   {taskCount > 1 && (
                     <span className={cn(
-                      "absolute top-1 right-1 text-[9px] font-medium leading-none",
-                      isSelected || isToday ? "text-white/60" : "text-white/20",
+                      "absolute top-0.5 right-1 text-[8px] font-medium",
+                      isToday || isSelected ? "text-white/50" : "text-white/15",
                     )}>
                       {taskCount}
                     </span>
@@ -275,94 +295,88 @@ function HorizonPage() {
         </AnimatePresence>
       </div>
 
-      {/* ── Fullscreen task experience ─────────────────────────────────── */}
+      {/* ── Fullscreen task experience ──────────────────────────────────── */}
       <AnimatePresence>
         {selectedDate && (
           <motion.div
-            key="fullscreen-tasks"
-            initial={{ opacity: 0, scale: 0.98 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.98 }}
-            transition={{ duration: 0.28, ease: EASE }}
-            className="absolute inset-0 z-30 bg-background flex flex-col overflow-hidden"
+            key="fullscreen"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 6 }}
+            transition={{ duration: 0.3, ease: EASE }}
+            className="absolute inset-0 z-30 bg-background flex flex-col"
           >
-            {/* Subtle top gradient */}
-            <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-white/[0.015] to-transparent pointer-events-none" />
+            {/* Top accent gradient */}
+            <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-white/[0.012] to-transparent pointer-events-none" />
 
             {/* Header */}
-            <div className="shrink-0 flex items-center justify-between px-5 md:px-10 pt-6 pb-5 border-b border-white/[0.06]">
-              <div className="flex items-center gap-4">
+            <motion.div
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25, delay: 0.05, ease: EASE }}
+              className="shrink-0 flex items-center justify-between px-5 md:px-10 pt-5 md:pt-7 pb-4 border-b border-white/[0.05]"
+            >
+              <div className="flex items-center gap-3 min-w-0">
                 <motion.button
                   onClick={() => setSelectedDate(null)}
                   whileHover={{ x: -2 }}
                   whileTap={{ scale: 0.95 }}
-                  className="flex items-center gap-2 text-copy-secondary hover:text-foreground transition-colors duration-150"
+                  className="flex items-center gap-1.5 text-white/35 hover:text-white/70 transition-colors duration-150 shrink-0"
                 >
                   <ArrowLeft className="h-4 w-4" />
-                  <span className="text-sm font-medium">Calendar</span>
+                  <span className="text-[13px] font-medium hidden sm:block">Calendar</span>
                 </motion.button>
-                <div className="h-4 w-px bg-white/[0.1]" />
-                <div>
+
+                <div className="h-3.5 w-px bg-white/[0.08] shrink-0 hidden sm:block" />
+
+                <div className="min-w-0">
                   <motion.h2
                     key={selectedDate}
-                    initial={{ opacity: 0, y: 4 }}
+                    initial={{ opacity: 0, y: 3 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.2 }}
-                    className="text-[15px] font-semibold tracking-tight"
+                    className="text-[14px] md:text-[15px] font-semibold tracking-tight truncate"
                   >
                     {formatDisplayDate(selectedDate)}
                   </motion.h2>
-                  <p className="text-xs text-copy-muted">
+                  <p className="text-[11px] text-white/30 mt-0.5">
                     {selectedTasks.length === 0
-                      ? "No tasks"
-                      : `${selectedTasks.filter((t) => !t.completed).length} of ${selectedTasks.length} remaining`}
+                      ? "No tasks scheduled"
+                      : selectedTasks.filter((t) => !t.completed).length === 0
+                        ? "All done"
+                        : `${selectedTasks.filter((t) => !t.completed).length} remaining`}
                   </p>
                 </div>
               </div>
+
               <motion.button
                 onClick={() => { setEditingTask(null); setModalOpen(true); }}
-                whileHover={{ scale: 1.03 }}
+                whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.97 }}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/[0.07] border border-white/[0.1] hover:bg-white/[0.1] hover:border-white/[0.15] text-sm font-medium transition-all duration-200"
+                className="shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/[0.06] border border-white/[0.09] hover:bg-white/[0.09] hover:border-white/[0.14] text-[13px] font-medium text-white/70 hover:text-white transition-all duration-200"
               >
-                <Plus className="h-4 w-4" />
-                Add Task
+                <Plus className="h-3.5 w-3.5" />
+                <span>Add Task</span>
               </motion.button>
-            </div>
+            </motion.div>
 
-            {/* Task list */}
-            <div className="flex-1 min-h-0 overflow-y-auto px-5 md:px-10 py-6">
-              <AnimatePresence initial={false} mode="popLayout">
-                {selectedTasks.length === 0 ? (
-                  <motion.div
-                    key="empty"
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.3, ease: EASE }}
-                    className="flex flex-col items-center justify-center py-24 text-center"
-                  >
-                    <div className="h-14 w-14 rounded-2xl bg-white/[0.04] border border-white/[0.07] grid place-items-center mb-5">
-                      <CalendarDays className="h-6 w-6 text-white/20" strokeWidth={1.5} />
-                    </div>
-                    <p className="text-sm font-medium text-copy-secondary">No tasks for this day</p>
-                    <p className="text-xs text-copy-muted mt-1.5">Click Add Task to create one</p>
-                  </motion.div>
-                ) : (
-                  <div className="max-w-2xl mx-auto space-y-2.5">
-                    {selectedTasks.map((task, i) => (
-                      <TaskCard
-                        key={task.id}
-                        task={task}
-                        index={i}
-                        onToggle={() => toggle(task.id)}
-                        onEdit={() => { setEditingTask(task); setModalOpen(true); }}
-                        onDelete={() => remove(task.id)}
-                      />
-                    ))}
-                  </div>
-                )}
-              </AnimatePresence>
+            {/* Timeline */}
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              <div className="max-w-2xl mx-auto px-4 md:px-8 py-6 md:py-8">
+                <AnimatePresence mode="popLayout" initial={false}>
+                  {selectedTasks.length === 0 ? (
+                    <EmptyDay key="empty" />
+                  ) : (
+                    <Timeline
+                      key="timeline"
+                      groups={timelineGroups}
+                      onToggle={(id) => toggle(id)}
+                      onEdit={(t) => { setEditingTask(t); setModalOpen(true); }}
+                      onDelete={(id) => remove(id)}
+                    />
+                  )}
+                </AnimatePresence>
+              </div>
             </div>
           </motion.div>
         )}
@@ -388,23 +402,123 @@ function HorizonPage() {
   );
 }
 
-// ─── Month animation variants ─────────────────────────────────────────────────
+// ─── Empty day ────────────────────────────────────────────────────────────────
 
-const monthVariants = {
-  enter: (dir: number) => ({ opacity: 0, x: dir === 0 ? 0 : dir > 0 ? 20 : -20 }),
-  center: { opacity: 1, x: 0, transition: { duration: 0.26, ease: [0.22, 1, 0.36, 1] } },
-  exit: (dir: number) => ({ opacity: 0, x: dir === 0 ? 0 : dir > 0 ? -20 : 20, transition: { duration: 0.18 } }),
-};
+function EmptyDay() {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.3, ease: EASE }}
+      className="flex flex-col items-center justify-center py-20 md:py-28 text-center"
+    >
+      <motion.div
+        initial={{ scale: 0.85, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ duration: 0.4, delay: 0.05, ease: EASE }}
+        className="h-14 w-14 rounded-2xl bg-white/[0.04] border border-white/[0.06] grid place-items-center mb-5"
+      >
+        <CalendarDays className="h-6 w-6 text-white/15" strokeWidth={1.5} />
+      </motion.div>
+      <p className="text-[14px] font-medium text-white/35">Nothing scheduled</p>
+      <p className="text-[12px] text-white/20 mt-1.5">Tap Add Task to create one</p>
+    </motion.div>
+  );
+}
 
-const gridVariants = {
-  enter: (dir: number) => ({ opacity: 0, x: dir === 0 ? 0 : dir > 0 ? 32 : -32 }),
-  center: { opacity: 1, x: 0, transition: { duration: 0.3, ease: [0.22, 1, 0.36, 1] } },
-  exit: (dir: number) => ({ opacity: 0, x: dir === 0 ? 0 : dir > 0 ? -32 : 32, transition: { duration: 0.18 } }),
-};
+// ─── Timeline ─────────────────────────────────────────────────────────────────
 
-// ─── Task card ────────────────────────────────────────────────────────────────
+function Timeline({
+  groups,
+  onToggle,
+  onEdit,
+  onDelete,
+}: {
+  groups: { label: string; tasks: HorizonTask[] }[];
+  onToggle: (id: string) => void;
+  onEdit: (t: HorizonTask) => void;
+  onDelete: (id: string) => void;
+}) {
+  return (
+    <div className="space-y-0">
+      {groups.map(({ label, tasks }, gi) => (
+        <TimelineGroup
+          key={label}
+          timeLabel={label}
+          tasks={tasks}
+          isLast={gi === groups.length - 1}
+          globalIndex={groups.slice(0, gi).reduce((acc, g) => acc + g.tasks.length, 0)}
+          onToggle={onToggle}
+          onEdit={onEdit}
+          onDelete={onDelete}
+        />
+      ))}
+    </div>
+  );
+}
 
-function TaskCard({
+// ─── Timeline group (one hour) ────────────────────────────────────────────────
+
+function TimelineGroup({
+  timeLabel,
+  tasks,
+  isLast,
+  globalIndex,
+  onToggle,
+  onEdit,
+  onDelete,
+}: {
+  timeLabel: string;
+  tasks: HorizonTask[];
+  isLast: boolean;
+  globalIndex: number;
+  onToggle: (id: string) => void;
+  onEdit: (t: HorizonTask) => void;
+  onDelete: (id: string) => void;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -4 }}
+      transition={{ duration: 0.28, ease: EASE }}
+      className="flex gap-0"
+    >
+      {/* ── Left: Timeline column ─────────────────────────────────── */}
+      <div className="flex flex-col items-center shrink-0 w-14 md:w-16">
+        {/* Time label */}
+        <span className="text-[10px] md:text-[11px] font-medium text-white/25 leading-none pt-[18px] whitespace-nowrap">
+          {timeLabel}
+        </span>
+        {/* Node */}
+        <div className="mt-2 h-2 w-2 rounded-full bg-white/[0.2] border border-white/[0.35] shadow-[0_0_6px_rgba(255,255,255,0.08)] shrink-0" />
+        {/* Connector line — extends down if not last */}
+        {!isLast && (
+          <div className="w-px flex-1 mt-1 mb-0 bg-gradient-to-b from-white/[0.1] to-transparent min-h-[24px]" />
+        )}
+      </div>
+
+      {/* ── Right: Task cards ─────────────────────────────────────── */}
+      <div className="flex-1 min-w-0 pb-6 md:pb-8 pl-3 md:pl-4 space-y-2.5">
+        {tasks.map((task, i) => (
+          <TimelineTaskCard
+            key={task.id}
+            task={task}
+            index={globalIndex + i}
+            onToggle={() => onToggle(task.id)}
+            onEdit={() => onEdit(task)}
+            onDelete={() => onDelete(task.id)}
+          />
+        ))}
+      </div>
+    </motion.div>
+  );
+}
+
+// ─── Timeline task card ───────────────────────────────────────────────────────
+
+function TimelineTaskCard({
   task,
   index,
   onToggle,
@@ -423,100 +537,127 @@ function TaskCard({
   return (
     <motion.div
       layout
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -6, scale: 0.97 }}
-      transition={{ duration: 0.22, delay: index * 0.04, ease: [0.22, 1, 0.36, 1] }}
-      whileHover={{ y: -1, transition: { duration: 0.15 } }}
+      initial={{ opacity: 0, x: 8 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: -4, scale: 0.97 }}
+      transition={{ duration: 0.24, delay: index * 0.035, ease: EASE }}
+      whileHover={{ y: -1.5, transition: { duration: 0.15 } }}
       className={cn(
-        "rounded-2xl border bg-white/[0.03] hover:bg-white/[0.05] overflow-hidden transition-all duration-300",
+        "rounded-2xl border overflow-hidden transition-all duration-250 group",
         task.completed
-          ? "opacity-45 border-white/[0.05]"
-          : "border-white/[0.08] hover:border-white/[0.12] hover:shadow-[0_8px_32px_-8px_rgba(0,0,0,0.5)]",
+          ? "opacity-40 border-white/[0.04] bg-transparent"
+          : "bg-white/[0.03] border-white/[0.07] hover:bg-white/[0.05] hover:border-white/[0.11] hover:shadow-[0_8px_40px_-12px_rgba(0,0,0,0.6)]",
       )}
     >
-      {/* Collapsed row */}
+      {/* Main row */}
       <button
         type="button"
         onClick={() => setExpanded((e) => !e)}
-        className="w-full flex items-center gap-3.5 px-4 py-3.5 text-left"
+        className="w-full flex items-start gap-3 px-4 py-4 md:py-4.5 text-left"
       >
         {/* Checkbox */}
         <motion.button
           type="button"
           onClick={(e) => { e.stopPropagation(); onToggle(); }}
-          whileTap={{ scale: 0.85 }}
+          whileTap={{ scale: 0.82 }}
           className={cn(
-            "h-5 w-5 shrink-0 rounded-md border-[1.5px] grid place-items-center transition-all duration-200",
+            "mt-0.5 h-5 w-5 shrink-0 rounded-md border-[1.5px] grid place-items-center transition-all duration-200",
             task.completed
-              ? "bg-white/80 border-white/80"
-              : "border-white/20 hover:border-white/40",
+              ? "bg-white/70 border-white/70"
+              : "border-white/15 hover:border-white/35",
           )}
         >
-          {task.completed && <Check className="h-3 w-3 text-background" strokeWidth={2.5} />}
+          {task.completed && (
+            <motion.span
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ type: "spring", stiffness: 500, damping: 22 }}
+            >
+              <Check className="h-3 w-3 text-background" strokeWidth={2.5} />
+            </motion.span>
+          )}
         </motion.button>
 
-        {/* Priority dot */}
-        <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", p.dot)} />
-
-        {/* Title + time */}
+        {/* Content */}
         <div className="flex-1 min-w-0">
-          <p className={cn(
-            "text-[13px] font-medium truncate transition-all duration-200",
-            task.completed ? "line-through text-copy-muted" : "text-foreground",
-          )}>
-            {task.title}
-          </p>
-          <div className="flex items-center gap-1.5 mt-0.5">
-            <Clock className="h-2.5 w-2.5 text-copy-muted" />
-            <span className="text-[11px] text-copy-muted">{format12Hour(task.taskTime)}</span>
+          <div className="flex items-center gap-2 mb-1">
+            {/* Priority badge */}
+            <span className={cn("h-[5px] w-[5px] rounded-full shrink-0 mt-px", p.dot)} />
+            <p className={cn(
+              "text-[14px] font-medium leading-snug transition-all duration-200",
+              task.completed ? "line-through text-white/25" : "text-white/85",
+            )}>
+              {task.title}
+            </p>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Clock className="h-[11px] w-[11px] text-white/20 shrink-0" />
+            <span className="text-[11px] text-white/25">{format12Hour(task.taskTime)}</span>
+            {task.notificationEnabled && (
+              <span className="ml-1 text-[11px] text-white/20 flex items-center gap-1">
+                <Bell className="h-[10px] w-[10px]" />
+              </span>
+            )}
           </div>
         </div>
 
-        <ChevronDown
-          className={cn(
-            "h-3.5 w-3.5 text-copy-muted shrink-0 transition-transform duration-200",
-            expanded && "rotate-180",
-          )}
-        />
+        {/* Chevron */}
+        <motion.span
+          animate={{ rotate: expanded ? 180 : 0 }}
+          transition={{ duration: 0.2 }}
+          className="text-white/15 mt-1 shrink-0"
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </motion.span>
       </button>
 
-      {/* Expanded detail */}
+      {/* Expanded panel */}
       <AnimatePresence initial={false}>
         {expanded && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: 0.22, ease: EASE }}
             className="overflow-hidden"
           >
-            <div className="px-4 pb-4 border-t border-white/[0.05]">
+            <div className="px-4 pt-0 pb-4 border-t border-white/[0.04]">
               {task.description && (
-                <p className="text-xs text-copy-secondary mt-3 mb-3 leading-relaxed">
+                <p className="text-[13px] text-white/40 mt-3 mb-3 leading-relaxed">
                   {task.description}
                 </p>
               )}
+
+              {/* Meta row */}
               <div className="flex items-center gap-2 mt-3 flex-wrap">
-                <span className={cn("text-[11px] font-medium px-2 py-0.5 rounded-md bg-white/[0.05] border border-white/[0.06]", p.color)}>
-                  {p.label}
+                <span className={cn(
+                  "text-[10px] font-medium px-2 py-0.5 rounded-md border",
+                  p.bg, p.color, p.border,
+                )}>
+                  {p.label} priority
                 </span>
-                <span className="flex items-center gap-1 text-[11px] text-copy-muted">
-                  {task.notificationEnabled ? <Bell className="h-2.5 w-2.5" /> : <BellOff className="h-2.5 w-2.5" />}
-                  {task.notificationEnabled ? "Reminder on" : "No reminder"}
-                </span>
+                {task.notificationEnabled && (
+                  <span className="flex items-center gap-1 text-[10px] text-white/25">
+                    <Bell className="h-2.5 w-2.5" />
+                    Reminder on
+                  </span>
+                )}
               </div>
-              <div className="flex items-center gap-1.5 mt-3.5">
+
+              {/* Actions */}
+              <div className="flex items-center gap-1 mt-3.5">
                 <button
                   onClick={onEdit}
-                  className="flex items-center gap-1.5 text-[11px] text-copy-secondary hover:text-foreground px-2.5 py-1.5 rounded-lg hover:bg-white/[0.06] transition-all duration-150"
+                  className="flex items-center gap-1.5 text-[12px] text-white/30 hover:text-white/70 px-2.5 py-1.5 rounded-lg hover:bg-white/[0.05] transition-all duration-150"
                 >
                   <Pencil className="h-3 w-3" />
                   Edit
                 </button>
                 <button
                   onClick={onDelete}
-                  className="flex items-center gap-1.5 text-[11px] text-copy-secondary hover:text-red-400 px-2.5 py-1.5 rounded-lg hover:bg-red-500/[0.07] transition-all duration-150"
+                  className="flex items-center gap-1.5 text-[12px] text-white/25 hover:text-red-400/80 px-2.5 py-1.5 rounded-lg hover:bg-red-500/[0.06] transition-all duration-150"
                 >
                   <Trash2 className="h-3 w-3" />
                   Delete
@@ -586,10 +727,7 @@ function TaskModal({
   const onValid = async (values: TaskFormValues) => {
     setSubmitting(true);
     const h = parseInt(values.taskTimeHour, 10);
-    const h24 =
-      values.taskTimeAmpm === "PM"
-        ? h === 12 ? 12 : h + 12
-        : h === 12 ? 0 : h;
+    const h24 = values.taskTimeAmpm === "PM" ? (h === 12 ? 12 : h + 12) : (h === 12 ? 0 : h);
     const taskTime = `${String(h24).padStart(2, "0")}:${values.taskTimeMinute}`;
     await onSubmit({
       title: values.title,
@@ -604,12 +742,12 @@ function TaskModal({
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="sm:max-w-md bg-[var(--surface-1)] border border-white/[0.09] gap-0 p-0 overflow-hidden">
-        <DialogHeader className="px-6 pt-6 pb-4 border-b border-white/[0.06]">
-          <DialogTitle className="text-[15px] font-semibold">
+      <DialogContent className="sm:max-w-md bg-[var(--surface-1)] border border-white/[0.08] gap-0 p-0 overflow-hidden">
+        <DialogHeader className="px-6 pt-6 pb-4 border-b border-white/[0.05]">
+          <DialogTitle className="text-[14px] font-semibold">
             {editingTask ? "Edit task" : "New task"}
           </DialogTitle>
-          <DialogDescription className="text-xs text-copy-muted mt-0.5">
+          <DialogDescription className="text-[11px] text-white/30 mt-0.5">
             {formatDisplayDate(defaultDate)}
           </DialogDescription>
         </DialogHeader>
@@ -617,60 +755,50 @@ function TaskModal({
         <form onSubmit={handleSubmit(onValid)} className="px-6 py-5 space-y-4">
           {/* Title */}
           <div>
-            <label className="text-xs font-medium text-copy-secondary mb-1.5 block">
-              Title <span className="text-white/30">*</span>
-            </label>
+            <label className="text-[11px] font-medium text-white/40 mb-1.5 block uppercase tracking-wider">Title</label>
             <input
               {...register("title")}
               placeholder="What needs to be done?"
               autoFocus
               className={cn(
-                "w-full rounded-xl border bg-white/[0.04] px-3.5 py-2.5 text-sm outline-none transition-all duration-150 placeholder:text-copy-muted",
+                "w-full rounded-xl border bg-white/[0.03] px-3.5 py-2.5 text-[14px] outline-none transition-all duration-150 placeholder:text-white/20",
                 errors.title
-                  ? "border-red-400/40 focus:border-red-400/60"
-                  : "border-white/[0.08] focus:border-white/[0.18] focus:bg-white/[0.06]",
+                  ? "border-red-400/30 focus:border-red-400/50"
+                  : "border-white/[0.07] focus:border-white/[0.16] focus:bg-white/[0.05]",
               )}
             />
-            {errors.title && (
-              <p className="text-[11px] text-red-400/80 mt-1">{errors.title.message}</p>
-            )}
+            {errors.title && <p className="text-[11px] text-red-400/70 mt-1">{errors.title.message}</p>}
           </div>
 
-          {/* Time — full 12-hour picker with all 60 minutes */}
+          {/* Time */}
           <div>
-            <label className="text-xs font-medium text-copy-secondary mb-1.5 block">
-              Time <span className="text-white/30">*</span>
-            </label>
+            <label className="text-[11px] font-medium text-white/40 mb-1.5 block uppercase tracking-wider">Time</label>
             <div className="flex items-center gap-2">
               <Controller
                 name="taskTimeHour"
                 control={control}
                 render={({ field }) => (
                   <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger className="flex-1 bg-white/[0.04] border-white/[0.08] hover:border-white/[0.15] text-sm rounded-xl">
-                      <SelectValue placeholder="Hr" />
+                    <SelectTrigger className="flex-1 bg-white/[0.03] border-white/[0.07] hover:border-white/[0.14] text-sm rounded-xl h-10">
+                      <SelectValue />
                     </SelectTrigger>
-                    <SelectContent className="bg-[var(--surface-2)] border-white/[0.09] max-h-48">
-                      {HOURS_12.map((h) => (
-                        <SelectItem key={h} value={h} className="text-sm">{h}</SelectItem>
-                      ))}
+                    <SelectContent className="bg-[var(--surface-2)] border-white/[0.08] max-h-52">
+                      {HOURS_12.map((h) => <SelectItem key={h} value={h} className="text-sm">{h}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 )}
               />
-              <span className="text-copy-muted text-sm font-medium shrink-0">:</span>
+              <span className="text-white/20 text-sm font-medium shrink-0">:</span>
               <Controller
                 name="taskTimeMinute"
                 control={control}
                 render={({ field }) => (
                   <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger className="flex-1 bg-white/[0.04] border-white/[0.08] hover:border-white/[0.15] text-sm rounded-xl">
-                      <SelectValue placeholder="Min" />
+                    <SelectTrigger className="flex-1 bg-white/[0.03] border-white/[0.07] hover:border-white/[0.14] text-sm rounded-xl h-10">
+                      <SelectValue />
                     </SelectTrigger>
-                    <SelectContent className="bg-[var(--surface-2)] border-white/[0.09] max-h-48">
-                      {ALL_MINUTES.map((m) => (
-                        <SelectItem key={m} value={m} className="text-sm">{m}</SelectItem>
-                      ))}
+                    <SelectContent className="bg-[var(--surface-2)] border-white/[0.08] max-h-52">
+                      {ALL_MINUTES.map((m) => <SelectItem key={m} value={m} className="text-sm">{m}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 )}
@@ -680,10 +808,10 @@ function TaskModal({
                 control={control}
                 render={({ field }) => (
                   <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger className="w-20 bg-white/[0.04] border-white/[0.08] hover:border-white/[0.15] text-sm rounded-xl">
+                    <SelectTrigger className="w-20 bg-white/[0.03] border-white/[0.07] hover:border-white/[0.14] text-sm rounded-xl h-10">
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent className="bg-[var(--surface-2)] border-white/[0.09]">
+                    <SelectContent className="bg-[var(--surface-2)] border-white/[0.08]">
                       <SelectItem value="AM" className="text-sm">AM</SelectItem>
                       <SelectItem value="PM" className="text-sm">PM</SelectItem>
                     </SelectContent>
@@ -695,20 +823,20 @@ function TaskModal({
 
           {/* Description */}
           <div>
-            <label className="text-xs font-medium text-copy-secondary mb-1.5 block">
-              Description <span className="text-copy-muted">(optional)</span>
+            <label className="text-[11px] font-medium text-white/40 mb-1.5 block uppercase tracking-wider">
+              Description <span className="normal-case text-white/20 tracking-normal">(optional)</span>
             </label>
             <textarea
               {...register("description")}
-              rows={3}
+              rows={2}
               placeholder="Add details…"
-              className="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-3.5 py-2.5 text-sm outline-none transition-all duration-150 placeholder:text-copy-muted focus:border-white/[0.18] focus:bg-white/[0.06] resize-none"
+              className="w-full rounded-xl border border-white/[0.07] bg-white/[0.03] px-3.5 py-2.5 text-[14px] outline-none transition-all duration-150 placeholder:text-white/20 focus:border-white/[0.16] focus:bg-white/[0.05] resize-none"
             />
           </div>
 
           {/* Priority */}
           <div>
-            <label className="text-xs font-medium text-copy-secondary mb-1.5 block">Priority</label>
+            <label className="text-[11px] font-medium text-white/40 mb-1.5 block uppercase tracking-wider">Priority</label>
             <Controller
               name="priority"
               control={control}
@@ -723,10 +851,10 @@ function TaskModal({
                         type="button"
                         onClick={() => field.onChange(p)}
                         className={cn(
-                          "flex-1 py-2 rounded-xl border text-xs font-medium transition-all duration-150",
+                          "flex-1 py-2 rounded-xl border text-[12px] font-medium transition-all duration-150",
                           active
-                            ? `border-white/[0.18] bg-white/[0.07] ${cfg.color}`
-                            : "border-white/[0.07] text-copy-secondary hover:text-foreground hover:border-white/[0.12]",
+                            ? cn(cfg.bg, cfg.border, cfg.color)
+                            : "border-white/[0.06] text-white/30 hover:text-white/55 hover:border-white/[0.1]",
                         )}
                       >
                         {cfg.label}
@@ -749,26 +877,24 @@ function TaskModal({
                 className={cn(
                   "w-full flex items-center gap-3 rounded-xl border px-3.5 py-3 text-sm transition-all duration-200",
                   field.value
-                    ? "border-white/[0.18] bg-white/[0.05] text-foreground"
-                    : "border-white/[0.07] text-copy-secondary hover:border-white/[0.12] hover:text-foreground",
+                    ? "border-white/[0.12] bg-white/[0.04]"
+                    : "border-white/[0.06] hover:border-white/[0.1]",
                 )}
               >
-                {field.value ? <Bell className="h-4 w-4 shrink-0" /> : <BellOff className="h-4 w-4 shrink-0" />}
+                {field.value ? <Bell className="h-4 w-4 text-white/50 shrink-0" /> : <BellOff className="h-4 w-4 text-white/20 shrink-0" />}
                 <div className="text-left flex-1">
-                  <p className="text-[13px] font-medium leading-none">
+                  <p className="text-[13px] font-medium text-white/60 leading-none">
                     {field.value ? "Reminder enabled" : "Enable reminder"}
                   </p>
-                  <p className="text-[11px] text-copy-muted mt-0.5">
-                    {field.value ? "You'll be notified before this task" : "No notification"}
-                  </p>
+                  <p className="text-[11px] text-white/25 mt-0.5">{field.value ? "You'll be notified" : "No notification"}</p>
                 </div>
                 <div className={cn(
                   "h-5 w-9 rounded-full border relative shrink-0 transition-all duration-200",
-                  field.value ? "bg-white/80 border-white/80" : "bg-transparent border-white/20",
+                  field.value ? "bg-white/70 border-white/70" : "bg-transparent border-white/15",
                 )}>
                   <span className={cn(
                     "absolute top-0.5 h-4 w-4 rounded-full shadow-sm transition-all duration-200",
-                    field.value ? "left-4 bg-background" : "left-0.5 bg-white/40",
+                    field.value ? "left-4 bg-background" : "left-0.5 bg-white/30",
                   )} />
                 </div>
               </button>
@@ -780,7 +906,7 @@ function TaskModal({
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-2.5 rounded-xl border border-white/[0.08] text-sm font-medium text-copy-secondary hover:text-foreground hover:border-white/[0.14] transition-all duration-150"
+              className="flex-1 py-2.5 rounded-xl border border-white/[0.07] text-[13px] font-medium text-white/35 hover:text-white/60 hover:border-white/[0.12] transition-all duration-150"
             >
               Cancel
             </button>
@@ -788,7 +914,7 @@ function TaskModal({
               type="submit"
               disabled={submitting}
               whileTap={{ scale: 0.97 }}
-              className="flex-1 py-2.5 rounded-xl bg-foreground text-background text-sm font-medium disabled:opacity-40 transition-opacity hover:opacity-90"
+              className="flex-1 py-2.5 rounded-xl bg-foreground text-background text-[13px] font-medium disabled:opacity-30 hover:opacity-90 transition-opacity"
             >
               {submitting ? "Saving…" : editingTask ? "Save changes" : "Add task"}
             </motion.button>
