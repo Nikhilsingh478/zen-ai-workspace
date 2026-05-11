@@ -1,47 +1,45 @@
 // Firebase Cloud Messaging background service worker.
-// This file must live at the root of the site.
-// It handles push notifications when the app is closed or in the background.
+// Config is read from URL query params at registration time (publishable keys — safe).
 
 importScripts("https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js");
 importScripts("https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js");
 
-// ─── Firebase config ──────────────────────────────────────────────────────────
-// Injected at build time by the SW registration code in fcm.ts.
-// These are publishable keys — safe to include in the service worker.
+// ─── Firebase config from URL params ─────────────────────────────────────────
+
+const params = new URL(self.location.href).searchParams;
 
 const firebaseConfig = {
-  apiKey: self.__FIREBASE_API_KEY__ ?? "",
-  authDomain: self.__FIREBASE_AUTH_DOMAIN__ ?? "",
-  projectId: self.__FIREBASE_PROJECT_ID__ ?? "",
-  storageBucket: self.__FIREBASE_STORAGE_BUCKET__ ?? "",
-  messagingSenderId: self.__FIREBASE_MESSAGING_SENDER_ID__ ?? "",
-  appId: self.__FIREBASE_APP_ID__ ?? "",
+  apiKey:            params.get("apiKey")            || "",
+  authDomain:        params.get("authDomain")        || "",
+  projectId:         params.get("projectId")         || "",
+  storageBucket:     params.get("storageBucket")     || "",
+  messagingSenderId: params.get("messagingSenderId") || "",
+  appId:             params.get("appId")             || "",
 };
 
-// Only initialize if we have a valid config
+// ─── Initialize only if config is present ────────────────────────────────────
+
 if (firebaseConfig.apiKey && firebaseConfig.projectId) {
   firebase.initializeApp(firebaseConfig);
   const messaging = firebase.messaging();
 
-  // ─── Background message handler ─────────────────────────────────────────────
-
   messaging.onBackgroundMessage((payload) => {
     const title = payload.notification?.title ?? "Horizon Reminder";
-    const body = payload.notification?.body ?? "";
-    const url = payload.data?.url ?? "/horizon";
+    const body  = payload.notification?.body  ?? "";
+    const url   = payload.data?.url           ?? "/horizon";
 
     self.registration.showNotification(title, {
       body,
-      icon: "/favicon.png",
-      badge: "/favicon.png",
-      tag: "horizon-reminder",
+      icon:               "/favicon.png",
+      badge:              "/favicon.png",
+      tag:                payload.data?.tag ?? "horizon-reminder",
       requireInteraction: false,
-      data: { url },
+      data:               { url },
     });
   });
 }
 
-// ─── Notification click ───────────────────────────────────────────────────────
+// ─── Notification click → focus or open the app ──────────────────────────────
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
@@ -51,7 +49,6 @@ self.addEventListener("notificationclick", (event) => {
     self.clients
       .matchAll({ type: "window", includeUncontrolled: true })
       .then((clients) => {
-        // Focus an existing tab if one is open
         const existing = clients.find((c) => c.url.includes(self.location.origin));
         if (existing) {
           existing.focus();

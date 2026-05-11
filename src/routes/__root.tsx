@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Toaster } from "sonner";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell";
+import { initFCM } from "@/lib/fcm";
 
 // ─── Route ────────────────────────────────────────────────────────────────────
 
@@ -123,6 +124,10 @@ function AIMetricsIcon() {
 function RootComponent() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [splashDone, setSplashDone] = useState(false);
+
+  useEffect(() => {
+    initFCM().catch(() => {});
+  }, []);
 
   return (
     <>

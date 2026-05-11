@@ -17,6 +17,8 @@ import {
   ListTodo,
   Target,
   BarChart3,
+  Bell,
+  BellOff,
 } from "lucide-react";
 import {
   LineChart,
@@ -35,6 +37,7 @@ import {
 } from "recharts";
 import { getInsightsData, type InsightsData } from "@/lib/usage-tracking";
 import { useHorizon, formatDateKey } from "@/lib/horizon";
+import { useFCMStatus } from "@/lib/fcm";
 import { faviconFor } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -215,6 +218,7 @@ type HorizonStats = {
   priorityDist: { name: string; value: number; color: string }[];
   busiestDay: { label: string; count: number } | null;
   weeklyTrend: { label: string; completed: number; added: number }[];
+  tasks: import("@/lib/horizon").HorizonTask[];
 };
 
 function useHorizonStats(): HorizonStats {
@@ -267,7 +271,7 @@ function useHorizonStats(): HorizonStats {
     };
   });
 
-  return { completedToday, completedThisWeek, upcomingToday, upcomingThisWeek, totalTasks, completedTotal, completionRate, priorityDist, busiestDay, weeklyTrend };
+  return { completedToday, completedThisWeek, upcomingToday, upcomingThisWeek, totalTasks, completedTotal, completionRate, priorityDist, busiestDay, weeklyTrend, tasks };
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
@@ -278,6 +282,7 @@ function InsightsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const horizon = useHorizonStats();
+  const notifStatus = useFCMStatus();
 
   const load = useCallback(async (showSpinner = false) => {
     if (showSpinner) setRefreshing(true);
@@ -412,6 +417,82 @@ function InsightsPage() {
           sub={horizon.busiestDay ? `${horizon.busiestDay.count} tasks` : "No data yet"}
           icon={Calendar}
           delay={0.26}
+        />
+      </div>
+
+      {/* ── Notifications section header ─────────────────────────────────── */}
+      <div className="flex items-center gap-2.5 mb-4">
+        <div className="h-5 w-5 rounded-lg bg-white/[0.06] border border-white/[0.07] grid place-items-center">
+          <Bell className="h-2.5 w-2.5 text-white/40" />
+        </div>
+        <span className="text-[11px] font-semibold text-white/35 uppercase tracking-widest">Reminders & Notifications</span>
+      </div>
+
+      {/* ── Notification metrics ─────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 md:gap-3 mb-8">
+        {/* Tasks with reminders */}
+        <MetricCard
+          label="Reminders Set"
+          value={horizon.tasks.filter((t) => t.notificationEnabled).length}
+          sub="tasks with reminders on"
+          icon={Bell}
+          delay={0.27}
+        />
+
+        {/* Reminder coverage */}
+        <MetricCard
+          label="Coverage"
+          value={
+            horizon.totalTasks === 0
+              ? "—"
+              : `${Math.round((horizon.tasks.filter((t) => t.notificationEnabled).length / horizon.totalTasks) * 100)}%`
+          }
+          sub="tasks opted into reminders"
+          icon={Target}
+          delay={0.28}
+        />
+
+        {/* Permission status */}
+        <motion.div
+          initial={{ opacity: 0, y: 12, scale: 0.97 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.35, delay: 0.29, ease: [0.22, 1, 0.36, 1] }}
+          whileHover={{ y: -2, transition: { duration: 0.15 } }}
+          className="rounded-2xl border border-white/[0.07] bg-[#18181B] p-4 md:p-5 flex flex-col gap-3 hover:border-white/[0.12] hover:shadow-[0_16px_40px_-16px_rgba(0,0,0,0.6)] transition-all duration-300"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-white/35 uppercase tracking-widest font-medium">Permission</span>
+            <div className="h-7 w-7 rounded-lg bg-white/[0.05] border border-white/[0.06] grid place-items-center shrink-0">
+              {notifStatus === "granted" ? (
+                <Bell className="h-3.5 w-3.5 text-white/40" />
+              ) : (
+                <BellOff className="h-3.5 w-3.5 text-white/40" />
+              )}
+            </div>
+          </div>
+          <div>
+            <p className="text-lg md:text-2xl font-semibold tracking-tight text-foreground leading-tight capitalize">
+              {notifStatus === "granted" ? "Active" :
+               notifStatus === "denied" ? "Blocked" :
+               notifStatus === "default" ? "Not set" :
+               notifStatus === "unconfigured" ? "Not configured" : "Unsupported"}
+            </p>
+            <p className="text-[10px] md:text-[11px] text-white/30 mt-1">
+              {notifStatus === "granted" ? "Push notifications enabled" :
+               notifStatus === "denied" ? "Enable in browser settings" :
+               notifStatus === "default" ? "Enable a reminder to prompt" :
+               "Browser push not available"}
+            </p>
+          </div>
+        </motion.div>
+
+        {/* Completed with reminders */}
+        <MetricCard
+          label="Reminded & Done"
+          value={horizon.tasks.filter((t) => t.notificationEnabled && t.completed).length}
+          sub="completed reminder tasks"
+          icon={CheckCircle2}
+          delay={0.3}
         />
       </div>
 

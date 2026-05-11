@@ -1,0 +1,378 @@
+AI Metrics — Horizon Voice Assistant + Auto Listening System
+We are now implementing a production-grade voice assistant system inside AI Metrics.
+IMPORTANT:
+This is NOT a toy voice input feature.
+This is NOT a basic speech-to-text button.
+This should feel like:
+a lightweight Jarvis-style assistant
+an intelligent productivity copilot
+an integrated AI operating system layer
+premium modern voice interaction
+The goal is:
+automatic microphone activation after permission has already been granted once
+continuous listening while app/PWA is open
+wake-word detection
+voice command execution
+voice responses
+seamless Horizon integration
+smooth desktop + Android PWA behavior
+IMPORTANT:
+This must be implemented carefully.
+No buggy microphone loops.
+No permission spam.
+No infinite recognition restart glitches.
+No duplicated recognition sessions.
+No UI flickering.
+No broken mobile behavior.
+The final system must feel:
+smooth
+stable
+premium
+cinematic
+minimal
+trustworthy
+production-grade
+==================================================
+CURRENT STACK
+Frontend:
+React 19
+Vite 7
+TypeScript
+TanStack Router
+Tailwind v4
+Framer Motion
+Backend:
+Supabase
+Gemini/OpenAI integration
+PWA:
+already implemented
+service worker exists
+splashscreen exists
+Notifications:
+Firebase Cloud Messaging already planned
+==================================================
+PRIMARY GOAL
+Build a persistent voice assistant experience.
+Behavior:
+FIRST TIME:
+user explicitly enables voice assistant
+user grants microphone permission
+AFTER PERMISSION HAS BEEN GRANTED:
+whenever app/PWA opens
+microphone auto-starts automatically
+assistant continuously listens
+waits for wake word
+Examples:
+"Horizon"
+"Hey Horizon"
+Then:
+assistant activates
+user speaks command
+command processed
+response optionally spoken back
+==================================================
+IMPORTANT LIMITATIONS
+This implementation only needs to support:
+desktop Chrome
+desktop Edge
+Android Chrome
+installed PWA mode
+Best-effort Safari support is optional.
+DO NOT attempt impossible browser-level background listening.
+The assistant only needs to work while:
+app is open
+tab is active/open
+PWA is open
+==================================================
+IMPORTANT UX RULES
+DO NOT:
+auto-request mic permission on first page load
+aggressively spam permission prompts
+start recording secretly
+create creepy UX
+Instead:
+explicitly ask user once
+explain voice assistant clearly
+allow opt-in
+remember user preference
+==================================================
+VOICE ASSISTANT SETTINGS
+Create proper settings controls.
+Suggested settings:
+Voice Assistant
+[ ON/OFF ]
+Auto Start Listening
+[ ON/OFF ]
+Voice Responses
+[ ON/OFF ]
+Wake Word
+[ Horizon / Hey Horizon ]
+Microphone Status
+[ Connected / Disabled / Permission Denied ]
+==================================================
+PERMISSION FLOW
+FIRST ENABLE FLOW:
+User clicks:
+"Enable Voice Assistant"
+Then:
+explain microphone usage
+request microphone permission
+store permission state
+initialize assistant safely
+After granted:
+assistant becomes available automatically on future launches
+==================================================
+PERSISTENT SETTINGS
+Persist:
+assistant enabled state
+auto-listening preference
+wake-word preference
+voice-response preference
+Use:
+localStorage initially
+OR
+Supabase profile settings later
+==================================================
+AUTO-START REQUIREMENT
+IMPORTANT:
+After user grants permission once AND enables assistant:
+Whenever:
+website opens
+installed PWA opens
+user refreshes app
+THEN:
+microphone should auto-start
+listening should begin automatically
+wake word should become active
+WITHOUT requiring button press every time.
+==================================================
+VOICE TECHNOLOGY
+Use:
+Web Speech API
+SpeechRecognition
+continuous mode
+interimResults
+SpeechSynthesis API for responses
+Prefer:
+window.SpeechRecognition
+OR
+window.webkitSpeechRecognition
+==================================================
+RECOGNITION REQUIREMENTS
+Recognition must:
+run continuously
+restart safely if interrupted
+avoid duplicate recognition instances
+avoid infinite restart loops
+avoid memory leaks
+avoid stale listeners
+==================================================
+IMPORTANT STABILITY REQUIREMENTS
+This is EXTREMELY important.
+Common browser bugs must be handled properly:
+recognition unexpectedly stops
+duplicate sessions start
+microphone hangs
+browser throttles recognition
+Android Chrome interruptions
+inactive tab suspension
+permission revocation
+Implement robust safeguards.
+==================================================
+SAFE RESTART LOGIC
+If recognition stops unexpectedly:
+restart gracefully
+debounce restart attempts
+avoid infinite recursion
+avoid CPU spikes
+Use:
+restart cooldowns
+session tracking
+mounted state tracking
+cleanup logic
+==================================================
+WAKE WORD SYSTEM
+IMPORTANT:
+The assistant should NOT process every sentence as a command.
+Instead:
+continuously listen for wake word
+only activate command mode after wake word detected
+Supported wake words:
+Horizon
+Hey Horizon
+Examples:
+"Horizon"
+→ assistant activates
+"Hey Horizon, what's pending today?"
+→ command processing begins
+==================================================
+WAKE WORD DETECTION LOGIC
+Implement:
+case-insensitive matching
+partial phrase handling
+false-positive reduction
+debounce activation
+Assistant should:
+ignore unrelated speech
+avoid constant accidental triggers
+==================================================
+VOICE COMMAND FLOW
+Flow:
+Wake word detected
+→ listening state changes
+→ assistant UI activates
+→ user command captured
+→ Gemini/OpenAI processes request
+→ response displayed
+→ optional voice response spoken back
+→ assistant returns to passive listening mode
+==================================================
+SUPPORTED COMMANDS
+Initially support:
+Horizon task commands:
+"What's pending today?"
+"Show tomorrow's tasks"
+"Create task tomorrow at 4 PM"
+"Mark task completed"
+General app commands:
+"Open Horizon"
+"Open Prompts"
+"Open Desktop"
+"Search for Replit"
+==================================================
+VOICE RESPONSE SYSTEM
+Implement optional spoken responses.
+Use:
+SpeechSynthesis API.
+Requirements:
+natural pacing
+interruption handling
+cancel previous speech safely
+avoid overlapping speech
+Voice responses should feel:
+calm
+premium
+minimal
+not robotic/spammy
+==================================================
+VOICE UI OVERLAY
+Create a premium voice assistant overlay.
+NOT:
+huge chatbot modal
+cluttered assistant window
+Instead:
+subtle floating UI
+cinematic glow
+waveform/ring animation
+listening indicator
+premium transitions
+==================================================
+VOICE STATES
+Visually represent:
+Idle Listening
+subtle glow pulse
+Wake Word Detected
+brighter activation animation
+Listening To Command
+waveform animation
+Processing
+soft animated loader
+Speaking Response
+subtle voice pulse
+==================================================
+DESIGN LANGUAGE
+Maintain existing AI Metrics style:
+monochrome dark
+cinematic minimalism
+subtle white glow
+soft borders
+premium motion
+DO NOT:
+use colorful gradients
+create futuristic neon mess
+overanimate
+==================================================
+MOBILE BEHAVIOR
+IMPORTANT:
+Android Chrome PWA support matters heavily.
+Ensure:
+microphone auto-start works
+wake word works
+fullscreen overlays behave properly
+no layout shifts
+no stuck microphone states
+==================================================
+BACKGROUND LIMITATIONS
+IMPORTANT:
+Browsers CANNOT truly support permanent background listening when app is fully closed.
+DO NOT attempt fake OS-level behavior.
+Instead:
+support listening while PWA/app is OPEN
+support listening while tab active/open
+support installed PWA sessions
+==================================================
+FUTURE NATIVE WRAPPER PREPARATION
+IMPORTANT:
+Architect the assistant in a modular way so it can later migrate into:
+Tauri
+OR
+Electron
+for:
+real background listening
+OS-level wake word support
+tray assistant behavior
+startup-on-boot
+deeper desktop integration
+Keep voice assistant logic modular and isolated.
+==================================================
+PERFORMANCE REQUIREMENTS
+Ensure:
+low CPU usage
+efficient recognition lifecycle
+proper cleanup
+minimal memory leaks
+no unnecessary re-renders
+==================================================
+ERROR HANDLING
+Gracefully handle:
+microphone denied
+unsupported browser
+recognition failures
+network interruptions
+speech API crashes
+inactive tab issues
+mobile interruptions
+DO NOT spam toasts.
+Use:
+subtle indicators
+debug logs
+graceful fallback UI
+==================================================
+SECURITY + PRIVACY
+IMPORTANT:
+Make microphone behavior transparent.
+Clearly indicate:
+when listening is active
+when microphone is enabled
+when assistant is processing
+Never create hidden recording behavior.
+==================================================
+FINAL VERIFICATION
+Before finishing:
+verify microphone permission flow
+verify auto-start after permission granted
+verify wake word detection
+verify continuous listening stability
+verify no duplicate recognition sessions
+verify Android Chrome behavior
+verify installed PWA behavior
+verify voice response playback
+verify overlay animations
+verify cleanup logic
+verify no memory leaks
+verify no infinite restart loops
+verify Horizon command execution
+verify routing commands
+verify premium UI consistency
+verify graceful fallback handling
+

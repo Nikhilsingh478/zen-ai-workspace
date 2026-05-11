@@ -12,11 +12,13 @@ import {
   Bell,
   BellOff,
   Clock,
+  BellRing,
 } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
   useHorizon,
@@ -28,6 +30,11 @@ import {
   type HorizonTaskInput,
   type Priority,
 } from "@/lib/horizon";
+import {
+  useFCMStatus,
+  requestNotificationPermission,
+  getNotificationStatus,
+} from "@/lib/fcm";
 import {
   Dialog,
   DialogContent,
@@ -131,7 +138,10 @@ function HorizonPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<HorizonTask | null>(null);
 
-  const { tasksForDate, datesWithTasks, add, update, toggle, remove } = useHorizon();
+  const { tasks, tasksForDate, datesWithTasks, add, update, toggle, remove } = useHorizon();
+  const notifStatus = useFCMStatus();
+
+  const tasksWithReminders = tasks.filter((t) => t.notificationEnabled && !t.completed).length;
 
   const selectedTasks = selectedDate ? tasksForDate(selectedDate) : [];
   const timelineGroups = groupByHour(selectedTasks);
@@ -207,6 +217,35 @@ function HorizonPage() {
             <h1 className="text-[16px] font-semibold tracking-tight leading-none">Horizon</h1>
             <p className="text-[11px] text-white/30 mt-0.5">Calendar & tasks</p>
           </motion.div>
+
+          {/* Notification status pill — shown only when relevant */}
+          <AnimatePresence>
+            {tasksWithReminders > 0 && notifStatus === "denied" && (
+              <motion.span
+                initial={{ opacity: 0, scale: 0.88 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.88 }}
+                transition={{ duration: 0.2, ease: EASE }}
+                className="flex items-center gap-1 px-2 py-0.5 rounded-lg border border-white/[0.07] bg-white/[0.03] text-[10px] text-white/28"
+                title="Notifications blocked — enable in browser settings"
+              >
+                <BellOff className="h-2.5 w-2.5" />
+                Blocked
+              </motion.span>
+            )}
+            {tasksWithReminders > 0 && notifStatus === "granted" && (
+              <motion.span
+                initial={{ opacity: 0, scale: 0.88 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.88 }}
+                transition={{ duration: 0.2, ease: EASE }}
+                className="flex items-center gap-1 px-2 py-0.5 rounded-lg border border-white/[0.06] bg-white/[0.02] text-[10px] text-white/22"
+              >
+                <BellRing className="h-2.5 w-2.5" />
+                {tasksWithReminders} reminder{tasksWithReminders > 1 ? "s" : ""}
+              </motion.span>
+            )}
+          </AnimatePresence>
         </motion.div>
 
         {/* Month navigation */}
@@ -828,6 +867,39 @@ function TaskModal({
 }) {
   const [submitting, setSubmitting] = useState(false);
 
+  const handleReminderToggle = async (
+    current: boolean,
+    onChange: (v: boolean) => void,
+  ) => {
+    if (current) {
+      onChange(false);
+      return;
+    }
+    const status = getNotificationStatus();
+    if (status === "unsupported") {
+      toast.error("Push notifications aren't supported in this browser.");
+      return;
+    }
+    if (status === "unconfigured") {
+      toast.error("Notification service isn't configured yet.");
+      return;
+    }
+    if (status === "denied") {
+      toast.error("Notifications are blocked. Enable them in your browser settings, then try again.");
+      return;
+    }
+    if (status === "granted") {
+      onChange(true);
+      return;
+    }
+    const result = await requestNotificationPermission();
+    if (result === "granted") {
+      onChange(true);
+    } else if (result === "denied") {
+      toast.error("Permission denied — reminder won't be sent.");
+    }
+  };
+
   const getDefaultValues = useCallback((): TaskFormValues => {
     if (editingTask) {
       const [hStr, mStr] = editingTask.taskTime.split(":");
@@ -1009,7 +1081,7 @@ function TaskModal({
           <Controller name="notificationEnabled" control={control} render={({ field }) => (
             <motion.button
               type="button"
-              onClick={() => field.onChange(!field.value)}
+              onClick={() => handleReminderToggle(field.value, field.onChange)}
               whileTap={{ scale: 0.99 }}
               className={cn(
                 "w-full flex items-center gap-3 rounded-xl border px-3.5 py-3 transition-all duration-200",

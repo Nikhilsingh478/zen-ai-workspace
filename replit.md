@@ -50,13 +50,14 @@ A dark-themed, premium personal workspace for managing AI tools, prompts, a drag
 
 ## Database Setup
 
-Three SQL files must be run in Supabase SQL Editor, in order:
+Four SQL files must be run in Supabase SQL Editor, in order:
 
 | File | Tables Created | Notes |
 |---|---|---|
 | `SETUP.sql` | `items`, `desktop_layout`, `desktop_folders`, `usage_logs` | Core app data |
 | `SETUP_NEW_TABS.sql` | `links`, `messages` (and others) | Supplementary tabs |
 | `HORIZON_SETUP.sql` | `horizon_tasks` | Horizon calendar |
+| `NOTIFICATIONS_SETUP.sql` | `notification_tokens`, `reminder_sent_log` | FCM push notifications |
 
 **RLS:** Disabled on all tables. Fine for single-user personal use. Add RLS + Supabase Auth before going multi-user.
 
@@ -396,7 +397,52 @@ Clicking a calendar date sets `selectedDate` state. `AnimatePresence` renders a 
 | Jarvis wake word | ⏸ Disabled | `use-wake-word.ts` intact; ask.tsx code commented out |
 | Splashscreen | ✅ Complete | Icon + wordmark + loading bar, fades at 1.6 s |
 | PWA installable | ✅ Complete | `manifest.json` + `sw.js` + `index.html` wired |
-| Push notifications | 🔧 Partial | SW handler ready; Firebase FCM config not yet wired |
+| Push notifications | ✅ Complete | FCM init on startup, permission-aware toggle, token persistence, foreground+background handlers, Supabase Edge Function scheduler, duplicate prevention via `reminder_sent_log` |
+
+---
+
+## Push Notifications — Full Setup Guide
+
+### 1. Run SQL
+Execute `NOTIFICATIONS_SETUP.sql` in Supabase SQL Editor (after `HORIZON_SETUP.sql`).
+
+### 2. Deploy the Edge Function
+```bash
+npx supabase functions deploy send-reminders --project-ref <YOUR_PROJECT_REF>
+```
+
+### 3. Set Edge Function secrets (Supabase Dashboard → Settings → Edge Functions)
+| Secret | Value |
+|---|---|
+| `FIREBASE_SERVICE_ACCOUNT` | Full JSON contents of a Firebase service account key (Firebase Console → Project Settings → Service Accounts → Generate new private key) |
+
+### 4. Schedule the cron (Supabase SQL Editor)
+Enable `pg_cron` and `pg_net` extensions first, then:
+```sql
+select cron.schedule(
+  'send-horizon-reminders',
+  '* * * * *',
+  $$
+    select net.http_post(
+      url     := '<SUPABASE_FUNCTIONS_URL>/send-reminders',
+      headers := '{"Content-Type":"application/json","Authorization":"Bearer <ANON_KEY>"}',
+      body    := '{}'
+    );
+  $$
+);
+```
+
+### How it works
+- **Frontend**: On startup, `initFCM()` silently attaches foreground listener if permission was already granted.
+- **Permission**: Only requested when user explicitly enables a reminder in the task form — never on startup.
+- **Token**: Generated via `getToken()` (Firebase SDK) and upserted to `notification_tokens` in Supabase.
+- **Background SW**: `public/firebase-messaging-sw.js` receives push events when app is closed. Config injected via URL params at registration time.
+- **Scheduler**: Edge Function `send-reminders` runs every minute, finds tasks due in the next 15 minutes, sends FCM HTTP v1 push to all registered tokens, logs each dispatch to `reminder_sent_log` (prevents duplicates).
+- **Foreground**: `onMessage()` listener in `fcm.ts` shows a `Notification` API popup while the app is open.
+- **Click routing**: Both SW `notificationclick` and foreground click navigate to `/horizon`.
+
+### Timezone note
+Task times are stored as HH:MM without timezone. The Edge Function compares against UTC. For accurate delivery, store your tasks ±30 min before the desired local time, or add a `timezone` column to `horizon_tasks` for a future enhancement.
 
 ---
 

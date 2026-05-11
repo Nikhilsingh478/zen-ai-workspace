@@ -57,6 +57,21 @@ async function persistToken(token: string): Promise<void> {
   }
 }
 
+// ─── Build FCM service worker URL with config baked in ───────────────────────
+// Firebase keys are publishable — safe to include in SW URL params.
+
+function buildSwUrl(): string {
+  const params = new URLSearchParams({
+    apiKey:            import.meta.env.VITE_FIREBASE_API_KEY            ?? "",
+    authDomain:        import.meta.env.VITE_FIREBASE_AUTH_DOMAIN        ?? "",
+    projectId:         import.meta.env.VITE_FIREBASE_PROJECT_ID         ?? "",
+    storageBucket:     import.meta.env.VITE_FIREBASE_STORAGE_BUCKET     ?? "",
+    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID ?? "",
+    appId:             import.meta.env.VITE_FIREBASE_APP_ID             ?? "",
+  });
+  return `/firebase-messaging-sw.js?${params.toString()}`;
+}
+
 // ─── Generate / retrieve FCM token ───────────────────────────────────────────
 
 async function acquireToken(): Promise<string | null> {
@@ -70,9 +85,8 @@ async function acquireToken(): Promise<string | null> {
   }
 
   try {
-    // Register the Firebase messaging service worker explicitly
     const swReg = await navigator.serviceWorker.register(
-      "/firebase-messaging-sw.js",
+      buildSwUrl(),
       { scope: "/firebase-messaging-sw-scope/" },
     );
     const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: swReg });
@@ -113,7 +127,6 @@ export async function initFCM(): Promise<void> {
   if (_status === "unsupported" || _status === "unconfigured") return;
   if (_status === "granted") {
     attachForegroundListener();
-    // Refresh token in background
     acquireToken().catch(() => {});
   }
 }
@@ -144,7 +157,7 @@ export async function requestNotificationPermission(): Promise<NotificationStatu
   }
 }
 
-/** Current notification status (non-reactive snapshot). */
+/** Current notification status (non-reactive snapshot for use in event handlers). */
 export function getNotificationStatus(): NotificationStatus {
   return _status;
 }
