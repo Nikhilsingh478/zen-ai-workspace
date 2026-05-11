@@ -19,6 +19,8 @@ The eight top-level sections are:
 7. **Insights** — usage analytics across tools and prompts
 8. **Ask** — direct AI chat powered by Google Gemini
 
+
+
 ---
 
 ## 1. Websites Tab (`/`)
