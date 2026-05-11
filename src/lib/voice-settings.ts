@@ -7,7 +7,7 @@ import { useSyncExternalStore } from "react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type WakeWord = "horizon" | "hey horizon";
+export type WakeWord = "jarvis" | "hey jarvis";
 
 export type VoiceSettings = {
   enabled: boolean;
@@ -24,7 +24,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   enabled: false,
   autoStart: true,
   voiceResponses: true,
-  wakeWord: "horizon",
+  wakeWord: "jarvis",
 };
 
 // ─── Module-level store ───────────────────────────────────────────────────────
@@ -35,7 +35,13 @@ function readFromStorage(): VoiceSettings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return { ...DEFAULT_SETTINGS };
-    return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+    const saved = JSON.parse(raw) as Partial<VoiceSettings>;
+    // Migrate old wake words from previous "horizon" era
+    const ww = saved.wakeWord as string | undefined;
+    if (ww === "horizon" || ww === "hey horizon") {
+      saved.wakeWord = "jarvis";
+    }
+    return { ...DEFAULT_SETTINGS, ...saved };
   } catch {
     return { ...DEFAULT_SETTINGS };
   }

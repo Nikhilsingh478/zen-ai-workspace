@@ -2,16 +2,21 @@
  * useVoiceAssistant — production-grade voice assistant hook.
  *
  * State machine:
- *   idle → passive (mic starts, listening for wake word)
- *   passive → active (wake word detected)
- *   active → processing (command captured or timeout)
+ *   idle     → passive   (mic active, listening for "Jarvis")
+ *   passive  → active    (wake word detected)
+ *   active   → processing (3.5s silence debounce fires or max-command timeout)
  *   processing → speaking (response ready, voiceResponses=true)
- *   speaking → passive (utterance ends)
- *   any → idle (disabled)
- *   any → error (permission denied / unsupported)
+ *   speaking → passive   (utterance ends)
+ *   any      → idle      (disabled)
+ *   any      → error     (permission denied / unsupported)
  *
- * One SpeechRecognition session runs continuously (continuous=true).
- * We never double-start. Modal state controls what we do with results.
+ * Key stability guarantees:
+ *   - One SpeechRecognition session at all times (never double-start).
+ *   - Restart mutex: isStartingRef prevents overlapping start() calls.
+ *   - Mobile restart cooldown: ≥1200ms between restart attempts.
+ *   - Transcript is accumulated across all isFinal results in ACTIVE state.
+ *   - Command fires only after 3.5s of silence (no new speech events).
+ *   - Max 20s command window prevents infinite active state.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -83,22 +88,32 @@ export function useVoiceAssistant(): VoiceAssistantHandle {
   const [transcript, setTranscript] = useState("");
   const [lastResponse, setLastResponse] = useState("");
 
-  // Refs to escape stale closures
+  // ── Refs to escape stale closures ────────────────────────────────────────
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recRef = useRef<any>(null);
   const stateRef = useRef<AssistantState>("idle");
   const mountedRef = useRef(true);
   const intentionalStopRef = useRef(false);
+
+  // Restart control — prevents mobile restart storms
   const restartTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const commandTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const isStartingRef = useRef(false);              // mutex: no double start()
+  const lastRestartTimeRef = useRef(0);             // cooldown timestamp
+  const MIN_RESTART_MS = 1200;                      // minimum gap between restarts
+
+  // Command timing
+  const commandMaxTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  // Transcript accumulation
+  const transcriptBufferRef = useRef("");           // finalized speech segments
+
   const settingsRef = useRef(getVoiceSettings());
 
-  // Pull tasks for command context — avoid re-subscribing recognition on task changes
+  // Pull tasks — stable ref avoids re-creating recognition on task list changes
   const { tasks } = useHorizon();
   const tasksRef = useRef(tasks);
-  useEffect(() => {
-    tasksRef.current = tasks;
-  }, [tasks]);
+  useEffect(() => { tasksRef.current = tasks; }, [tasks]);
 
   // Keep settingsRef fresh
   useEffect(() => {
@@ -108,10 +123,19 @@ export function useVoiceAssistant(): VoiceAssistantHandle {
     return () => { unsub(); };
   }, []);
 
-  // Synchronized state setter (keeps ref + React state aligned)
+  // Synchronized state setter
   const setStateSync = useCallback((s: AssistantState) => {
     stateRef.current = s;
     if (mountedRef.current) setState(s);
+  }, []);
+
+  // ── Reset active-command state ────────────────────────────────────────────
+
+  const clearActiveState = useCallback(() => {
+    clearTimeout(silenceTimerRef.current);
+    clearTimeout(commandMaxTimeoutRef.current);
+    transcriptBufferRef.current = "";
+    if (mountedRef.current) setTranscript("");
   }, []);
 
   // ── Recognition stop ──────────────────────────────────────────────────────
@@ -120,13 +144,10 @@ export function useVoiceAssistant(): VoiceAssistantHandle {
     clearTimeout(restartTimerRef.current);
     if (recRef.current) {
       intentionalStopRef.current = true;
-      try {
-        recRef.current.abort();
-      } catch {
-        /* ignore */
-      }
+      try { recRef.current.abort(); } catch { /* ignore */ }
       recRef.current = null;
     }
+    isStartingRef.current = false;
   }, []);
 
   // ── Command handler (forward-declared via ref to avoid circular deps) ─────
@@ -138,9 +159,11 @@ export function useVoiceAssistant(): VoiceAssistantHandle {
 
   const startRecognition = useCallback(() => {
     if (!SpeechRecognitionCtor) return;
-    if (recRef.current) return; // already running — never double-start
+    if (recRef.current) return;           // already running
+    if (isStartingRef.current) return;    // start() already in flight
 
     clearTimeout(restartTimerRef.current);
+    isStartingRef.current = true;
 
     const rec = new SpeechRecognitionCtor();
     rec.continuous = true;
@@ -150,11 +173,15 @@ export function useVoiceAssistant(): VoiceAssistantHandle {
     recRef.current = rec;
     intentionalStopRef.current = false;
 
+    // ── onstart ──────────────────────────────────────────────────────────
     rec.onstart = () => {
+      isStartingRef.current = false;
       if (!mountedRef.current) return;
       if (stateRef.current === "idle") setStateSync("passive");
+      console.log("[jarvis] recognition started | state:", stateRef.current);
     };
 
+    // ── onresult ─────────────────────────────────────────────────────────
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     rec.onresult = (event: any) => {
       if (!mountedRef.current) return;
@@ -165,95 +192,167 @@ export function useVoiceAssistant(): VoiceAssistantHandle {
         const isFinal: boolean = result.isFinal;
         const lower = text.toLowerCase();
 
+        // ── PASSIVE: watching for wake word ────────────────────────────
         if (stateRef.current === "passive") {
           const ww = settingsRef.current.wakeWord.toLowerCase();
-          if (lower.includes(ww) || lower.includes("hey horizon")) {
-            clearTimeout(commandTimeoutRef.current);
+          const heard = lower.includes(ww) || lower.includes("jarvis");
+          if (heard) {
+            console.log("[jarvis] wake word detected in:", text);
+            clearActiveState();
             setStateSync("active");
-            if (mountedRef.current) setTranscript("");
 
-            // If command was inline with wake word on same utterance (final only)
+            // If command was spoken inline on the same utterance (final only)
             if (isFinal) {
               const inlineCmd = stripWakeWord(text, settingsRef.current.wakeWord).trim();
               if (inlineCmd.length > 2) {
-                handleCommandRef.current?.(inlineCmd);
+                console.log("[jarvis] inline command:", inlineCmd);
+                transcriptBufferRef.current = inlineCmd;
+                if (mountedRef.current) setTranscript(inlineCmd);
+                // Start silence timer for this inline command
+                clearTimeout(silenceTimerRef.current);
+                silenceTimerRef.current = setTimeout(() => {
+                  if (stateRef.current === "active" && mountedRef.current) {
+                    const cmd = transcriptBufferRef.current.trim();
+                    if (cmd.length > 1) handleCommandRef.current?.(cmd);
+                    else {
+                      setStateSync("passive");
+                      clearActiveState();
+                    }
+                  }
+                }, 3500);
                 return;
               }
             }
 
-            // Wait up to 6s for next utterance as the command
-            commandTimeoutRef.current = setTimeout(() => {
+            // Max command window — prevents staying in ACTIVE forever
+            clearTimeout(commandMaxTimeoutRef.current);
+            commandMaxTimeoutRef.current = setTimeout(() => {
               if (stateRef.current === "active" && mountedRef.current) {
-                setStateSync("passive");
-                setTranscript("");
+                const cmd = transcriptBufferRef.current.trim();
+                if (cmd.length > 1) {
+                  handleCommandRef.current?.(cmd);
+                } else {
+                  setStateSync("passive");
+                  clearActiveState();
+                }
               }
-            }, 6000);
-            return;
+            }, 20000);
           }
-        } else if (stateRef.current === "active") {
-          if (mountedRef.current) setTranscript(text);
+          return; // Don't process passive speech further
+        }
 
+        // ── ACTIVE: accumulate command transcript ───────────────────────
+        if (stateRef.current === "active") {
           if (isFinal) {
-            clearTimeout(commandTimeoutRef.current);
-            const cmd = stripWakeWord(text, settingsRef.current.wakeWord);
-            if (cmd.length > 1) {
-              handleCommandRef.current?.(cmd);
-            } else {
-              setStateSync("passive");
-              setTranscript("");
-            }
+            // Append finalised segment to buffer (strip wake word remnants)
+            const stripped = stripWakeWord(text, settingsRef.current.wakeWord);
+            transcriptBufferRef.current = (transcriptBufferRef.current + " " + stripped).trim();
           }
+
+          // Display: buffer + current interim
+          const display = isFinal
+            ? transcriptBufferRef.current
+            : (transcriptBufferRef.current
+                ? transcriptBufferRef.current + " " + stripWakeWord(text, settingsRef.current.wakeWord)
+                : stripWakeWord(text, settingsRef.current.wakeWord)
+              ).trim();
+
+          if (mountedRef.current) setTranscript(display);
+
+          // ── Silence debounce: reset timer on every speech event ───────
+          // Fires 3.5s after the last speech — that's when we consider the
+          // user done speaking and submit the buffered command.
+          clearTimeout(silenceTimerRef.current);
+          silenceTimerRef.current = setTimeout(() => {
+            if (stateRef.current === "active" && mountedRef.current) {
+              const cmd = transcriptBufferRef.current.trim();
+              console.log("[jarvis] silence timeout — processing command:", cmd);
+              if (cmd.length > 1) {
+                clearTimeout(commandMaxTimeoutRef.current);
+                handleCommandRef.current?.(cmd);
+              } else {
+                setStateSync("passive");
+                clearActiveState();
+              }
+            }
+          }, 3500);
         }
       }
     };
 
+    // ── onerror ───────────────────────────────────────────────────────────
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     rec.onerror = (e: any) => {
+      isStartingRef.current = false;
       if (!mountedRef.current) return;
       const err: string = e.error ?? "";
+      console.warn("[jarvis] recognition error:", err);
       if (err === "not-allowed" || err === "service-not-allowed") {
         setPermission("denied");
         setStateSync("error");
         stopRecognition();
+        return;
       }
-      // no-speech / aborted / network → let onend handle restart
+      // no-speech / aborted / network → onend will handle restart
     };
 
+    // ── onend ─────────────────────────────────────────────────────────────
     rec.onend = () => {
+      isStartingRef.current = false;
       recRef.current = null;
       if (!mountedRef.current || intentionalStopRef.current) return;
-      // Auto-restart only in listening states
+
+      console.log("[jarvis] recognition ended | state:", stateRef.current);
+
+      // Auto-restart only in listening states — with cooldown to prevent storms
       const s = stateRef.current;
       if (s === "passive" || s === "active") {
+        const now = Date.now();
+        const elapsed = now - lastRestartTimeRef.current;
+        const delay = Math.max(0, MIN_RESTART_MS - elapsed);
+
         restartTimerRef.current = setTimeout(() => {
           if (
             mountedRef.current &&
+            !recRef.current &&
+            !isStartingRef.current &&
             (stateRef.current === "passive" || stateRef.current === "active")
           ) {
+            lastRestartTimeRef.current = Date.now();
             startRecognition();
           }
-        }, 500);
+        }, delay + 150); // +150ms buffer for Safari/mobile
       }
     };
 
     try {
       rec.start();
+      lastRestartTimeRef.current = Date.now();
     } catch {
       recRef.current = null;
+      isStartingRef.current = false;
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setStateSync, stopRecognition]);
+  }, [setStateSync, stopRecognition, clearActiveState]);
 
   // ── Command handler ───────────────────────────────────────────────────────
 
   const handleCommand = useCallback(
     async (cmd: string) => {
       if (!mountedRef.current) return;
+      console.log("[jarvis] handling command:", cmd);
       setStateSync("processing");
       if (mountedRef.current) setTranscript(cmd);
 
       const result = await executeVoiceCommand(cmd, tasksRef.current);
       if (!mountedRef.current) return;
+
+      console.log("[jarvis] command result:", result.type, result.type !== "navigate" ? result.text : result.route);
+
+      const returnToPassive = () => {
+        clearActiveState();
+        setStateSync("passive");
+      };
 
       const respond = (responseText: string, afterSpeak: () => void) => {
         if (settingsRef.current.voiceResponses) {
@@ -264,11 +363,6 @@ export function useVoiceAssistant(): VoiceAssistantHandle {
         } else {
           afterSpeak();
         }
-      };
-
-      const returnToPassive = () => {
-        setStateSync("passive");
-        if (mountedRef.current) setTranscript("");
       };
 
       if (result.type === "navigate") {
@@ -284,10 +378,10 @@ export function useVoiceAssistant(): VoiceAssistantHandle {
       if (mountedRef.current) setLastResponse(result.text);
       respond(result.text, returnToPassive);
     },
-    [setStateSync],
+    [setStateSync, clearActiveState],
   );
 
-  // Wire handleCommand into ref so startRecognition closure can call it
+  // Wire handleCommand into ref
   useEffect(() => {
     handleCommandRef.current = handleCommand;
   }, [handleCommand]);
@@ -314,12 +408,14 @@ export function useVoiceAssistant(): VoiceAssistantHandle {
   }, [setStateSync, startRecognition]);
 
   const disable = useCallback(() => {
-    clearTimeout(commandTimeoutRef.current);
+    clearTimeout(commandMaxTimeoutRef.current);
+    clearTimeout(silenceTimerRef.current);
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
     stopRecognition();
     setStateSync("idle");
     if (mountedRef.current) {
       setTranscript("");
+      transcriptBufferRef.current = "";
     }
   }, [setStateSync, stopRecognition]);
 
@@ -327,14 +423,15 @@ export function useVoiceAssistant(): VoiceAssistantHandle {
     if (stateRef.current === "speaking" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
     }
-    clearTimeout(commandTimeoutRef.current);
+    clearTimeout(commandMaxTimeoutRef.current);
+    clearTimeout(silenceTimerRef.current);
     if (stateRef.current !== "idle" && stateRef.current !== "error") {
+      clearActiveState();
       setStateSync("passive");
-      if (mountedRef.current) setTranscript("");
     }
-  }, [setStateSync]);
+  }, [setStateSync, clearActiveState]);
 
-  // ── Auto-start on mount (if previously enabled + permission granted) ──────
+  // ── Auto-start on mount ───────────────────────────────────────────────────
 
   useEffect(() => {
     if (!SpeechRecognitionCtor) {
@@ -356,11 +453,8 @@ export function useVoiceAssistant(): VoiceAssistantHandle {
             setPermission("denied");
             setStateSync("error");
           }
-          // 'prompt' → user must enable manually; don't auto-request
         })
-        .catch(() => {
-          /* Permissions API unavailable — skip auto-start */
-        });
+        .catch(() => { /* Permissions API unavailable */ });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -385,14 +479,12 @@ export function useVoiceAssistant(): VoiceAssistantHandle {
     return () => {
       mountedRef.current = false;
       clearTimeout(restartTimerRef.current);
-      clearTimeout(commandTimeoutRef.current);
+      clearTimeout(commandMaxTimeoutRef.current);
+      clearTimeout(silenceTimerRef.current);
       if ("speechSynthesis" in window) window.speechSynthesis.cancel();
       intentionalStopRef.current = true;
-      try {
-        recRef.current?.abort();
-      } catch {
-        /* ignore */
-      }
+      isStartingRef.current = false;
+      try { recRef.current?.abort(); } catch { /* ignore */ }
       recRef.current = null;
     };
   }, []);

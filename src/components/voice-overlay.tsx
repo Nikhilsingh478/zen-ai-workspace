@@ -29,6 +29,9 @@ import {
   type AssistantState,
 } from "@/hooks/use-voice-assistant";
 
+// Suppress unused import warning — Settings2 kept for future use
+void Settings2;
+
 // ─── Waveform bars ────────────────────────────────────────────────────────────
 
 function Waveform({ active }: { active: boolean }) {
@@ -42,7 +45,7 @@ function Waveform({ active }: { active: boolean }) {
           animate={
             active
               ? {
-                  scaleY: [base, base * 1.6 + Math.random() * 0.4, base],
+                  scaleY: [base, base * 1.6, base],
                   opacity: [0.5, 0.9, 0.5],
                 }
               : { scaleY: 0.2, opacity: 0.2 }
@@ -50,13 +53,13 @@ function Waveform({ active }: { active: boolean }) {
           transition={
             active
               ? {
-                  duration: 0.5 + i * 0.08,
+                  duration: 0.55 + i * 0.07,
                   repeat: Infinity,
                   repeatType: "mirror",
                   ease: "easeInOut",
                   delay: i * 0.06,
                 }
-              : { duration: 0.2 }
+              : { duration: 0.25 }
           }
           style={{ height: "100%", originY: "center" }}
         />
@@ -71,8 +74,8 @@ function PassivePulse() {
   return (
     <motion.div
       className="absolute inset-0 rounded-full bg-white/10"
-      animate={{ scale: [1, 1.35, 1], opacity: [0.15, 0, 0.15] }}
-      transition={{ duration: 2.8, repeat: Infinity, ease: "easeInOut" }}
+      animate={{ scale: [1, 1.35, 1], opacity: [0.12, 0, 0.12] }}
+      transition={{ duration: 3.2, repeat: Infinity, ease: "easeInOut" }}
     />
   );
 }
@@ -94,12 +97,12 @@ function StateDot({ state }: { state: AssistantState }) {
       className={cn("h-1.5 w-1.5 rounded-full shrink-0", color)}
       animate={
         state === "passive"
-          ? { opacity: [0.4, 0.9, 0.4] }
+          ? { opacity: [0.35, 0.85, 0.35] }
           : state === "active" || state === "speaking"
-            ? { scale: [1, 1.25, 1], opacity: [0.7, 1, 0.7] }
+            ? { scale: [1, 1.3, 1], opacity: [0.65, 1, 0.65] }
             : {}
       }
-      transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+      transition={{ duration: 1.9, repeat: Infinity, ease: "easeInOut" }}
     />
   );
 }
@@ -124,11 +127,6 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
     getVoiceSettings,
   );
 
-  const permissionLabel = (() => {
-    if (!isVoiceAssistantSupported) return "Unsupported";
-    return "—"; // shown dynamically from parent
-  })();
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 8, scale: 0.97 }}
@@ -139,7 +137,7 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
     >
       {/* Header */}
       <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-white/[0.06]">
-        <span className="text-[13px] font-semibold text-foreground/90">Voice Assistant</span>
+        <span className="text-[13px] font-semibold text-foreground/90">Jarvis Settings</span>
         <button
           onClick={onClose}
           className="h-6 w-6 rounded-lg flex items-center justify-center text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-colors"
@@ -151,7 +149,7 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
       <div className="p-4 space-y-3">
         {/* Enable toggle */}
         <SettingRow
-          label="Enable Assistant"
+          label="Enable Jarvis"
           value={settings.enabled}
           onChange={(v) => setVoiceSettings({ enabled: v })}
         />
@@ -177,7 +175,7 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
         <div className="space-y-1">
           <p className="text-[11px] text-white/35 uppercase tracking-wider">Wake word</p>
           <div className="grid grid-cols-2 gap-1.5">
-            {(["horizon", "hey horizon"] as WakeWord[]).map((ww) => (
+            {(["jarvis", "hey jarvis"] as WakeWord[]).map((ww) => (
               <button
                 key={ww}
                 onClick={() => setVoiceSettings({ wakeWord: ww })}
@@ -190,19 +188,24 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
                   !settings.enabled && "opacity-40 cursor-not-allowed",
                 )}
               >
-                {ww === "horizon" ? '"Horizon"' : '"Hey Horizon"'}
+                {ww === "jarvis" ? '"Jarvis"' : '"Hey Jarvis"'}
               </button>
             ))}
           </div>
+        </div>
+
+        {/* Silence tolerance note */}
+        <div className="pt-1 border-t border-white/[0.05] space-y-1">
+          <p className="text-[11px] text-white/30 leading-relaxed">
+            Jarvis waits 3.5 seconds of silence before processing your command — allowing natural pauses.
+          </p>
         </div>
 
         {/* Status row */}
         <div className="flex items-center justify-between pt-1 border-t border-white/[0.05]">
           <span className="text-[11px] text-white/30">Status</span>
           <span className="text-[11px] text-white/50">
-            {!isVoiceAssistantSupported
-              ? "Browser unsupported"
-              : permissionLabel}
+            {!isVoiceAssistantSupported ? "Browser unsupported" : "—"}
           </span>
         </div>
       </div>
@@ -273,7 +276,7 @@ function EnablePrompt({
       className="absolute bottom-full right-0 mb-3 w-[260px] rounded-2xl border border-white/[0.09] bg-[var(--surface-1)] shadow-[0_20px_60px_rgba(0,0,0,0.6)] p-4"
     >
       <div className="flex items-start justify-between gap-2 mb-2">
-        <p className="text-[13px] font-semibold text-foreground/90">Enable Voice Assistant</p>
+        <p className="text-[13px] font-semibold text-foreground/90">Enable Jarvis</p>
         <button
           onClick={onDismiss}
           className="h-5 w-5 rounded-md flex items-center justify-center text-white/25 hover:text-white/50 transition-colors shrink-0 mt-0.5"
@@ -282,8 +285,8 @@ function EnablePrompt({
         </button>
       </div>
       <p className="text-[12px] text-white/45 leading-relaxed mb-3">
-        Horizon listens for your wake word and responds to commands. Your microphone is only
-        active while the app is open.
+        Jarvis listens for your wake word and responds to voice commands — including creating real
+        Horizon tasks from natural speech. Microphone is only active while the app is open.
       </p>
       <div className="flex gap-2">
         <button
@@ -303,10 +306,9 @@ function EnablePrompt({
   );
 }
 
-// ─── Response toast ───────────────────────────────────────────────────────────
+// ─── Response card ────────────────────────────────────────────────────────────
 
 function ResponseCard({ text, onDismiss }: { text: string; onDismiss: () => void }) {
-  // Auto-dismiss after 8s
   useEffect(() => {
     const id = setTimeout(onDismiss, 8000);
     return () => clearTimeout(id);
@@ -323,7 +325,7 @@ function ResponseCard({ text, onDismiss }: { text: string; onDismiss: () => void
       <div className="flex items-start justify-between gap-2 mb-1.5">
         <div className="flex items-center gap-1.5">
           <div className="h-1.5 w-1.5 rounded-full bg-white/50" />
-          <span className="text-[11px] text-white/35 uppercase tracking-wider">Horizon</span>
+          <span className="text-[11px] text-white/35 uppercase tracking-wider">Jarvis</span>
         </div>
         <button
           onClick={onDismiss}
@@ -333,6 +335,24 @@ function ResponseCard({ text, onDismiss }: { text: string; onDismiss: () => void
         </button>
       </div>
       <p className="text-[13px] text-white/80 leading-relaxed">{text}</p>
+    </motion.div>
+  );
+}
+
+// ─── Transcript strip ─────────────────────────────────────────────────────────
+
+function TranscriptStrip({ transcript }: { transcript: string }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 2 }}
+      transition={{ duration: 0.18 }}
+      className="absolute bottom-full right-0 mb-2 max-w-[260px] px-3 py-2 rounded-xl bg-[var(--surface-2)] border border-white/[0.07] shadow-[0_4px_20px_rgba(0,0,0,0.4)]"
+    >
+      <p className="text-[12px] text-white/70 leading-relaxed break-words">
+        {transcript}
+      </p>
     </motion.div>
   );
 }
@@ -397,7 +417,6 @@ export function VoiceOverlay() {
   const isProcessing = state === "processing";
   const isPassive = state === "passive";
 
-  // Don't render anything if voice not supported and never enabled
   if (!isVoiceAssistantSupported && !settings.enabled) return null;
 
   return (
@@ -427,18 +446,10 @@ export function VoiceOverlay() {
           )}
         </AnimatePresence>
 
-        {/* Transcript strip */}
+        {/* Transcript strip — shown while active or processing */}
         <AnimatePresence>
           {(state === "active" || state === "processing") && transcript && (
-            <motion.div
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 2 }}
-              transition={{ duration: 0.18 }}
-              className="absolute bottom-full right-0 mb-2 max-w-[240px] px-3 py-1.5 rounded-xl bg-[var(--surface-2)] border border-white/[0.07] text-[12px] text-white/60 truncate shadow-[0_4px_20px_rgba(0,0,0,0.4)]"
-            >
-              {transcript}
-            </motion.div>
+            <TranscriptStrip key="transcript" transcript={transcript} />
           )}
         </AnimatePresence>
 
@@ -472,7 +483,7 @@ export function VoiceOverlay() {
                   : "bg-white/[0.04] border-white/[0.08]",
             !settings.enabled && "opacity-60",
           )}
-          aria-label="Voice assistant"
+          aria-label="Jarvis voice assistant"
         >
           {/* Passive glow pulse */}
           {isPassive && <PassivePulse />}
