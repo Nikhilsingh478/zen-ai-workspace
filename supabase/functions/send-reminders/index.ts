@@ -1,8 +1,8 @@
 /**
  * Supabase Edge Function: send-reminders
  *
- * Scheduled via Supabase pg_cron (see below) or called directly via HTTP.
- * Finds Horizon tasks with reminders due in the next 15 minutes,
+ * Scheduled via Supabase pg_cron (runs every minute).
+ * Finds Horizon tasks with reminders due in the current IST minute window,
  * sends FCM push notifications, and logs each dispatch to prevent duplicates.
  *
  * Cron setup in Supabase SQL Editor:
@@ -20,10 +20,13 @@
  *
  * Required Supabase secrets (set via Dashboard → Settings → Edge Functions):
  *   FIREBASE_SERVICE_ACCOUNT  — full JSON of a Firebase service account key
- *                               (Firebase Console → Project Settings → Service Accounts → Generate new private key)
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const IST_TIMEZONE = "Asia/Kolkata";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -44,6 +47,59 @@ type HorizonTaskRow = {
 type TokenRow = {
   token: string;
 };
+
+// ─── IST timezone helpers ─────────────────────────────────────────────────────
+
+/**
+ * Returns the current date and time broken into IST components.
+ * Uses Intl.DateTimeFormat — no external libraries needed.
+ */
+function getISTComponents(date: Date): {
+  dateStr: string;   // "YYYY-MM-DD"
+  timeStr: string;   // "HH:MM"
+  totalMinutes: number; // hours * 60 + minutes in IST
+} {
+  // en-CA gives YYYY-MM-DD date format natively
+  const datePart = new Intl.DateTimeFormat("en-CA", {
+    timeZone: IST_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+
+  const timeParts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: IST_TIMEZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+
+  const get = (type: string) =>
+    timeParts.find((p) => p.type === type)?.value ?? "00";
+
+  const hour = parseInt(get("hour"), 10);
+  const minute = parseInt(get("minute"), 10);
+
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const timeStr = `${pad(hour)}:${pad(minute)}`;
+
+  return {
+    dateStr: datePart,
+    timeStr,
+    totalMinutes: hour * 60 + minute,
+  };
+}
+
+/**
+ * Converts total minutes (from midnight) into a "HH:MM" string.
+ * Clamps to [00:00, 23:59].
+ */
+function minutesToTimeStr(totalMinutes: number): string {
+  const clamped = Math.max(0, Math.min(1439, totalMinutes));
+  const h = Math.floor(clamped / 60);
+  const m = clamped % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
 
 // ─── Base64url helper ────────────────────────────────────────────────────────
 
@@ -169,6 +225,7 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // ── 1. Firebase service account ───────────────────────────────────────
     const serviceAccountRaw = Deno.env.get("FIREBASE_SERVICE_ACCOUNT");
     if (!serviceAccountRaw) {
       return new Response(
@@ -176,40 +233,70 @@ Deno.serve(async (req) => {
         { status: 500, headers: { "Content-Type": "application/json" } },
       );
     }
-
     const sa: ServiceAccount = JSON.parse(serviceAccountRaw);
 
+    // ── 2. Supabase client ────────────────────────────────────────────────
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_ANON_KEY")!;
+    const supabaseKey =
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ||
+      Deno.env.get("SUPABASE_ANON_KEY")!;
     const db = createClient(supabaseUrl, supabaseKey);
 
-    // ── Timing window: tasks due in the next 15 minutes ──────────────────
-    const now = new Date();
-    const windowEnd = new Date(now.getTime() + 15 * 60 * 1000);
-    const todayDate = now.toISOString().slice(0, 10);
+    // ── 3. Compute IST timing window ──────────────────────────────────────
+    //
+    // Tasks fire when:
+    //   task_time >= (now_IST - 5 min)   ← up to 5 min overdue is OK
+    //   task_time <= now_IST              ← not in the future
+    //
+    // This means the function catches any task that became due in the
+    // last 5 minutes and hasn't been logged yet — safe for 1-min cron.
 
-    const padTwo = (n: number) => String(n).padStart(2, "0");
-    const nowTime = `${padTwo(now.getHours())}:${padTwo(now.getMinutes())}`;
-    const endTime = `${padTwo(windowEnd.getHours())}:${padTwo(windowEnd.getMinutes())}`;
+    const nowUTC = new Date();
+    const ist = getISTComponents(nowUTC);
 
-    // ── Query tasks due in window ─────────────────────────────────────────
+    // Window start = 5 minutes before current IST time
+    const windowStartMinutes = ist.totalMinutes - 5;
+    const windowStartStr = minutesToTimeStr(windowStartMinutes);
+    const windowEndStr = ist.timeStr; // current IST time (inclusive)
+
+    console.log(`[send-reminders] UTC now         : ${nowUTC.toISOString()}`);
+    console.log(`[send-reminders] IST now          : ${ist.dateStr} ${ist.timeStr}`);
+    console.log(`[send-reminders] IST date queried : ${ist.dateStr}`);
+    console.log(`[send-reminders] Task time window : ${windowStartStr} – ${windowEndStr}`);
+
+    // ── 4. Fetch tasks due in the IST window ──────────────────────────────
     const { data: tasks, error: tasksErr } = await db
       .from("horizon_tasks")
       .select("id, title, description, task_date, task_time")
-      .eq("task_date", todayDate)
+      .eq("task_date", ist.dateStr)
       .eq("notification_enabled", true)
       .eq("completed", false)
-      .gte("task_time", nowTime)
-      .lte("task_time", endTime);
+      .gte("task_time", windowStartStr)
+      .lte("task_time", windowEndStr);
 
     if (tasksErr) throw tasksErr;
+
+    console.log(
+      `[send-reminders] Tasks fetched  : ${tasks?.length ?? 0}`,
+      tasks?.map((t: HorizonTaskRow) => `${t.task_time} "${t.title}"`),
+    );
+
     if (!tasks || tasks.length === 0) {
-      return new Response(JSON.stringify({ sent: 0, message: "No reminders due" }), {
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({
+          sent: 0,
+          message: "No reminders due",
+          debug: {
+            istDate: ist.dateStr,
+            istTime: ist.timeStr,
+            window: `${windowStartStr}–${windowEndStr}`,
+          },
+        }),
+        { headers: { "Content-Type": "application/json" } },
+      );
     }
 
-    // ── Filter out already-sent reminders ────────────────────────────────
+    // ── 5. Filter out already-sent reminders ──────────────────────────────
     const taskIds = (tasks as HorizonTaskRow[]).map((t) => t.id);
 
     const { data: alreadySent } = await db
@@ -217,16 +304,30 @@ Deno.serve(async (req) => {
       .select("task_id")
       .in("task_id", taskIds);
 
-    const sentIds = new Set((alreadySent ?? []).map((r: { task_id: string }) => r.task_id));
-    const pending = (tasks as HorizonTaskRow[]).filter((t) => !sentIds.has(t.id));
+    const sentIds = new Set(
+      (alreadySent ?? []).map((r: { task_id: string }) => r.task_id),
+    );
+
+    const pending = (tasks as HorizonTaskRow[]).filter((t) => {
+      const due = !sentIds.has(t.id);
+      if (!due) {
+        console.log(
+          `[send-reminders] Skipping task "${t.title}" (${t.task_time}) — already dispatched`,
+        );
+      }
+      return due;
+    });
+
+    console.log(`[send-reminders] Pending (unsent): ${pending.length}`);
 
     if (pending.length === 0) {
-      return new Response(JSON.stringify({ sent: 0, message: "All reminders already dispatched" }), {
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ sent: 0, message: "All reminders already dispatched" }),
+        { headers: { "Content-Type": "application/json" } },
+      );
     }
 
-    // ── Retrieve FCM tokens ───────────────────────────────────────────────
+    // ── 6. Retrieve FCM tokens ────────────────────────────────────────────
     const { data: tokenRows, error: tokenErr } = await db
       .from("notification_tokens")
       .select("token");
@@ -240,30 +341,37 @@ Deno.serve(async (req) => {
     }
 
     const tokens = (tokenRows as TokenRow[]).map((r) => r.token);
+    console.log(`[send-reminders] FCM token count : ${tokens.length}`);
 
-    // ── Obtain OAuth2 access token once ───────────────────────────────────
+    // ── 7. Obtain OAuth2 access token once ───────────────────────────────
     const accessToken = await getAccessToken(sa);
 
-    // ── Dispatch notifications ────────────────────────────────────────────
+    // ── 8. Dispatch notifications ─────────────────────────────────────────
     let sent = 0;
     const loggedIds: string[] = [];
 
     for (const task of pending) {
-      const title = "Horizon Reminder";
-      const body = task.title;
+      console.log(
+        `[send-reminders] Sending reminder for "${task.title}" (task_time=${task.task_time}, IST now=${ist.timeStr})`,
+      );
 
       const results = await Promise.all(
-        tokens.map((token) => sendFCM(token, title, body, sa.project_id, accessToken)),
+        tokens.map((token) =>
+          sendFCM(token, "Horizon Reminder", task.title, sa.project_id, accessToken)
+        ),
       );
 
       const anySucceeded = results.some(Boolean);
       if (anySucceeded) {
         sent++;
         loggedIds.push(task.id);
+        console.log(`[send-reminders] ✓ Sent reminder for "${task.title}"`);
+      } else {
+        console.warn(`[send-reminders] ✗ All FCM sends failed for "${task.title}"`);
       }
     }
 
-    // ── Log sent reminders (duplicate guard) ─────────────────────────────
+    // ── 9. Log sent reminders (duplicate guard) ───────────────────────────
     if (loggedIds.length > 0) {
       await db
         .from("reminder_sent_log")
@@ -271,15 +379,23 @@ Deno.serve(async (req) => {
           loggedIds.map((id) => ({ task_id: id })),
           { onConflict: "task_id", ignoreDuplicates: true },
         );
+      console.log(`[send-reminders] Logged ${loggedIds.length} sent task(s) to reminder_sent_log`);
     }
 
-    console.log(`[send-reminders] dispatched ${sent} reminder(s)`);
+    console.log(`[send-reminders] Done — dispatched ${sent} reminder(s)`);
 
-    return new Response(JSON.stringify({ sent, pending: pending.length }), {
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({
+        sent,
+        pending: pending.length,
+        istTime: ist.timeStr,
+        istDate: ist.dateStr,
+        window: `${windowStartStr}–${windowEndStr}`,
+      }),
+      { headers: { "Content-Type": "application/json" } },
+    );
   } catch (err) {
-    console.error("[send-reminders] error:", err);
+    console.error("[send-reminders] Unhandled error:", err);
     return new Response(JSON.stringify({ error: String(err) }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
