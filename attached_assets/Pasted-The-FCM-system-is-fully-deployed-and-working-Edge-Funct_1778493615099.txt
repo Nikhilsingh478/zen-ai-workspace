@@ -1,0 +1,88 @@
+The FCM system is fully deployed and working — Edge Function executes correctly, Firebase auth works, notification_tokens table contains valid tokens, and Horizon tasks are stored correctly in Supabase.
+
+However, reminders are not being detected because the send-reminders Edge Function is comparing UTC server time against local task_time values stored in Horizon.
+
+Current behavior:
+
+* Tasks are stored as:
+
+  * task_date = local calendar date
+  * task_time = local 24-hour string like "15:20"
+* The function returns:
+  {
+  "sent": 0,
+  "message": "No reminders due"
+  }
+  even when current local IST time is already past the task time.
+
+Root cause:
+The function is likely using:
+new Date().toISOString()
+or another UTC-based comparison.
+
+We need to convert all reminder logic to LOCAL DEVICE TIME / IST-safe comparisons.
+
+Fix this properly and robustly.
+
+Requirements:
+
+1. In send-reminders Edge Function:
+
+* stop using UTC hour/minute comparisons directly
+* create a local India timezone comparison flow using:
+  Intl.DateTimeFormat or equivalent timezone-safe handling
+* timezone must be:
+  Asia/Kolkata
+
+2. Build proper comparison logic:
+
+* convert current server time to IST
+* compare against task_date + task_time
+* reminders should trigger if:
+  current IST time >= task time
+  AND
+  reminder_sent_log does not already contain the task
+
+3. Add detailed logs:
+   console.log:
+
+* current UTC time
+* current IST time
+* tasks fetched
+* which tasks are considered due
+* why tasks are skipped
+
+4. Improve matching logic:
+   Current implementation is probably checking exact minute equality.
+   Do NOT do exact equality checks.
+
+Instead:
+
+* reminders should trigger for tasks overdue by up to 5 minutes
+* use:
+  currentTime >= taskTime
+  AND
+  currentTime <= taskTime + 5min
+
+5. Keep duplicate protection:
+
+* reminder_sent_log logic must remain intact
+
+6. Do not change frontend schema.
+   Do NOT modify:
+
+* horizon_tasks structure
+* notification_tokens structure
+
+Only fix reminder detection logic.
+
+7. After fixing:
+
+* redeploy send-reminders Edge Function automatically
+* verify manually using Supabase Test panel
+* confirm that due tasks now return:
+  { "sent": 1 }
+
+8. Preserve all existing Firebase Admin SDK logic and token dispatch flow.
+
+The issue is ONLY timezone-aware due-task detection.
