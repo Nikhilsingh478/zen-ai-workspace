@@ -394,7 +394,7 @@ Clicking a calendar date sets `selectedDate` state. `AnimatePresence` renders a 
 | AI chat (Ask) | ✅ Complete | Requires `VITE_GEMINI_API_KEY` |
 | Chat animations | ✅ Complete | User/assistant bubbles, thinking, waveform, mic swap |
 | Voice mic input | ✅ Active | Chrome/Edge only (Web Speech API) |
-| Jarvis wake word | ⏸ Disabled | `use-wake-word.ts` intact; ask.tsx code commented out |
+| Voice Assistant (Horizon) | ✅ Complete | Wake word, command processing, voice responses, settings, auto-start |
 | Splashscreen | ✅ Complete | Icon + wordmark + loading bar, fades at 1.6 s |
 | PWA installable | ✅ Complete | `manifest.json` + `sw.js` + `index.html` wired |
 | Push notifications | ✅ Complete | FCM init on startup, permission-aware toggle, token persistence, foreground+background handlers, Supabase Edge Function scheduler, duplicate prevention via `reminder_sent_log` |

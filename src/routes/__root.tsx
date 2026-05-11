@@ -4,6 +4,7 @@ import { Toaster } from "sonner";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { initFCM } from "@/lib/fcm";
+import { VoiceOverlay } from "@/components/voice-overlay";
 
 // ─── Route ────────────────────────────────────────────────────────────────────
 
@@ -149,6 +150,8 @@ function RootComponent() {
           </motion.div>
         </AnimatePresence>
       </AppShell>
+
+      <VoiceOverlay />
 
       <Toaster
         theme="dark"

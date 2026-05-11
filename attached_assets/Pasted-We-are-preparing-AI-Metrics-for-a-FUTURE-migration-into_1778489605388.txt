@@ -1,0 +1,291 @@
+We are preparing AI Metrics for a FUTURE migration into a native desktop application using Tauri.
+IMPORTANT:
+This is NOT a full migration yet.
+This is NOT a rushed rewrite.
+The goal right now is:
+prepare the architecture properly
+make the codebase Tauri-friendly
+isolate desktop-capable systems
+prepare for future native desktop features
+preserve existing web + PWA functionality
+==================================================
+PRIMARY GOAL
+Prepare AI Metrics to eventually become:
+a real desktop application
+installable Windows software
+tray-based AI assistant
+voice-enabled productivity operating system
+using:
+Tauri
+==================================================
+IMPORTANT
+DO NOT break:
+existing website
+existing PWA
+existing Vercel deployment
+existing Supabase integration
+existing Horizon system
+existing FCM setup
+The app must continue working normally as:
+website
+PWA
+while also becoming ready for:
+Tauri desktop builds later
+==================================================
+CURRENT STACK
+Frontend:
+React 19
+Vite 7
+TypeScript
+TanStack Router
+Tailwind v4
+Framer Motion
+Backend:
+Supabase
+Firebase Cloud Messaging
+Current app state:
+Horizon timeline system
+realtime sync
+PWA
+splashscreen
+voice assistant architecture
+FCM architecture
+Insights analytics
+desktop launcher UI
+==================================================
+TAURI PREPARATION GOALS
+Prepare architecture for future desktop-native capabilities:
+system tray
+startup on boot
+global shortcuts
+persistent assistant
+background voice listening
+native notifications
+file system access
+local caching
+native window controls
+==================================================
+IMPORTANT IMPLEMENTATION STRATEGY
+DO NOT fully convert app to Tauri yet.
+Instead:
+prepare codebase
+modularize systems
+isolate browser-only logic
+isolate native-capable logic
+create clean abstraction layers
+==================================================
+TAURI SETUP
+Initialize Tauri structure safely.
+Create:
+src-tauri/
+Prepare:
+tauri.conf.json
+Rust backend scaffold
+Tauri command structure
+BUT:
+do NOT break current web app.
+==================================================
+ARCHITECTURE REQUIREMENTS
+Create clear separation between:
+Browser-only functionality
+Shared functionality
+Future native-desktop functionality
+==================================================
+ABSTRACTION LAYER
+Create abstraction utilities for:
+notifications
+voice assistant
+window management
+storage
+startup behavior
+shortcuts
+Example:
+src/lib/platform/
+notifications.ts
+voice.ts
+window.ts
+storage.ts
+system.ts
+This is VERY important.
+==================================================
+VOICE ASSISTANT PREPARATION
+IMPORTANT:
+The Horizon voice assistant system must become Tauri-ready.
+Prepare architecture for future:
+tray listening
+background listening
+startup assistant
+persistent wake-word detection
+native microphone handling
+BUT:
+keep current browser implementation functional.
+==================================================
+BACKGROUND LISTENING PREPARATION
+Create modular voice lifecycle management.
+Current:
+browser SpeechRecognition
+Future:
+native Rust audio services
+system-level wake word handling
+DO NOT tightly couple voice logic to browser APIs.
+==================================================
+SYSTEM TRAY PREPARATION
+Prepare architecture for future tray assistant.
+Future behavior:
+app minimizes to tray
+assistant runs persistently
+quick reopen
+background notifications
+voice activation
+Prepare app state management for this future behavior.
+==================================================
+GLOBAL SHORTCUT PREPARATION
+Prepare abstraction for future native shortcuts.
+Examples:
+Ctrl + Space
+Alt + H
+These should later:
+open Horizon
+activate assistant
+trigger voice mode
+==================================================
+WINDOW MANAGEMENT PREPARATION
+Prepare architecture for:
+frameless windows
+custom titlebars
+transparency
+native transitions
+assistant popup windows
+DO NOT implement fully yet.
+Only prepare clean abstraction structure.
+==================================================
+NATIVE NOTIFICATION PREPARATION
+Current:
+FCM browser notifications
+Future:
+native desktop notifications
+Create notification abstraction layer so switching implementations later is easy.
+==================================================
+FILE SYSTEM PREPARATION
+Prepare architecture for future:
+local exports
+local caching
+offline storage
+AI workspace persistence
+DO NOT hardcode everything around browser localStorage.
+==================================================
+STARTUP-ON-BOOT PREPARATION
+Prepare future support for:
+launch at OS startup
+tray startup
+assistant auto-start
+Architecture should allow this later.
+==================================================
+TAURI BUILD PREPARATION
+Ensure frontend works cleanly with:
+Tauri dev mode
+Tauri production builds
+Fix potential issues:
+absolute paths
+CSP issues
+service worker conflicts
+routing issues
+hydration problems
+==================================================
+IMPORTANT PWA COEXISTENCE
+IMPORTANT:
+PWA functionality must continue working.
+DO NOT:
+break service workers
+break notifications
+break manifest
+break installability
+Web/PWA must coexist with future Tauri builds.
+==================================================
+ROUTING REQUIREMENTS
+Ensure TanStack Router works properly with:
+Tauri navigation
+local desktop paths
+production builds
+==================================================
+SECURITY REQUIREMENTS
+IMPORTANT:
+Follow Tauri security best practices.
+DO NOT:
+expose unnecessary native APIs
+enable dangerous shell access
+disable protections carelessly
+Keep native permissions minimal and intentional.
+==================================================
+PERFORMANCE REQUIREMENTS
+Tauri should remain:
+lightweight
+low RAM usage
+efficient
+fast startup
+Avoid:
+Electron-style heavy architecture
+unnecessary native dependencies
+==================================================
+UI REQUIREMENTS
+AI Metrics should visually feel:
+native
+premium
+cinematic
+desktop-quality
+Prepare future support for:
+native window feel
+desktop transitions
+assistant overlays
+floating utility windows
+==================================================
+DEVELOPER EXPERIENCE
+Prepare scripts for future development:
+Examples:
+npm run tauri dev
+npm run tauri build
+Document setup requirements clearly.
+==================================================
+DOCUMENTATION REQUIREMENTS
+Create/update documentation for:
+Tauri architecture
+future desktop roadmap
+native abstraction layers
+desktop feature planning
+migration strategy
+==================================================
+IMPORTANT
+DO NOT:
+fully abandon web architecture
+tightly couple app to browser APIs
+create messy hybrid hacks
+break existing functionality
+overengineer native systems too early
+This phase is:
+PREPARATION + ARCHITECTURE ONLY.
+==================================================
+FINAL GOAL
+The future AI Metrics desktop application should eventually support:
+real .exe builds
+tray assistant
+startup-on-boot
+background voice assistant
+global shortcuts
+native notifications
+persistent wake-word listening
+native desktop UX
+WITHOUT requiring a full frontend rewrite later.
+==================================================
+FINAL VERIFICATION
+Before finishing:
+verify web app still works
+verify PWA still works
+verify no routing issues
+verify abstraction layers created
+verify Tauri structure initialized safely
+verify no service worker conflicts
+verify voice assistant modularization
+verify future desktop readiness
+verify clean architecture separation
+verify lightweight implementation
+
