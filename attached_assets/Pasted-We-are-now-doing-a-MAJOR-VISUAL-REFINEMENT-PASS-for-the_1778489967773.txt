@@ -1,0 +1,580 @@
+We are now doing a MAJOR VISUAL REFINEMENT PASS for the Horizon timeline system inside AI Metrics.
+
+IMPORTANT:
+This is NO LONGER a functionality task.
+
+The architecture already exists:
+
+* timeline layout
+* FCM
+* task system
+* reminders
+* fullscreen overlays
+* animations
+* realtime sync
+
+The current problem is:
+
+# the UI still feels vibecoded and implementation-heavy instead of premium product-grade.
+
+We now need:
+
+# a cinematic visual refinement pass.
+
+IMPORTANT:
+Study the attached reference screenshots VERY carefully.
+
+The references represent the NEW visual identity direction for Horizon.
+
+==================================================
+PRIMARY DESIGN GOAL
+===================
+
+Horizon should feel like:
+
+* a premium AI operating system
+* cinematic productivity software
+* elegant futuristic scheduler
+* structured temporal interface
+* immersive daily flow system
+
+NOT:
+
+* generic task manager
+* SaaS todo list
+* Notion clone
+* Trello clone
+* vibecoded dashboard
+
+==================================================
+OVERALL MOOD
+============
+
+The interface should feel:
+
+* calm
+* futuristic
+* cinematic
+* premium
+* minimal
+* structured
+* intentional
+* immersive
+
+Reference inspiration:
+
+* Linear
+* Arc Browser
+* Apple Calendar dark mode
+* cinematic sci-fi operating systems
+* premium productivity software
+
+==================================================
+MOST IMPORTANT CHANGE
+=====================
+
+The timeline itself must become:
+
+# the emotional centerpiece of Horizon.
+
+Right now:
+
+* the timeline is just a layout
+
+After this redesign:
+
+* the timeline should feel alive
+* elegant
+* immersive
+* visually connected
+* emotionally structured
+
+==================================================
+TIMELINE REFINEMENT
+===================
+
+The vertical timeline must become significantly more premium.
+
+Requirements:
+
+* stronger visual identity
+* more elegant continuity
+* better connector rhythm
+* premium spacing
+* intentional node placement
+* visual depth
+
+==================================================
+TIMELINE SPINE
+==============
+
+The vertical timeline line should feel:
+
+* continuous
+* elegant
+* premium
+* intentional
+* subtly glowing
+
+Use:
+
+* ultra-thin white-opacity line
+* soft blur glow
+* subtle fade gradients
+
+DO NOT:
+
+* use thick borders
+* use flat gray lines
+* use harsh contrast
+
+The timeline spine should visually guide the eye naturally downward.
+
+==================================================
+TIMELINE NODES
+==============
+
+The nodes are EXTREMELY important.
+
+Right now they feel generic and weak.
+
+Redesign them completely.
+
+Nodes should feel:
+
+* precise
+* temporal
+* cinematic
+* elegant
+* premium
+
+Suggested structure:
+
+* outer glow ring
+* inner filled core
+* subtle hover pulse
+* active-state illumination
+
+Completed tasks:
+
+* dimmed filled node
+
+Current task:
+
+* softly glowing node
+
+Future tasks:
+
+* outlined subtle node
+
+==================================================
+TIME LABEL DESIGN
+=================
+
+Time labels should feel:
+
+* important
+* editorial
+* premium
+* structured
+
+Requirements:
+
+* stronger hierarchy
+* cleaner typography
+* subtle tracking
+* vertical alignment perfection
+
+Desktop:
+
+* larger spacing
+* more breathing room
+
+Mobile:
+
+* compact but still elegant
+
+Time is the CORE of the interface.
+Treat it like a primary design element.
+
+==================================================
+TASK CARD REDESIGN
+==================
+
+Completely redesign task cards.
+
+Current cards still feel:
+
+* generic
+* flat
+* vibecoded
+
+New cards should feel:
+
+* cinematic
+* expensive
+* immersive
+* layered
+* sleek
+* futuristic
+* editorial
+
+==================================================
+CARD SURFACE DESIGN
+===================
+
+Requirements:
+
+* premium dark surfaces
+* subtle glass depth
+* soft inner lighting
+* thin elegant borders
+* cinematic shadows
+* layered lighting feel
+* subtle edge glow
+
+DO NOT:
+
+* overdo glassmorphism
+* use neon
+* use colorful gradients
+* create gaming UI
+
+Maintain:
+
+* sophisticated monochrome aesthetic
+
+==================================================
+CARD TYPOGRAPHY
+===============
+
+Typography hierarchy must become significantly better.
+
+Requirements:
+
+* large cinematic titles
+* clean spacing rhythm
+* softer metadata styling
+* editorial layout feel
+* better line spacing
+
+The typography should feel:
+
+* intentional
+* premium
+* readable
+* structured
+
+==================================================
+TASK CARD CONTENT STRUCTURE
+===========================
+
+Cards should support:
+
+* task title
+* task description
+* reminder state
+* collaborators
+* tags
+* task status
+* progress indicators
+* quick actions
+
+BUT:
+maintain minimalism.
+
+DO NOT clutter.
+
+==================================================
+EXPANDED TASK VIEW
+==================
+
+IMPORTANT:
+The third screenshot represents the direction for:
+
+# expanded task cards.
+
+When user clicks a task:
+
+* expanded cinematic card view should appear
+* smooth animated expansion
+* premium detail reveal
+* immersive focus state
+
+Expanded card should feel:
+
+* like opening a mission panel
+* immersive
+* important
+* cinematic
+
+==================================================
+EXPANDED CARD FEATURES
+======================
+
+Expanded state may include:
+
+* full description
+* task notes
+* collaborator avatars
+* reminder status
+* completion actions
+* edit/delete
+* metadata
+* progress bar
+* resources/attachments
+
+BUT:
+keep visual elegance.
+
+==================================================
+CARD ANIMATIONS
+===============
+
+Animations are EXTREMELY important.
+
+Requirements:
+
+* smooth Framer Motion transitions
+* premium easing
+* subtle stagger
+* elegant card reveal
+* smooth expansion physics
+* cinematic fade transitions
+* subtle hover depth
+
+Motion should feel:
+
+* expensive
+* fluid
+* polished
+* intentional
+
+DO NOT:
+
+* bounce aggressively
+* overanimate
+* create flashy motion
+
+==================================================
+DESKTOP LAYOUT
+==============
+
+Desktop Horizon should feel:
+
+* immersive
+* spacious
+* editorial
+* productivity-focused
+
+Requirements:
+
+* centered visual flow
+* elegant spacing rhythm
+* timeline spine clearly visible
+* cards visually attached to timeline
+
+Large cards should dominate visually.
+
+==================================================
+MOBILE REDESIGN
+===============
+
+IMPORTANT:
+The mobile redesign is CRITICAL.
+
+The current mobile layout still feels:
+
+* compressed
+* generic
+* mechanically stacked
+
+We need:
+
+# native-app quality.
+
+==================================================
+MOBILE TIMELINE STRUCTURE
+=========================
+
+Maintain:
+
+* timeline spine
+* node continuity
+* card attachment
+* chronological structure
+
+BUT:
+optimize intelligently for mobile spacing.
+
+==================================================
+MOBILE CARD DESIGN
+==================
+
+Cards on mobile should:
+
+* feel immersive
+* feel vertically rhythmic
+* have premium spacing
+* avoid cramped density
+
+Use:
+
+* elegant padding
+* proper typography scaling
+* cinematic spacing
+* clean touch targets
+
+==================================================
+MOBILE EXPERIENCE GOAL
+======================
+
+The mobile version should feel like:
+
+* premium mobile productivity software
+* modern native app
+* futuristic scheduling interface
+
+NOT:
+
+* responsive web cards
+
+==================================================
+HEADER REDESIGN
+===============
+
+Improve Horizon headers significantly.
+
+Desktop:
+
+* immersive large heading
+* elegant metadata
+* subtle contextual text
+
+Mobile:
+
+* compact premium topbar
+* cinematic spacing
+* native-app feel
+
+==================================================
+EMPTY STATES
+============
+
+Redesign empty states.
+
+Empty timeline should feel:
+
+* elegant
+* calm
+* intentional
+* not broken or unfinished
+
+==================================================
+SCROLLING EXPERIENCE
+====================
+
+Scrolling should feel:
+
+* cinematic
+* smooth
+* immersive
+
+Use:
+
+* subtle fade masks
+* smooth spacing rhythm
+* premium transitions
+
+==================================================
+PRIORITY COLORS
+===============
+
+Priority colors are allowed.
+
+BUT:
+keep them subtle and elegant.
+
+Examples:
+
+* muted amber
+* muted red
+* muted blue-gray
+
+Overall UI should remain:
+
+* mostly monochrome
+* sophisticated
+* cinematic
+
+==================================================
+BACKGROUND + DEPTH
+==================
+
+Add subtle environmental depth.
+
+Examples:
+
+* faint radial lighting
+* subtle ambient gradients
+* cinematic darkness
+* layered surfaces
+
+DO NOT:
+
+* overdo gradients
+* create noisy backgrounds
+
+==================================================
+IMPORTANT
+=========
+
+DO NOT:
+
+* redesign functionality
+* break reminders
+* break FCM
+* break realtime sync
+* break routing
+* break responsiveness
+* change architecture unnecessarily
+
+This phase is:
+
+# visual sophistication only.
+
+==================================================
+GOAL
+====
+
+After this redesign, Horizon should feel like:
+
+* a premium AI operating system
+* cinematic timeline software
+* high-end productivity environment
+* modern futuristic scheduler
+
+NOT:
+
+* a vibecoded todo app.
+
+==================================================
+FINAL VERIFICATION
+==================
+
+Before finishing:
+
+* verify timeline spine quality
+* verify node continuity
+* verify card-to-node attachment
+* verify cinematic spacing
+* verify desktop immersion
+* verify mobile premium feel
+* verify expanded card transitions
+* verify typography hierarchy
+* verify smooth animations
+* verify premium shadows/glows
+* verify no layout breakage
+* verify no cramped mobile spacing
+* verify elegant scrolling experience
+* verify visual consistency with AI Metrics
