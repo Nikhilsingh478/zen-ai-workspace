@@ -7,7 +7,9 @@ export default defineConfig({
   plugins: [
     tailwindcss(),
     react(),
-    tsconfigPaths(),
+    tsconfigPaths({
+      ignoreConfigErrors: true,
+    }),
   ],
   server: {
     host: "0.0.0.0",
@@ -17,5 +19,8 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
+  },
+  optimizeDeps: {
+    exclude: ["@tanstack/react-start", "@cloudflare/vite-plugin"],
   },
 });
