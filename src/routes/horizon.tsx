@@ -34,6 +34,7 @@ import {
   useFCMStatus,
   requestNotificationPermission,
   getNotificationStatus,
+  sendTestNotification,
 } from "@/lib/fcm";
 import {
   Dialog,
@@ -137,6 +138,7 @@ function HorizonPage() {
   const [direction, setDirection] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<HorizonTask | null>(null);
+  const [testingNotif, setTestingNotif] = useState(false);
 
   const { tasks, tasksForDate, datesWithTasks, add, update, toggle, remove } = useHorizon();
   const notifStatus = useFCMStatus();
@@ -244,6 +246,38 @@ function HorizonPage() {
                 <BellRing className="h-2.5 w-2.5" />
                 {tasksWithReminders} reminder{tasksWithReminders > 1 ? "s" : ""}
               </motion.span>
+            )}
+          </AnimatePresence>
+
+          {/* Test notification button — only visible when permission is granted */}
+          <AnimatePresence>
+            {notifStatus === "granted" && (
+              <motion.button
+                initial={{ opacity: 0, scale: 0.88 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.88 }}
+                transition={{ duration: 0.2, ease: EASE }}
+                whileHover={{ scale: 1.04 }}
+                whileTap={{ scale: 0.96 }}
+                disabled={testingNotif}
+                onClick={async () => {
+                  setTestingNotif(true);
+                  try {
+                    await sendTestNotification();
+                    toast.success("Test notification sent — check your OS notification tray");
+                  } catch (err) {
+                    toast.error("Notification failed: " + (err instanceof Error ? err.message : String(err)));
+                    console.error("[horizon] test notification error:", err);
+                  } finally {
+                    setTestingNotif(false);
+                  }
+                }}
+                className="flex items-center gap-1 px-2 py-0.5 rounded-lg border border-white/[0.07] bg-white/[0.03] text-[10px] text-white/28 hover:text-white/55 hover:border-white/[0.12] transition-all duration-200 disabled:opacity-40"
+                title="Send a test notification to verify delivery"
+              >
+                <Bell className="h-2.5 w-2.5" />
+                {testingNotif ? "Sending…" : "Test"}
+              </motion.button>
             )}
           </AnimatePresence>
         </motion.div>

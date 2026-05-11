@@ -1,0 +1,478 @@
+We need a MAJOR reliability and UX overhaul of the Jarvis voice assistant system inside AI Metrics.
+
+Current state:
+
+* wake word system exists
+* passive listening exists
+* Gemini integration exists
+* Horizon integration exists
+* task creation architecture exists
+
+BUT:
+the real-world usability is currently broken and frustrating.
+
+This is now a PRODUCTION-GRADE voice interaction refinement task.
+
+==================================================
+PRIMARY GOAL
+============
+
+Jarvis should feel:
+
+* smooth
+* reliable
+* intelligent
+* calm
+* persistent
+* natural
+* cinematic
+
+NOT:
+
+* glitchy
+* twitchy
+* restarting constantly
+* instantly timing out
+* randomly closing
+* fake AI behavior
+
+==================================================
+CRITICAL ISSUES TO FIX
+======================
+
+1. Wake word should be:
+   "Jarvis"
+   NOT:
+   "Horizon"
+
+2. Mic currently closes almost instantly if the user pauses for even half a second.
+
+This destroys usability.
+
+3. Mobile experience is extremely unstable:
+
+* mic repeatedly opens/closes
+* recognition restarts rapidly
+* flickering state transitions
+* very annoying UX
+
+4. Assistant currently CLAIMS tasks were added to Horizon even when NOTHING was actually inserted into the database.
+
+This is unacceptable.
+
+5. Assistant should ACTUALLY create Horizon tasks from natural speech reliably.
+
+==================================================
+MOST IMPORTANT REQUIREMENT
+==========================
+
+The assistant must stop pretending actions succeeded.
+
+If task creation fails:
+
+* explicitly say it failed
+* log the error
+* never hallucinate success
+
+==================================================
+NEW VOICE INTERACTION MODEL
+===========================
+
+We are redesigning Jarvis behavior completely.
+
+Desired flow:
+
+User:
+"Jarvis"
+
+Jarvis:
+listens continuously and enters ACTIVE COMMAND MODE
+
+User:
+"Remind me tomorrow at 4 PM to call Rahul about the website"
+
+Jarvis:
+
+* sends transcript to Gemini
+* Gemini extracts:
+
+  * task title
+  * date
+  * time
+  * description
+* app inserts REAL Horizon task
+* verifies insertion succeeded
+* only then confirms success
+
+==================================================
+WAKE WORD CHANGES
+=================
+
+Replace all:
+"Horizon"
+with:
+"Jarvis"
+
+Update:
+
+* wake word detection
+* settings UI
+* overlays
+* prompts
+* voice responses
+* documentation
+* command stripping logic
+
+==================================================
+MASSIVE STABILITY OVERHAUL
+==========================
+
+Current issue:
+recognition lifecycle is unstable.
+
+We need a production-grade state machine.
+
+==================================================
+RECOGNITION STATES
+==================
+
+Design proper persistent states:
+
+1. PASSIVE
+
+* low-activity wake word listening
+* stable
+* never flickers
+* should survive pauses
+
+2. ACTIVE
+
+* user currently speaking command
+* long silence tolerance
+* no instant shutdown
+
+3. PROCESSING
+
+* Gemini parsing
+* task creation
+* reasoning
+
+4. SPEAKING
+
+* TTS response
+
+5. IDLE
+
+* disabled state only
+
+==================================================
+FIX THE AGGRESSIVE AUTO-CLOSE
+=============================
+
+Current issue:
+assistant closes immediately after tiny pause.
+
+This is terrible UX.
+
+Requirements:
+
+* tolerate natural pauses
+* allow thinking pauses
+* allow breathing pauses
+* allow multi-sentence commands
+
+Implement:
+
+* silence debounce
+* delayed completion
+* buffered transcript accumulation
+
+Minimum silence timeout:
+3–5 seconds
+
+NOT:
+0.5 seconds
+
+==================================================
+CONTINUOUS COMMAND BUFFERING
+============================
+
+Jarvis should accumulate transcript naturally.
+
+Example:
+
+User:
+"Jarvis...
+uh...
+remind me tomorrow...
+at 5 PM...
+to call the designer"
+
+This should become ONE command.
+
+NOT:
+multiple broken fragments.
+
+==================================================
+MOBILE STABILITY FIX
+====================
+
+This is EXTREMELY important.
+
+Current mobile behavior:
+
+* repeated start/stop loops
+* mic flickering
+* unstable recognition sessions
+
+Fix properly.
+
+Requirements:
+
+* one recognition instance only
+* strict lifecycle locking
+* no double starts
+* no overlapping restarts
+* no restart storms
+
+Implement:
+
+* cooldown guards
+* restart throttling
+* active-session mutex
+* delayed restart handling
+
+==================================================
+PREVENT RESTART LOOPS
+=====================
+
+Current issue:
+recognition rapidly reopens/closes.
+
+Need:
+
+* robust restart prevention
+* lock-based recognition control
+* state synchronization
+
+There must NEVER be:
+
+* simultaneous recognition instances
+* multiple onend loops
+* cascading restarts
+
+==================================================
+TASK CREATION OVERHAUL
+======================
+
+This is the MOST IMPORTANT FEATURE.
+
+Jarvis must ACTUALLY create real Horizon tasks from natural language.
+
+==================================================
+NEW TASK CREATION FLOW
+======================
+
+1. User speaks naturally
+
+Example:
+"Jarvis remind me next Monday at 3 PM to send invoice to Amit"
+
+2. Full transcript sent to Gemini
+
+3. Gemini returns STRICT JSON structure:
+
+{
+"title": "...",
+"description": "...",
+"date": "...",
+"time": "...",
+"priority": "...",
+"success": true
+}
+
+4. App validates parsed response
+
+5. App inserts REAL task into Supabase
+
+6. App verifies insertion succeeded
+
+7. ONLY THEN:
+   Jarvis confirms success
+
+==================================================
+STRICT STRUCTURED OUTPUT
+========================
+
+Gemini must NEVER return conversational prose for task extraction.
+
+Use:
+
+* JSON schema
+* deterministic parsing
+* validation
+* fallback handling
+
+==================================================
+VALIDATION LAYER
+================
+
+Before insertion:
+validate:
+
+* date exists
+* time valid
+* title exists
+* parsing confidence acceptable
+
+If invalid:
+ask follow-up question.
+
+Example:
+"I understood the task but not the time. What time should I set?"
+
+==================================================
+NEVER HALLUCINATE SUCCESS
+=========================
+
+CRITICAL.
+
+If Supabase insert fails:
+
+* say task creation failed
+* explain retry needed
+* never fake completion
+
+==================================================
+TASK INSERTION VERIFICATION
+===========================
+
+After insert:
+query inserted task back from DB.
+
+Only confirm success if:
+
+* row exists
+* insertion verified
+
+==================================================
+VOICE UX REFINEMENT
+===================
+
+Jarvis should feel:
+
+* calm
+* deliberate
+* intelligent
+* non-rushed
+
+Avoid:
+
+* instant cutoff
+* robotic interruption
+* premature processing
+
+==================================================
+TTS RESPONSE IMPROVEMENT
+========================
+
+Voice replies should be:
+
+* short
+* clean
+* natural
+* confident
+
+Examples:
+"Done. I added that reminder for tomorrow at 4 PM."
+
+NOT:
+verbose AI assistant paragraphs.
+
+==================================================
+TRANSCRIPT VISUALIZATION
+========================
+
+Improve transcript display.
+
+Requirements:
+
+* live transcript growth
+* smooth fade animations
+* stable text rendering
+* no flickering
+* partial transcript handling
+
+==================================================
+VOICE OVERLAY IMPROVEMENT
+=========================
+
+Current overlay still feels unstable.
+
+Need:
+
+* smoother state transitions
+* premium motion
+* calmer visual feedback
+* stable waveform behavior
+* cleaner speaking indicators
+
+==================================================
+ERROR HANDLING
+==============
+
+Add robust logging for:
+
+* recognition start/end
+* wake word detection
+* transcript parsing
+* Gemini responses
+* Supabase inserts
+* insertion failures
+* microphone errors
+* mobile restart loops
+
+==================================================
+IMPORTANT
+=========
+
+Do NOT:
+
+* break Horizon
+* break reminders
+* break FCM
+* break passive listening
+* break PWA behavior
+* break mobile support
+
+This is:
+
+* stability
+* reliability
+* natural interaction
+* real task execution
+* UX refinement
+
+==================================================
+FINAL GOAL
+==========
+
+After this overhaul:
+
+Jarvis should feel like:
+
+* a real persistent AI operating system assistant
+* smooth and reliable
+* calm and intelligent
+* stable on mobile and desktop
+* capable of ACTUALLY creating tasks from speech
+
+NOT:
+
+* a glitchy speech-to-text demo.
+
+And most importantly:
+when Jarvis says:
+"I added your reminder"
+
+the task MUST genuinely exist inside Horizon.

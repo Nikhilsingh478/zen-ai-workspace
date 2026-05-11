@@ -1,0 +1,342 @@
+The backend reminder system is now FULLY WORKING.
+
+Current confirmed state:
+
+* Firebase project configured correctly
+* VAPID key configured
+* notification_tokens table contains valid FCM token(s)
+* Edge Function deploy successful
+* FIREBASE_SERVICE_ACCOUNT secret configured
+* send-reminders function executes correctly
+* IST timezone bug already fixed
+* reminder matching logic works
+* Supabase test panel returns:
+  {
+  "sent": 1
+  }
+
+This proves:
+
+* task detection works
+* Firebase Admin auth works
+* FCM send requests succeed
+* reminder_sent_log works
+* backend pipeline is functioning correctly
+
+HOWEVER:
+NO actual notification is visibly appearing anywhere:
+
+* not on desktop Chrome
+* not on installed PWA
+* not while app open
+* not while app closed/minimized
+
+This means the remaining issue is now entirely CLIENT-SIDE FCM DISPLAY / SERVICE WORKER behavior.
+
+We need a COMPLETE production-grade FCM display debugging + repair pass.
+
+Fix this properly and comprehensively.
+
+==================================================
+PRIMARY GOAL
+============
+
+When send-reminders returns:
+{
+"sent": 1
+}
+
+a REAL visible notification must appear reliably:
+
+* desktop Chrome
+* installed desktop PWA
+* Android Chrome
+* Android installed PWA
+* foreground state
+* background state
+
+==================================================
+DEBUG EVERYTHING
+================
+
+Do NOT assume anything.
+
+Systematically debug:
+
+* service worker registration
+* Firebase messaging initialization
+* foreground notification handling
+* background notification handling
+* notification permission state
+* FCM payload format
+* browser delivery behavior
+* webpush payload handling
+* PWA notification compatibility
+
+==================================================
+STEP 1 — VERIFY SERVICE WORKER REGISTRATION
+===========================================
+
+Check:
+
+* sw.js registration
+* firebase-messaging-sw.js registration
+* whether both exist
+* whether they conflict
+* whether FCM is using the correct worker
+
+IMPORTANT:
+There may currently be:
+
+* conflicting service workers
+* duplicate registrations
+* wrong scope
+* Firebase worker not controlling notifications
+
+Fix this properly.
+
+Need:
+ONE clean production-safe notification architecture.
+
+==================================================
+STEP 2 — UNIFY SERVICE WORKER ARCHITECTURE
+==========================================
+
+If needed:
+merge:
+
+* Firebase messaging worker
+* existing PWA service worker
+
+into ONE proper unified worker.
+
+Requirements:
+
+* notification support
+* push event support
+* notificationclick support
+* caching support
+* PWA compatibility
+* FCM compatibility
+
+Avoid:
+
+* duplicate workers
+* conflicting scopes
+* double registrations
+
+==================================================
+STEP 3 — FOREGROUND NOTIFICATION HANDLING
+=========================================
+
+Currently notifications likely fail while app tab is open.
+
+Implement proper:
+onMessage(...)
+foreground handling.
+
+When foreground message arrives:
+
+* immediately show real Notification()
+* not just console logs
+* not just toast
+* actual browser notification popup
+
+Requirements:
+
+* Horizon Reminder title
+* task title as body
+* icon
+* click action opens /horizon
+
+Must work while:
+
+* tab focused
+* browser open
+* app actively being used
+
+==================================================
+STEP 4 — BACKGROUND NOTIFICATION HANDLING
+=========================================
+
+Implement proper:
+messaging.onBackgroundMessage(...)
+
+inside service worker.
+
+Requirements:
+
+* real notification display
+* proper payload extraction
+* fallback values
+* safe handling if fields missing
+
+Ensure:
+self.registration.showNotification(...)
+is called correctly.
+
+==================================================
+STEP 5 — VERIFY PAYLOAD STRUCTURE
+=================================
+
+Current FCM payload may be malformed for web notifications.
+
+Audit sendFCM() payload structure completely.
+
+Ensure compatibility with:
+
+* Firebase Web SDK
+* Chrome Push API
+* Android Chrome PWAs
+* desktop PWAs
+
+Verify:
+notification
+webpush
+data
+fcm_options
+all structured correctly.
+
+==================================================
+STEP 6 — ADD CLIENT DEBUG LOGGING
+=================================
+
+Add detailed logs for:
+
+* service worker registration success
+* token retrieval
+* onMessage events
+* background message events
+* notification display attempts
+* permission states
+* push receipt
+* click handling
+
+Need production-quality observability.
+
+==================================================
+STEP 7 — VERIFY PERMISSIONS FLOW
+================================
+
+Check:
+Notification.permission
+
+Handle:
+
+* denied
+* default
+* granted
+
+Ensure no silent failures.
+
+==================================================
+STEP 8 — ADD TEST NOTIFICATION BUTTON
+=====================================
+
+Add temporary developer-only:
+“Send Test Notification”
+button somewhere safe.
+
+This should:
+
+* bypass reminder logic entirely
+* directly trigger a visible local notification
+* verify frontend display path independently
+
+Need ability to isolate:
+
+* FCM delivery
+  vs
+* notification rendering
+
+==================================================
+STEP 9 — VERIFY SERVICE WORKER ACTIVATION
+=========================================
+
+Ensure:
+
+* worker activates immediately
+* skipWaiting()
+* clients.claim()
+
+Check:
+
+* no stale worker
+* no old cached worker versions
+
+==================================================
+STEP 10 — VERIFY PWA COMPATIBILITY
+==================================
+
+Notifications must work in:
+
+* normal browser tab
+* installed desktop PWA
+* Android installed PWA
+
+Especially Android Chrome.
+
+==================================================
+STEP 11 — ADD NOTIFICATION CLICK HANDLING
+=========================================
+
+When notification clicked:
+
+* focus existing tab if open
+* otherwise open /horizon
+
+Proper production behavior.
+
+==================================================
+STEP 12 — REMOVE ANY CONFLICTING LEGACY CODE
+============================================
+
+Audit entire project for:
+
+* old Firebase worker code
+* duplicate messaging init
+* old notification handlers
+* stale service worker registration
+
+Clean all conflicts.
+
+==================================================
+IMPORTANT
+=========
+
+Do NOT:
+
+* break Horizon
+* break voice assistant
+* break PWA caching
+* break realtime sync
+* break Firebase token registration
+
+This is ONLY:
+notification display reliability repair.
+
+==================================================
+FINAL GOAL
+==========
+
+After this fix:
+
+When:
+{
+"sent": 1
+}
+
+is returned from send-reminders,
+a REAL visible notification MUST appear reliably across:
+
+* desktop browser
+* desktop PWA
+* Android Chrome
+* Android installed PWA
+
+both:
+
+* foreground
+* background
+
+with proper production-grade behavior.

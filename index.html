@@ -12,15 +12,9 @@
     <link rel="apple-touch-icon" href="/favicon.png" />
     <link rel="manifest" href="/manifest.json" />
     <title>AI Matrix</title>
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', function () {
-          navigator.serviceWorker.register('/sw.js').catch(function (err) {
-            console.debug('[SW] Registration skipped:', err.message);
-          });
-        });
-      }
-    </script>
+    <!-- Service worker is registered by src/lib/fcm.ts so Firebase config
+         params can be embedded in the URL. firebase-messaging-sw.js handles
+         both PWA asset caching and FCM background messages. -->
   </head>
   <body>
     <div id="root"></div>
