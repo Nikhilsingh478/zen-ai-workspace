@@ -74,6 +74,13 @@ const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 const HOURS_12 = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, "0"));
 const ALL_MINUTES = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, "0"));
 
+// Left-edge priority accent stripe colors
+const PRIORITY_STRIPE: Record<Priority, string> = {
+  low:    "bg-blue-400/[0.45]",
+  medium: "bg-amber-400/[0.45]",
+  high:   "bg-red-400/[0.5]",
+};
+
 // ─── Task form schema ─────────────────────────────────────────────────────────
 
 const taskSchema = z.object({
@@ -101,7 +108,6 @@ const gridVariants = {
   exit: (dir: number) => ({ opacity: 0, x: dir === 0 ? 0 : dir > 0 ? -28 : 28, transition: { duration: 0.18 } }),
 };
 
-// Stagger container — children fade+slide up one by one
 const staggerContainer = {
   hidden: {},
   show: { transition: { staggerChildren: 0.04, delayChildren: 0.08 } },
@@ -193,34 +199,46 @@ function HorizonPage() {
   return (
     <div className="h-full flex flex-col overflow-hidden relative">
 
+      {/* ── Ambient environmental depth ─────────────────────────────────── */}
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_90%_50%_at_50%_-10%,rgba(255,255,255,0.016),transparent)] z-0" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-background/60 to-transparent z-0" />
+
       {/* ── Calendar view ─────────────────────────────────────────────── */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-4 md:px-10 pt-5 pb-6">
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 md:px-10 pt-5 pb-6 relative z-10">
 
         {/* Page header */}
         <motion.div
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35, ease: EASE }}
-          className="flex items-center gap-3 mb-7"
+          className="flex items-center gap-3 mb-7 flex-wrap"
         >
+          {/* Icon */}
           <motion.div
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: 0.4, ease: EASE, delay: 0.05 }}
-            className="h-8 w-8 rounded-xl bg-white/[0.05] border border-white/[0.07] grid place-items-center"
+            className="relative h-8 w-8 rounded-xl bg-white/[0.04] border border-white/[0.07] grid place-items-center shrink-0"
           >
-            <CalendarDays className="h-4 w-4 text-white/50" strokeWidth={1.75} />
+            <motion.div
+              className="absolute inset-0 rounded-xl"
+              animate={{ opacity: [0.3, 0.7, 0.3] }}
+              transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+              style={{ background: "radial-gradient(circle at 50% 30%, rgba(255,255,255,0.06), transparent 70%)" }}
+            />
+            <CalendarDays className="h-[15px] w-[15px] text-white/40 relative z-10" strokeWidth={1.75} />
           </motion.div>
+
           <motion.div
             initial={{ opacity: 0, x: -4 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.35, ease: EASE, delay: 0.08 }}
           >
-            <h1 className="text-[16px] font-semibold tracking-tight leading-none">Horizon</h1>
-            <p className="text-[11px] text-white/30 mt-0.5">Calendar & tasks</p>
+            <h1 className="text-[16px] font-semibold tracking-tight leading-none text-white/90">Horizon</h1>
+            <p className="text-[10px] text-white/25 mt-0.5 tracking-[0.06em] uppercase">Calendar & tasks</p>
           </motion.div>
 
-          {/* Notification status pill — shown only when relevant */}
+          {/* Notification status pill */}
           <AnimatePresence>
             {tasksWithReminders > 0 && notifStatus === "denied" && (
               <motion.span
@@ -249,7 +267,7 @@ function HorizonPage() {
             )}
           </AnimatePresence>
 
-          {/* Test notification button — only visible when permission is granted */}
+          {/* Test notification button */}
           <AnimatePresence>
             {notifStatus === "granted" && (
               <motion.button
@@ -267,13 +285,12 @@ function HorizonPage() {
                     toast.success("Test notification sent — check your OS notification tray");
                   } catch (err) {
                     toast.error("Notification failed: " + (err instanceof Error ? err.message : String(err)));
-                    console.error("[horizon] test notification error:", err);
                   } finally {
                     setTestingNotif(false);
                   }
                 }}
                 className="flex items-center gap-1 px-2 py-0.5 rounded-lg border border-white/[0.07] bg-white/[0.03] text-[10px] text-white/28 hover:text-white/55 hover:border-white/[0.12] transition-all duration-200 disabled:opacity-40"
-                title="Send a test notification to verify delivery"
+                title="Send a test notification"
               >
                 <Bell className="h-2.5 w-2.5" />
                 {testingNotif ? "Sending…" : "Test"}
@@ -290,15 +307,20 @@ function HorizonPage() {
           className="flex items-center justify-between mb-5"
         >
           <AnimatePresence mode="wait" custom={direction}>
-            <motion.h2
+            <motion.div
               key={monthKey}
               custom={direction}
               variants={monthVariants}
               initial="enter" animate="center" exit="exit"
-              className="text-xl md:text-[22px] font-semibold tracking-tight"
+              className="flex items-baseline gap-2"
             >
-              {MONTHS[viewMonth]} {viewYear}
-            </motion.h2>
+              <h2 className="text-xl md:text-[22px] font-bold tracking-tight text-white/88">
+                {MONTHS[viewMonth]}
+              </h2>
+              <span className="text-[13px] md:text-[15px] font-light text-white/22 tabular-nums">
+                {viewYear}
+              </span>
+            </motion.div>
           </AnimatePresence>
 
           <div className="flex items-center gap-1.5">
@@ -306,7 +328,7 @@ function HorizonPage() {
               onClick={goToday}
               whileHover={{ scale: 1.03 }}
               whileTap={{ scale: 0.97 }}
-              className="hidden sm:flex items-center px-3 py-1.5 rounded-lg text-xs font-medium text-white/40 border border-white/[0.07] hover:border-white/[0.14] hover:text-white/70 transition-all duration-200"
+              className="hidden sm:flex items-center px-3 py-1.5 rounded-lg text-[11px] font-medium text-white/35 border border-white/[0.06] hover:border-white/[0.12] hover:text-white/65 transition-all duration-200"
             >
               Today
             </motion.button>
@@ -319,7 +341,7 @@ function HorizonPage() {
                 onClick={action}
                 whileHover={{ scale: 1.08 }}
                 whileTap={{ scale: 0.92 }}
-                className="h-8 w-8 rounded-lg border border-white/[0.07] hover:border-white/[0.14] grid place-items-center text-white/30 hover:text-white/70 transition-all duration-200"
+                className="h-8 w-8 rounded-lg border border-white/[0.06] hover:border-white/[0.13] grid place-items-center text-white/25 hover:text-white/65 transition-all duration-200"
                 aria-label={label}
               >
                 <Icon className="h-4 w-4" />
@@ -328,7 +350,7 @@ function HorizonPage() {
           </div>
         </motion.div>
 
-        {/* Day-of-week headers — staggered entrance */}
+        {/* Day-of-week headers */}
         <motion.div
           variants={staggerContainer}
           initial="hidden"
@@ -339,7 +361,7 @@ function HorizonPage() {
             <motion.div
               key={d}
               variants={staggerItem}
-              className="text-[10px] font-medium text-white/20 text-center pb-2 tracking-widest uppercase"
+              className="text-[9px] font-medium text-white/[0.16] text-center pb-2 tracking-[0.1em] uppercase"
             >
               {d}
             </motion.div>
@@ -366,43 +388,43 @@ function HorizonPage() {
                   key={dateStr}
                   onClick={() => setSelectedDate(dateStr)}
                   initial={{ opacity: 0, scale: 0.88 }}
-                  animate={{ opacity: currentMonth ? 1 : 0.18, scale: 1 }}
+                  animate={{ opacity: currentMonth ? 1 : 0.14, scale: 1 }}
                   transition={{ duration: 0.22, delay: cellIndex * 0.006, ease: EASE }}
-                  whileHover={{ scale: 1.07, y: -1.5 }}
-                  whileTap={{ scale: 0.93 }}
+                  whileHover={{ scale: 1.06, y: -1 }}
+                  whileTap={{ scale: 0.94 }}
                   className={cn(
-                    "relative aspect-square flex flex-col items-center justify-center rounded-xl text-sm transition-colors duration-150",
+                    "relative aspect-square flex flex-col items-center justify-center rounded-xl text-sm transition-all duration-200",
                     isToday
-                      ? "bg-white/[0.11] border border-white/[0.2] font-semibold text-foreground"
+                      ? "bg-white/[0.1] border border-white/[0.18] font-semibold text-white/90 shadow-[0_0_0_1px_rgba(255,255,255,0.04),0_4px_16px_rgba(0,0,0,0.3)]"
                       : isSelected
-                        ? "bg-white/[0.08] border border-white/[0.12] text-foreground"
-                        : "hover:bg-white/[0.04] text-white/50 hover:text-white/80 border border-transparent",
+                        ? "bg-white/[0.07] border border-white/[0.1] text-white/80"
+                        : "hover:bg-white/[0.04] text-white/45 hover:text-white/75 border border-transparent hover:border-white/[0.06]",
                   )}
                 >
-                  {/* Today breathing glow */}
+                  {/* Today ambient glow */}
                   {isToday && (
                     <motion.span
                       className="absolute inset-0 rounded-xl"
-                      animate={{ boxShadow: ["0 0 0px rgba(255,255,255,0)", "0 0 14px rgba(255,255,255,0.05)", "0 0 0px rgba(255,255,255,0)"] }}
-                      transition={{ duration: 3.5, repeat: Infinity, ease: "easeInOut" }}
+                      animate={{ boxShadow: ["0 0 0px rgba(255,255,255,0)", "0 0 18px rgba(255,255,255,0.06)", "0 0 0px rgba(255,255,255,0)"] }}
+                      transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
                     />
                   )}
-                  <span className="text-[12px] md:text-[13px] relative z-10">{day}</span>
+                  <span className="text-[12px] md:text-[13px] relative z-10 tabular-nums">{day}</span>
                   {hasTasks && (
                     <motion.span
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}
                       transition={{ type: "spring", stiffness: 500, damping: 22 }}
                       className={cn(
-                        "mt-0.5 h-[3px] w-[3px] rounded-full relative z-10",
-                        isToday || isSelected ? "bg-white/60" : "bg-white/20",
+                        "mt-[3px] h-[3px] w-[3px] rounded-full relative z-10",
+                        isToday || isSelected ? "bg-white/50" : "bg-white/[0.18]",
                       )}
                     />
                   )}
                   {taskCount > 1 && (
                     <span className={cn(
-                      "absolute top-0.5 right-1 text-[8px] font-medium",
-                      isToday || isSelected ? "text-white/50" : "text-white/15",
+                      "absolute top-0.5 right-1 text-[8px] font-medium tabular-nums",
+                      isToday || isSelected ? "text-white/40" : "text-white/12",
                     )}>
                       {taskCount}
                     </span>
@@ -422,42 +444,43 @@ function HorizonPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.22, ease: EASE }}
+            transition={{ duration: 0.2, ease: EASE }}
             className="absolute inset-0 z-30 bg-background flex flex-col"
           >
-            {/* Ambient top gradient */}
-            <div className="absolute inset-x-0 top-0 h-48 bg-gradient-to-b from-white/[0.012] to-transparent pointer-events-none" />
+            {/* Ambient depth */}
+            <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_40%_at_50%_0%,rgba(255,255,255,0.014),transparent)] pointer-events-none" />
+            <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-background/70 to-transparent pointer-events-none" />
 
             {/* Header */}
             <motion.div
-              initial={{ opacity: 0, y: -6 }}
+              initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.28, delay: 0.06, ease: EASE }}
-              className="shrink-0 flex items-center justify-between px-5 md:px-10 pt-5 md:pt-7 pb-4 border-b border-white/[0.05]"
+              className="relative z-10 shrink-0 flex items-center justify-between px-5 md:px-10 pt-5 md:pt-7 pb-4 border-b border-white/[0.04]"
             >
               <div className="flex items-center gap-3 min-w-0">
                 <motion.button
                   onClick={() => setSelectedDate(null)}
-                  whileHover={{ x: -3 }}
+                  whileHover={{ x: -2 }}
                   whileTap={{ scale: 0.95 }}
                   transition={{ type: "spring", stiffness: 400, damping: 22 }}
-                  className="flex items-center gap-1.5 text-white/35 hover:text-white/70 transition-colors duration-150 shrink-0"
+                  className="flex items-center gap-1.5 text-white/30 hover:text-white/65 transition-colors duration-150 shrink-0"
                 >
                   <ArrowLeft className="h-4 w-4" />
-                  <span className="text-[13px] font-medium hidden sm:block">Calendar</span>
+                  <span className="text-[12px] font-medium hidden sm:block tracking-wide">Calendar</span>
                 </motion.button>
 
-                <div className="h-3.5 w-px bg-white/[0.08] shrink-0 hidden sm:block" />
+                <div className="h-3 w-px bg-white/[0.07] shrink-0 hidden sm:block" />
 
                 <div className="min-w-0">
                   <AnimatePresence mode="wait">
                     <motion.h2
                       key={selectedDate}
-                      initial={{ opacity: 0, y: 4 }}
+                      initial={{ opacity: 0, y: 3 }}
                       animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -4 }}
-                      transition={{ duration: 0.2, ease: EASE }}
-                      className="text-[14px] md:text-[15px] font-semibold tracking-tight truncate"
+                      exit={{ opacity: 0, y: -3 }}
+                      transition={{ duration: 0.18, ease: EASE }}
+                      className="text-[14px] md:text-[15px] font-semibold tracking-tight truncate text-white/85"
                     >
                       {formatDisplayDate(selectedDate)}
                     </motion.h2>
@@ -468,12 +491,12 @@ function HorizonPage() {
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       transition={{ duration: 0.2 }}
-                      className="text-[11px] text-white/28 mt-0.5"
+                      className="text-[10px] text-white/22 mt-0.5 tracking-wide"
                     >
                       {selectedTasks.length === 0
-                        ? "No tasks scheduled"
+                        ? "Nothing scheduled"
                         : remaining === 0
-                          ? "All done ✓"
+                          ? "All complete"
                           : `${remaining} of ${selectedTasks.length} remaining`}
                     </motion.p>
                   </AnimatePresence>
@@ -482,9 +505,9 @@ function HorizonPage() {
 
               <motion.button
                 onClick={() => { setEditingTask(null); setModalOpen(true); }}
-                whileHover={{ scale: 1.03 }}
+                whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.97 }}
-                className="shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/[0.06] border border-white/[0.09] hover:bg-white/[0.09] hover:border-white/[0.14] text-[13px] font-medium text-white/65 hover:text-white/90 transition-all duration-200"
+                className="shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/[0.05] border border-white/[0.08] hover:bg-white/[0.08] hover:border-white/[0.13] text-[12px] font-medium text-white/55 hover:text-white/85 transition-all duration-200 shadow-[0_2px_12px_rgba(0,0,0,0.2)]"
               >
                 <Plus className="h-3.5 w-3.5" />
                 <span>Add Task</span>
@@ -492,8 +515,8 @@ function HorizonPage() {
             </motion.div>
 
             {/* Timeline scroll area */}
-            <div className="flex-1 min-h-0 overflow-y-auto">
-              <div className="max-w-2xl mx-auto px-4 md:px-8 py-6 md:py-8">
+            <div className="flex-1 min-h-0 overflow-y-auto relative z-10">
+              <div className="max-w-2xl mx-auto px-4 md:px-8 py-7 md:py-10">
                 <AnimatePresence mode="popLayout" initial={false}>
                   {selectedTasks.length === 0 ? (
                     <EmptyDay key="empty" />
@@ -538,35 +561,46 @@ function HorizonPage() {
 function EmptyDay() {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 14 }}
+      initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.96 }}
-      transition={{ duration: 0.32, ease: EASE }}
-      className="flex flex-col items-center justify-center py-20 md:py-28 text-center"
+      exit={{ opacity: 0, scale: 0.97 }}
+      transition={{ duration: 0.38, ease: EASE }}
+      className="relative flex flex-col items-center justify-center py-24 md:py-32 text-center"
     >
+      {/* Ambient radial */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,rgba(255,255,255,0.022),transparent_55%)] pointer-events-none" />
+
       <motion.div
-        initial={{ scale: 0.75, opacity: 0 }}
+        initial={{ scale: 0.72, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        transition={{ duration: 0.45, delay: 0.06, ease: EASE }}
-        className="h-14 w-14 rounded-2xl bg-white/[0.04] border border-white/[0.06] grid place-items-center mb-5"
+        transition={{ duration: 0.5, delay: 0.06, ease: EASE }}
+        className="relative h-16 w-16 rounded-3xl bg-white/[0.03] border border-white/[0.06] grid place-items-center mb-6"
       >
-        <CalendarDays className="h-6 w-6 text-white/15" strokeWidth={1.5} />
+        {/* Breathing glow behind icon */}
+        <motion.div
+          className="absolute inset-0 rounded-3xl"
+          animate={{ opacity: [0.4, 0.9, 0.4] }}
+          transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
+          style={{ background: "radial-gradient(circle at 50% 35%, rgba(255,255,255,0.04), transparent 70%)" }}
+        />
+        <CalendarDays className="h-6 w-6 text-white/[0.13] relative z-10" strokeWidth={1.5} />
       </motion.div>
+
       <motion.p
-        initial={{ opacity: 0, y: 4 }}
+        initial={{ opacity: 0, y: 5 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, delay: 0.14, ease: EASE }}
-        className="text-[14px] font-medium text-white/30"
+        transition={{ duration: 0.32, delay: 0.14, ease: EASE }}
+        className="text-[15px] font-semibold text-white/[0.22] tracking-tight"
       >
         Nothing scheduled
       </motion.p>
       <motion.p
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ duration: 0.3, delay: 0.22 }}
-        className="text-[12px] text-white/18 mt-1.5"
+        transition={{ duration: 0.32, delay: 0.22 }}
+        className="text-[12px] text-white/[0.12] mt-2 leading-relaxed"
       >
-        Tap Add Task to create one
+        Add a task to begin your day
       </motion.p>
     </motion.div>
   );
@@ -589,7 +623,7 @@ function Timeline({
     <motion.div
       initial="hidden"
       animate="show"
-      variants={{ hidden: {}, show: { transition: { staggerChildren: 0.07 } } }}
+      variants={{ hidden: {}, show: { transition: { staggerChildren: 0.08 } } }}
       className="space-y-0"
     >
       {groups.map(({ label, tasks }, gi) => (
@@ -633,58 +667,86 @@ function TimelineGroup({
   const ref = useRef<HTMLDivElement>(null);
   const inView = useInView(ref, { once: true, margin: "0px 0px -40px 0px" });
 
+  // Node state: dim when all tasks in this group are done
+  const allCompleted = tasks.every((t) => t.completed);
+
   return (
     <motion.div
       ref={ref}
       variants={{
-        hidden: { opacity: 0, y: 12 },
-        show: { opacity: 1, y: 0, transition: { duration: 0.32, ease: EASE, delay: groupIndex * 0.06 } },
+        hidden: { opacity: 0, y: 14 },
+        show: { opacity: 1, y: 0, transition: { duration: 0.36, ease: EASE, delay: groupIndex * 0.07 } },
       }}
       className="flex gap-0"
     >
       {/* ── Left: Timeline rail ─────────────────────────────────────── */}
-      <div className="flex flex-col items-center shrink-0 w-14 md:w-16">
+      <div className="flex flex-col items-center shrink-0 w-14 md:w-[72px]">
+
         {/* Time label */}
         <motion.span
-          initial={{ opacity: 0, x: -6 }}
+          initial={{ opacity: 0, x: -5 }}
           animate={inView ? { opacity: 1, x: 0 } : {}}
-          transition={{ duration: 0.28, delay: groupIndex * 0.07 + 0.05, ease: EASE }}
-          className="text-[10px] md:text-[11px] font-medium text-white/22 leading-none pt-[18px] whitespace-nowrap tabular-nums"
+          transition={{ duration: 0.3, delay: groupIndex * 0.07 + 0.06, ease: EASE }}
+          className="text-[9px] md:text-[10px] font-medium text-white/[0.22] leading-none pt-[22px] whitespace-nowrap tabular-nums tracking-[0.08em] uppercase"
         >
           {timeLabel}
         </motion.span>
 
-        {/* Node — springs in with a subtle glow */}
+        {/* Node */}
         <motion.div
           initial={{ scale: 0, opacity: 0 }}
           animate={inView ? { scale: 1, opacity: 1 } : {}}
-          transition={{ type: "spring", stiffness: 380, damping: 22, delay: groupIndex * 0.07 + 0.1 }}
-          className="mt-2 relative shrink-0"
+          transition={{ type: "spring", stiffness: 340, damping: 24, delay: groupIndex * 0.07 + 0.12 }}
+          className="mt-2.5 relative flex items-center justify-center shrink-0"
+          style={{ width: 20, height: 20 }}
         >
-          {/* Outer glow ring — breathes slowly */}
-          <motion.span
-            className="absolute inset-[-4px] rounded-full"
-            animate={{ opacity: [0, 0.35, 0] }}
-            transition={{ duration: 4, repeat: Infinity, ease: "easeInOut", delay: groupIndex * 0.5 }}
-            style={{ background: "radial-gradient(circle, rgba(255,255,255,0.18) 0%, transparent 70%)" }}
-          />
-          <span className="h-2 w-2 rounded-full bg-white/[0.22] border border-white/[0.38] shadow-[0_0_8px_rgba(255,255,255,0.1)] block" />
+          {/* Ambient pulse — only for incomplete groups */}
+          {!allCompleted && (
+            <motion.span
+              className="absolute rounded-full"
+              style={{ inset: -6, background: "radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 70%)" }}
+              animate={{ opacity: [0, 0.6, 0], scale: [0.7, 1.15, 0.7] }}
+              transition={{ duration: 3.5, repeat: Infinity, ease: "easeInOut", delay: groupIndex * 0.45 }}
+            />
+          )}
+          {/* Outer ring */}
+          <span className={cn(
+            "absolute inset-[-3px] rounded-full border transition-all duration-500",
+            allCompleted ? "border-white/[0.07]" : "border-white/[0.16]",
+          )} />
+          {/* Inner core */}
+          <span className={cn(
+            "h-[7px] w-[7px] rounded-full block transition-all duration-500",
+            allCompleted
+              ? "bg-white/[0.16]"
+              : "bg-white/[0.72] shadow-[0_0_10px_rgba(255,255,255,0.32),0_0_4px_rgba(255,255,255,0.5)]",
+          )} />
         </motion.div>
 
-        {/* Connector line — draws downward */}
+        {/* Connector spine — draws downward */}
         {!isLast && (
           <motion.div
             initial={{ scaleY: 0, opacity: 0 }}
             animate={inView ? { scaleY: 1, opacity: 1 } : {}}
-            transition={{ duration: 0.55, delay: groupIndex * 0.07 + 0.18, ease: EASE }}
+            transition={{ duration: 0.65, delay: groupIndex * 0.07 + 0.2, ease: EASE }}
             style={{ originY: "top" }}
-            className="w-px flex-1 mt-1.5 bg-gradient-to-b from-white/[0.1] via-white/[0.05] to-transparent min-h-[32px]"
-          />
+            className="relative mt-2.5 flex-1 min-h-[52px] flex justify-center"
+          >
+            {/* Main gradient line */}
+            <div className="w-px h-full bg-gradient-to-b from-white/[0.13] via-white/[0.055] to-transparent" />
+            {/* Soft glow overlay */}
+            <div className="absolute inset-0 flex justify-center pointer-events-none">
+              <div
+                className="h-full"
+                style={{ width: 3, background: "linear-gradient(to bottom, rgba(255,255,255,0.055), transparent)", filter: "blur(2px)" }}
+              />
+            </div>
+          </motion.div>
         )}
       </div>
 
       {/* ── Right: Task cards ─────────────────────────────────────────── */}
-      <div className="flex-1 min-w-0 pb-7 md:pb-9 pl-3 md:pl-4 space-y-2.5">
+      <div className="flex-1 min-w-0 pb-8 md:pb-11 pl-3 md:pl-4 space-y-2.5">
         {tasks.map((task, i) => (
           <TimelineTaskCard
             key={task.id}
@@ -721,52 +783,66 @@ function TimelineTaskCard({
   return (
     <motion.div
       layout
-      initial={{ opacity: 0, x: 10, y: 4 }}
+      initial={{ opacity: 0, x: 12, y: 5 }}
       animate={{ opacity: 1, x: 0, y: 0 }}
       exit={{ opacity: 0, x: -6, scale: 0.97 }}
-      transition={{ duration: 0.26, delay: index * 0.04, ease: EASE }}
-      whileHover={
-        task.completed
-          ? {}
-          : { y: -2, transition: { duration: 0.16, ease: EASE } }
-      }
+      transition={{ duration: 0.3, delay: index * 0.045, ease: EASE }}
+      whileHover={task.completed ? {} : { y: -2, transition: { duration: 0.18, ease: EASE } }}
       className={cn(
-        "rounded-2xl border overflow-hidden transition-colors duration-200 group",
+        "group relative rounded-2xl overflow-hidden transition-all duration-300",
         task.completed
-          ? "opacity-38 border-white/[0.04] bg-transparent"
-          : "bg-white/[0.03] border-white/[0.07] hover:bg-white/[0.055] hover:border-white/[0.12] hover:shadow-[0_10px_40px_-14px_rgba(0,0,0,0.7)]",
+          ? "opacity-30 border border-white/[0.04]"
+          : cn(
+              "border border-white/[0.075]",
+              "bg-white/[0.028]",
+              "shadow-[0_2px_16px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.04)]",
+              "hover:bg-white/[0.048] hover:border-white/[0.11]",
+              "hover:shadow-[0_6px_32px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.07)]",
+            ),
       )}
     >
-      {/* Collapsed header */}
+      {/* Top edge highlight */}
+      {!task.completed && (
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/[0.1] to-transparent pointer-events-none z-10" />
+      )}
+
+      {/* Left priority stripe */}
+      <div className={cn(
+        "absolute top-3 bottom-3 left-0 w-[2px] rounded-r-full transition-opacity duration-300",
+        PRIORITY_STRIPE[task.priority],
+        task.completed ? "opacity-15" : "opacity-60",
+      )} />
+
+      {/* ── Collapsed header ── */}
       <button
         type="button"
         onClick={() => setExpanded((e) => !e)}
-        className="w-full flex items-start gap-3 px-4 py-4 text-left min-h-[60px]"
+        className="w-full flex items-start gap-3.5 px-4 md:px-5 py-[18px] text-left"
       >
         {/* Checkbox */}
         <motion.button
           type="button"
           onClick={(e) => { e.stopPropagation(); onToggle(); }}
           whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.8 }}
+          whileTap={{ scale: 0.82 }}
           transition={{ type: "spring", stiffness: 500, damping: 22 }}
           className={cn(
-            "mt-0.5 h-5 w-5 shrink-0 rounded-md border-[1.5px] grid place-items-center transition-all duration-200",
+            "mt-[2px] h-[18px] w-[18px] shrink-0 rounded-[5px] border-[1.5px] grid place-items-center transition-all duration-200",
             task.completed
-              ? "bg-white/70 border-white/70"
-              : "border-white/15 hover:border-white/40",
+              ? "bg-white/60 border-white/60"
+              : "border-white/[0.17] hover:border-white/[0.42] hover:bg-white/[0.04]",
           )}
         >
           <AnimatePresence initial={false}>
             {task.completed && (
               <motion.span
                 key="check"
-                initial={{ scale: 0, rotate: -12 }}
+                initial={{ scale: 0, rotate: -10 }}
                 animate={{ scale: 1, rotate: 0 }}
                 exit={{ scale: 0 }}
-                transition={{ type: "spring", stiffness: 550, damping: 22 }}
+                transition={{ type: "spring", stiffness: 550, damping: 24 }}
               >
-                <Check className="h-3 w-3 text-background" strokeWidth={2.5} />
+                <Check className="h-2.5 w-2.5 text-background" strokeWidth={2.5} />
               </motion.span>
             )}
           </AnimatePresence>
@@ -774,26 +850,25 @@ function TimelineTaskCard({
 
         {/* Content */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <motion.span
-              className={cn("h-[5px] w-[5px] rounded-full shrink-0 mt-px", p.dot)}
-              animate={{ opacity: task.completed ? 0.4 : 1 }}
-            />
-            <motion.p
-              layout
-              className={cn(
-                "text-[14px] font-medium leading-snug",
-                task.completed ? "line-through text-white/22" : "text-white/82",
-              )}
-            >
-              {task.title}
-            </motion.p>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <Clock className="h-[11px] w-[11px] text-white/18 shrink-0" />
-            <span className="text-[11px] text-white/22">{format12Hour(task.taskTime)}</span>
+          <motion.p
+            layout
+            className={cn(
+              "text-[14px] md:text-[15px] font-semibold leading-snug tracking-tight",
+              task.completed ? "line-through text-white/[0.2]" : "text-white/[0.86]",
+            )}
+          >
+            {task.title}
+          </motion.p>
+          <div className="flex items-center gap-2 mt-1.5">
+            <Clock className="h-[10px] w-[10px] text-white/[0.18] shrink-0" />
+            <span className="text-[10px] text-white/[0.24] tabular-nums tracking-wide">
+              {format12Hour(task.taskTime)}
+            </span>
             {task.notificationEnabled && (
-              <Bell className="h-[10px] w-[10px] text-white/18 ml-1" />
+              <>
+                <span className="text-white/[0.1] text-[10px] select-none">·</span>
+                <Bell className="h-[9px] w-[9px] text-white/[0.18]" />
+              </>
             )}
           </div>
         </div>
@@ -801,16 +876,16 @@ function TimelineTaskCard({
         {/* Expand chevron */}
         <motion.span
           animate={{ rotate: expanded ? 180 : 0 }}
-          transition={{ duration: 0.22, ease: EASE }}
-          className="text-white/15 mt-1 shrink-0"
+          transition={{ duration: 0.24, ease: EASE }}
+          className="shrink-0 mt-1.5 text-white/[0.13] group-hover:text-white/[0.24] transition-colors duration-200"
         >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+          <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
             <path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </motion.span>
       </button>
 
-      {/* Expanded panel */}
+      {/* ── Expanded panel ── */}
       <AnimatePresence initial={false}>
         {expanded && (
           <motion.div
@@ -818,40 +893,47 @@ function TimelineTaskCard({
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.24, ease: EASE }}
+            transition={{ duration: 0.26, ease: EASE }}
             className="overflow-hidden"
           >
-            <div className="px-4 pt-0 pb-4 border-t border-white/[0.04]">
+            {/* Separator */}
+            <div className="mx-4 md:mx-5 h-px bg-gradient-to-r from-white/[0.03] via-white/[0.07] to-white/[0.03]" />
+
+            <div className="px-4 md:px-5 pt-4 pb-5">
               {task.description && (
                 <motion.p
                   initial={{ opacity: 0, y: 4 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.2, delay: 0.05 }}
-                  className="text-[13px] text-white/38 mt-3 mb-2 leading-relaxed"
+                  transition={{ duration: 0.22, delay: 0.04 }}
+                  className="text-[13px] text-white/[0.35] leading-relaxed mb-5"
                 >
                   {task.description}
                 </motion.p>
               )}
 
-              {/* Meta */}
+              {/* Metadata badges */}
               <motion.div
                 initial={{ opacity: 0, y: 3 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.2, delay: 0.08 }}
-                className="flex items-center gap-2 mt-3 flex-wrap"
+                transition={{ duration: 0.2, delay: 0.07 }}
+                className="flex items-center gap-2 flex-wrap mb-4"
               >
                 <span className={cn(
-                  "text-[10px] font-medium px-2 py-0.5 rounded-md border",
+                  "text-[10px] font-medium px-2 py-[3px] rounded-lg border",
                   p.bg, p.color, p.border,
                 )}>
                   {p.label}
                 </span>
                 {task.notificationEnabled && (
-                  <span className="flex items-center gap-1 text-[10px] text-white/22">
+                  <span className="flex items-center gap-1 text-[10px] text-white/[0.2] px-2 py-[3px] rounded-lg border border-white/[0.05] bg-white/[0.02]">
                     <Bell className="h-2.5 w-2.5" />
-                    Reminder on
+                    Reminder set
                   </span>
                 )}
+                <span className="flex items-center gap-1 text-[10px] text-white/[0.2] px-2 py-[3px] rounded-lg border border-white/[0.05] bg-white/[0.02]">
+                  <Clock className="h-2.5 w-2.5" />
+                  {format12Hour(task.taskTime)}
+                </span>
               </motion.div>
 
               {/* Actions */}
@@ -859,18 +941,18 @@ function TimelineTaskCard({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.2, delay: 0.1 }}
-                className="flex items-center gap-1 mt-3.5"
+                className="flex items-center gap-1.5"
               >
                 <button
                   onClick={onEdit}
-                  className="flex items-center gap-1.5 text-[12px] text-white/28 hover:text-white/70 px-2.5 py-1.5 rounded-lg hover:bg-white/[0.05] transition-all duration-150"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/[0.07] hover:bg-white/[0.07] hover:border-white/[0.12] text-[12px] text-white/[0.38] hover:text-white/[0.72] transition-all duration-150"
                 >
                   <Pencil className="h-3 w-3" />
                   Edit
                 </button>
                 <button
                   onClick={onDelete}
-                  className="flex items-center gap-1.5 text-[12px] text-white/22 hover:text-red-400/75 px-2.5 py-1.5 rounded-lg hover:bg-red-500/[0.06] transition-all duration-150"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-transparent hover:bg-red-500/[0.07] hover:border-red-500/[0.12] text-[12px] text-white/[0.25] hover:text-red-400/[0.7] transition-all duration-150"
                 >
                   <Trash2 className="h-3 w-3" />
                   Delete
@@ -988,12 +1070,15 @@ function TaskModal({
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="sm:max-w-md bg-[var(--surface-1)] border border-white/[0.08] gap-0 p-0 overflow-hidden">
+      <DialogContent className="sm:max-w-md bg-[var(--surface-1)] border border-white/[0.08] gap-0 p-0 overflow-hidden shadow-[0_24px_80px_rgba(0,0,0,0.7)]">
+        {/* Top edge highlight */}
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/[0.1] to-transparent pointer-events-none z-10" />
+
         <DialogHeader className="px-6 pt-6 pb-4 border-b border-white/[0.05]">
-          <DialogTitle className="text-[14px] font-semibold">
+          <DialogTitle className="text-[14px] font-semibold tracking-tight text-white/85">
             {editingTask ? "Edit task" : "New task"}
           </DialogTitle>
-          <DialogDescription className="text-[11px] text-white/28 mt-0.5">
+          <DialogDescription className="text-[11px] text-white/25 mt-0.5 tracking-wide">
             {formatDisplayDate(defaultDate)}
           </DialogDescription>
         </DialogHeader>
@@ -1001,7 +1086,7 @@ function TaskModal({
         <form onSubmit={handleSubmit(onValid)} className="px-6 py-5 space-y-4">
           {/* Title */}
           <div>
-            <label className="text-[11px] font-medium text-white/38 mb-1.5 block uppercase tracking-wider">
+            <label className="text-[10px] font-medium text-white/30 mb-1.5 block uppercase tracking-[0.1em]">
               Title
             </label>
             <input
@@ -1009,17 +1094,17 @@ function TaskModal({
               placeholder="What needs to be done?"
               autoFocus
               className={cn(
-                "w-full rounded-xl border bg-white/[0.03] px-3.5 py-2.5 text-[14px] outline-none transition-all duration-150 placeholder:text-white/18",
+                "w-full rounded-xl border bg-white/[0.03] px-3.5 py-2.5 text-[14px] outline-none transition-all duration-150 placeholder:text-white/[0.15]",
                 errors.title
                   ? "border-red-400/30 focus:border-red-400/50"
-                  : "border-white/[0.07] focus:border-white/[0.16] focus:bg-white/[0.05]",
+                  : "border-white/[0.07] focus:border-white/[0.15] focus:bg-white/[0.05]",
               )}
             />
             {errors.title && (
               <motion.p
                 initial={{ opacity: 0, y: -2 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="text-[11px] text-red-400/65 mt-1"
+                className="text-[11px] text-red-400/60 mt-1"
               >
                 {errors.title.message}
               </motion.p>
@@ -1028,13 +1113,13 @@ function TaskModal({
 
           {/* Time */}
           <div>
-            <label className="text-[11px] font-medium text-white/38 mb-1.5 block uppercase tracking-wider">
+            <label className="text-[10px] font-medium text-white/30 mb-1.5 block uppercase tracking-[0.1em]">
               Time
             </label>
             <div className="flex items-center gap-2">
               <Controller name="taskTimeHour" control={control} render={({ field }) => (
                 <Select value={field.value} onValueChange={field.onChange}>
-                  <SelectTrigger className="flex-1 bg-white/[0.03] border-white/[0.07] hover:border-white/[0.14] text-sm rounded-xl h-10">
+                  <SelectTrigger className="flex-1 bg-white/[0.03] border-white/[0.07] hover:border-white/[0.13] text-sm rounded-xl h-10">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-[var(--surface-2)] border-white/[0.08] max-h-52">
@@ -1042,10 +1127,10 @@ function TaskModal({
                   </SelectContent>
                 </Select>
               )} />
-              <span className="text-white/18 text-sm font-medium shrink-0">:</span>
+              <span className="text-white/[0.15] text-sm font-medium shrink-0">:</span>
               <Controller name="taskTimeMinute" control={control} render={({ field }) => (
                 <Select value={field.value} onValueChange={field.onChange}>
-                  <SelectTrigger className="flex-1 bg-white/[0.03] border-white/[0.07] hover:border-white/[0.14] text-sm rounded-xl h-10">
+                  <SelectTrigger className="flex-1 bg-white/[0.03] border-white/[0.07] hover:border-white/[0.13] text-sm rounded-xl h-10">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-[var(--surface-2)] border-white/[0.08] max-h-52">
@@ -1055,7 +1140,7 @@ function TaskModal({
               )} />
               <Controller name="taskTimeAmpm" control={control} render={({ field }) => (
                 <Select value={field.value} onValueChange={field.onChange}>
-                  <SelectTrigger className="w-20 bg-white/[0.03] border-white/[0.07] hover:border-white/[0.14] text-sm rounded-xl h-10">
+                  <SelectTrigger className="w-20 bg-white/[0.03] border-white/[0.07] hover:border-white/[0.13] text-sm rounded-xl h-10">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-[var(--surface-2)] border-white/[0.08]">
@@ -1069,20 +1154,20 @@ function TaskModal({
 
           {/* Description */}
           <div>
-            <label className="text-[11px] font-medium text-white/38 mb-1.5 block uppercase tracking-wider">
-              Description <span className="normal-case text-white/18 tracking-normal">(optional)</span>
+            <label className="text-[10px] font-medium text-white/30 mb-1.5 block uppercase tracking-[0.1em]">
+              Description <span className="normal-case text-white/[0.15] tracking-normal font-normal">(optional)</span>
             </label>
             <textarea
               {...register("description")}
               rows={2}
-              placeholder="Add details…"
-              className="w-full rounded-xl border border-white/[0.07] bg-white/[0.03] px-3.5 py-2.5 text-[14px] outline-none transition-all duration-150 placeholder:text-white/18 focus:border-white/[0.16] focus:bg-white/[0.05] resize-none"
+              placeholder="Add notes…"
+              className="w-full rounded-xl border border-white/[0.07] bg-white/[0.03] px-3.5 py-2.5 text-[14px] outline-none transition-all duration-150 placeholder:text-white/[0.15] focus:border-white/[0.15] focus:bg-white/[0.05] resize-none"
             />
           </div>
 
           {/* Priority */}
           <div>
-            <label className="text-[11px] font-medium text-white/38 mb-1.5 block uppercase tracking-wider">
+            <label className="text-[10px] font-medium text-white/30 mb-1.5 block uppercase tracking-[0.1em]">
               Priority
             </label>
             <Controller name="priority" control={control} render={({ field }) => (
@@ -1100,7 +1185,7 @@ function TaskModal({
                         "flex-1 py-2 rounded-xl border text-[12px] font-medium transition-all duration-150",
                         active
                           ? cn(cfg.bg, cfg.border, cfg.color)
-                          : "border-white/[0.06] text-white/28 hover:text-white/55 hover:border-white/[0.1]",
+                          : "border-white/[0.06] text-white/[0.25] hover:text-white/[0.5] hover:border-white/[0.09]",
                       )}
                     >
                       {cfg.label}
@@ -1120,40 +1205,40 @@ function TaskModal({
               className={cn(
                 "w-full flex items-center gap-3 rounded-xl border px-3.5 py-3 transition-all duration-200",
                 field.value
-                  ? "border-white/[0.11] bg-white/[0.04]"
-                  : "border-white/[0.06] hover:border-white/[0.1]",
+                  ? "border-white/[0.1] bg-white/[0.04]"
+                  : "border-white/[0.06] hover:border-white/[0.09]",
               )}
             >
               <AnimatePresence mode="wait">
                 {field.value ? (
                   <motion.span key="on" initial={{ scale: 0.7, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.7, opacity: 0 }} transition={{ duration: 0.15 }}>
-                    <Bell className="h-4 w-4 text-white/45 shrink-0" />
+                    <Bell className="h-4 w-4 text-white/40 shrink-0" />
                   </motion.span>
                 ) : (
                   <motion.span key="off" initial={{ scale: 0.7, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.7, opacity: 0 }} transition={{ duration: 0.15 }}>
-                    <BellOff className="h-4 w-4 text-white/18 shrink-0" />
+                    <BellOff className="h-4 w-4 text-white/[0.16] shrink-0" />
                   </motion.span>
                 )}
               </AnimatePresence>
               <div className="text-left flex-1">
-                <p className="text-[13px] font-medium text-white/55 leading-none">
+                <p className="text-[13px] font-medium text-white/50 leading-none">
                   {field.value ? "Reminder on" : "Enable reminder"}
                 </p>
-                <p className="text-[11px] text-white/22 mt-0.5">
+                <p className="text-[11px] text-white/[0.2] mt-0.5">
                   {field.value ? "You'll be notified at task time" : "No notification"}
                 </p>
               </div>
-              {/* Toggle switch */}
+              {/* Toggle */}
               <div className={cn(
                 "h-5 w-9 rounded-full border relative shrink-0 transition-all duration-250",
-                field.value ? "bg-white/65 border-white/65" : "bg-transparent border-white/14",
+                field.value ? "bg-white/60 border-white/60" : "bg-transparent border-white/[0.13]",
               )}>
                 <motion.span
                   animate={{ x: field.value ? 16 : 2 }}
                   transition={{ type: "spring", stiffness: 450, damping: 26 }}
                   className={cn(
                     "absolute top-0.5 h-4 w-4 rounded-full shadow-sm",
-                    field.value ? "bg-background" : "bg-white/28",
+                    field.value ? "bg-background" : "bg-white/[0.25]",
                   )}
                 />
               </div>
@@ -1165,16 +1250,16 @@ function TaskModal({
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-2.5 rounded-xl border border-white/[0.07] text-[13px] font-medium text-white/32 hover:text-white/60 hover:border-white/[0.12] transition-all duration-150"
+              className="flex-1 py-2.5 rounded-xl border border-white/[0.07] text-[13px] font-medium text-white/[0.28] hover:text-white/[0.55] hover:border-white/[0.11] transition-all duration-150"
             >
               Cancel
             </button>
             <motion.button
               type="submit"
               disabled={submitting}
-              whileHover={{ opacity: submitting ? 1 : 0.9 }}
+              whileHover={{ opacity: submitting ? 1 : 0.88 }}
               whileTap={{ scale: 0.98 }}
-              className="flex-1 py-2.5 rounded-xl bg-foreground text-background text-[13px] font-semibold disabled:opacity-28 transition-opacity"
+              className="flex-1 py-2.5 rounded-xl bg-foreground text-background text-[13px] font-semibold disabled:opacity-25 transition-opacity shadow-[0_2px_12px_rgba(255,255,255,0.08)]"
             >
               {submitting ? "Saving…" : editingTask ? "Save changes" : "Add task"}
             </motion.button>
