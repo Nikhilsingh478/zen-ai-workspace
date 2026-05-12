@@ -6,11 +6,18 @@
  *
  * Registration happens in src/lib/fcm.ts, which passes params like:
  *   /firebase-messaging-sw.js?apiKey=...&projectId=...&messagingSenderId=...
+ *
+ * Notification improvements (v4):
+ *  - `silent: false` keeps OS sound ON for all notifications
+ *  - `vibrate` pattern added for mobile haptic feedback
+ *  - `requireInteraction: true` on mobile so it stays on screen until dismissed
+ *  - `renotify: true` so repeated notifications with same tag still play sound
+ *  - Notification actions added (View, Dismiss) for Android lock screen
  */
 
 // ─── PWA Cache ────────────────────────────────────────────────────────────────
 
-const CACHE_NAME = "ai-metrics-v3";
+const CACHE_NAME = "ai-metrics-v4";
 const PRECACHE = ["/", "/manifest.json", "/favicon.png"];
 
 self.addEventListener("install", (event) => {
@@ -18,7 +25,6 @@ self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE))
   );
-  // Take over immediately — do NOT wait for old SW clients to close
   self.skipWaiting();
 });
 
@@ -38,11 +44,58 @@ self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
-  // Network-first for same-origin; fall back to cache on network failure
   event.respondWith(
     fetch(event.request).catch(() => caches.match(event.request))
   );
 });
+
+// ─── Notification helper ──────────────────────────────────────────────────────
+//
+// Detects if we're on a mobile device (Android/iOS) by checking the client
+// type — service workers running as PWA are classified as "window" clients.
+// We use more aggressive settings (requireInteraction, vibrate) on mobile.
+
+async function isMobileClient() {
+  try {
+    const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    // UA-based heuristic available in SW scope
+    const ua = (self.navigator?.userAgent ?? "").toLowerCase();
+    return /android|iphone|ipad|mobile/.test(ua);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Build a notification options object with OS-sound and mobile-optimised settings.
+ *
+ * Key properties:
+ * - `silent: false`          — explicitly request OS sound (default on most browsers,
+ *                              but setting it explicitly prevents any accidental silent flag)
+ * - `vibrate`                — haptic pattern for Android: 200ms buzz, 50ms gap, 200ms buzz
+ * - `requireInteraction`     — keeps notification on screen (mobile heads-up display)
+ * - `renotify`               — play sound again even if same tag is reused
+ * - `actions`                — action buttons shown on Android lock screen / wearables
+ */
+async function buildNotificationOptions(body, url, tag) {
+  const mobile = await isMobileClient();
+
+  return {
+    body,
+    icon:               "/favicon.png",
+    badge:              "/favicon.png",
+    tag:                tag ?? "horizon-reminder",
+    silent:             false,          // OS sound ON
+    vibrate:            [200, 50, 200], // Android haptics
+    requireInteraction: mobile,         // stay on screen on mobile
+    renotify:           true,           // re-play sound even for same tag
+    data:               { url: url ?? "/horizon" },
+    actions: [
+      { action: "view",    title: "View"    },
+      { action: "dismiss", title: "Dismiss" },
+    ],
+  };
+}
 
 // ─── Firebase Cloud Messaging ─────────────────────────────────────────────────
 
@@ -70,32 +123,17 @@ if (_fcmReady) {
     firebase.initializeApp(_fbConfig);
     const messaging = firebase.messaging();
 
-    /**
-     * Background message handler — fires when:
-     *   - No app tab is open (background)
-     *   - App tab exists but is not focused
-     *
-     * Firebase SDK intercepts push events and routes here.
-     * We must call showNotification() — the browser will not auto-display.
-     */
-    messaging.onBackgroundMessage((payload) => {
+    messaging.onBackgroundMessage(async (payload) => {
       console.debug("[sw] FCM background message received:", JSON.stringify(payload));
 
       const title = payload.notification?.title ?? "Horizon Reminder";
       const body  = payload.notification?.body  ?? "";
       const url   = payload.data?.url           ?? "/horizon";
 
-      console.debug("[sw] Showing notification:", title, "|", body);
+      const options = await buildNotificationOptions(body, url, "horizon-reminder");
 
-      self.registration.showNotification(title, {
-        body,
-        icon:               "/favicon.png",
-        badge:              "/favicon.png",
-        tag:                "horizon-reminder",
-        requireInteraction: false,
-        silent:             false,
-        data:               { url },
-      });
+      console.debug("[sw] Showing notification:", title, "|", body);
+      event.waitUntil(self.registration.showNotification(title, options));
     });
 
     console.debug("[sw] Firebase messaging initialized successfully");
@@ -119,13 +157,13 @@ if (_fcmReady) {
     }
 
     event.waitUntil(
-      self.registration.showNotification(payload.title ?? "AI Metrics", {
-        body:  payload.body  ?? "",
-        icon:  "/favicon.png",
-        badge: "/favicon.png",
-        tag:   "ai-metrics",
-        data:  payload.data ?? {},
-      })
+      buildNotificationOptions(
+        payload.body  ?? "",
+        payload.data?.url ?? "/horizon",
+        "ai-metrics"
+      ).then((options) =>
+        self.registration.showNotification(payload.title ?? "AI Metrics", options)
+      )
     );
   });
 }
@@ -133,8 +171,11 @@ if (_fcmReady) {
 // ─── Notification click ───────────────────────────────────────────────────────
 
 self.addEventListener("notificationclick", (event) => {
-  console.debug("[sw] notificationclick | tag:", event.notification.tag);
+  console.debug("[sw] notificationclick | action:", event.action, "| tag:", event.notification.tag);
   event.notification.close();
+
+  // "dismiss" action — just close, no navigation
+  if (event.action === "dismiss") return;
 
   const targetUrl = event.notification.data?.url ?? "/horizon";
 
@@ -142,7 +183,6 @@ self.addEventListener("notificationclick", (event) => {
     self.clients
       .matchAll({ type: "window", includeUncontrolled: true })
       .then((clients) => {
-        // Focus an existing tab pointing to this origin if possible
         const existing = clients.find((c) =>
           c.url.startsWith(self.location.origin)
         );

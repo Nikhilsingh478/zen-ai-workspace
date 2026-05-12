@@ -151,6 +151,11 @@ async function acquireToken(): Promise<string | null> {
 // service worker exists. We MUST route through ServiceWorkerRegistration
 // .showNotification() or the notification will never appear.
 
+/** Detect mobile UA — determines requireInteraction setting. */
+function isMobileUA(): boolean {
+  return /android|iphone|ipad|mobile/i.test(navigator.userAgent);
+}
+
 function attachForegroundListener(): void {
   if (_foregroundListenerAttached) return;
   const messaging = getMessagingInstance();
@@ -180,10 +185,16 @@ function attachForegroundListener(): void {
         icon:               "/favicon.png",
         badge:              "/favicon.png",
         tag:                "horizon-reminder",
-        requireInteraction: false,
-        silent:             false,
+        silent:             false,            // OS sound ON
+        vibrate:            [200, 50, 200],   // Android haptics
+        requireInteraction: isMobileUA(),     // stay on mobile screen
+        renotify:           true,             // re-play sound on same tag
         data:               { url },
-      });
+        actions: [
+          { action: "view",    title: "View"    },
+          { action: "dismiss", title: "Dismiss" },
+        ],
+      } as NotificationOptions);
       console.debug("[fcm] Foreground notification shown via SW registration");
     } catch (err) {
       console.error("[fcm] showNotification (foreground) error:", err);
@@ -289,10 +300,16 @@ export async function sendTestNotification(): Promise<void> {
       icon:               "/favicon.png",
       badge:              "/favicon.png",
       tag:                "horizon-test",
-      requireInteraction: false,
       silent:             false,
+      vibrate:            [200, 50, 200],
+      requireInteraction: isMobileUA(),
+      renotify:           true,
       data:               { url: "/horizon" },
-    });
+      actions: [
+        { action: "view",    title: "View"    },
+        { action: "dismiss", title: "Dismiss" },
+      ],
+    } as NotificationOptions);
 
     console.debug("[fcm] Test notification dispatched to OS tray");
   } catch (err) {

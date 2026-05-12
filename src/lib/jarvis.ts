@@ -1,6 +1,13 @@
 /**
  * JARVIS — Just A Rather Very Intelligent System
  * Global state store + voice engine + Gemini integration
+ *
+ * Voice fix:
+ * - "interimResults + isFinal" alone drops long utterances because browsers
+ *   often fire multiple isFinal=true segments for a single spoken sentence
+ *   and each segment fires independently. We now buffer ALL final segments
+ *   together and only process the command after a short silence gap (800 ms)
+ *   — the same technique used in professional dictation tools.
  */
 
 import { useSyncExternalStore } from "react";
@@ -79,6 +86,10 @@ export function getJarvisSnapshot(): JarvisState {
 }
 
 // ─── SpeechRecognition engine ─────────────────────────────────────────────────
+//
+// KEY FIX: We accumulate all final transcript segments and use a silence
+// timer (SILENCE_THRESHOLD_MS) to detect when the user has stopped speaking.
+// This prevents long commands from being cut off mid-sentence.
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let recRef: any = null;
@@ -87,6 +98,41 @@ let currentMode: "passive" | "command" = "passive";
 let restartTimer: ReturnType<typeof setTimeout> | undefined;
 let commandTimeout: ReturnType<typeof setTimeout> | undefined;
 
+// Silence detection
+let silenceTimer: ReturnType<typeof setTimeout> | undefined;
+let accumulatedFinalText = "";        // buffered confirmed segments
+let latestInterimText = "";           // current partial segment (display only)
+
+const SILENCE_THRESHOLD_MS = 1200;   // wait 1.2 s after last speech before finalizing
+const MAX_LISTEN_MS = 20000;         // hard ceiling: 20 s max per command session
+
+function clearSilenceTimer() {
+  clearTimeout(silenceTimer);
+  silenceTimer = undefined;
+}
+
+function armSilenceTimer() {
+  clearSilenceTimer();
+  silenceTimer = setTimeout(() => {
+    // User has been silent for SILENCE_THRESHOLD_MS — finalize whatever we have
+    const fullText = [accumulatedFinalText, latestInterimText].filter(Boolean).join(" ").trim();
+    if (fullText.length > 1) {
+      stopRecognition();
+      const stripped = stripWakeWord(fullText);
+      if (stripped.length > 1) {
+        handleCommand(stripped);
+      } else {
+        patch({ isAwake: false, voiceState: "idle", transcript: "" });
+        if (_state.enabled) startRecognition("passive");
+      }
+    } else {
+      stopRecognition();
+      patch({ isAwake: false, voiceState: "idle", transcript: "" });
+      if (_state.enabled) startRecognition("passive");
+    }
+  }, SILENCE_THRESHOLD_MS);
+}
+
 function startRecognition(mode: "passive" | "command" = "passive") {
   if (!SpeechRecognitionCtor) return;
   if (recRef) return;
@@ -94,11 +140,15 @@ function startRecognition(mode: "passive" | "command" = "passive") {
   clearTimeout(restartTimer);
   currentMode = mode;
   intentionalStop = false;
+  accumulatedFinalText = "";
+  latestInterimText = "";
 
   const rec = new SpeechRecognitionCtor();
   rec.continuous = true;
   rec.interimResults = true;
   rec.lang = "en-US";
+  // maxAlternatives = 1 gives us the best guess without overhead
+  rec.maxAlternatives = 1;
   recRef = rec;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -109,46 +159,76 @@ function startRecognition(mode: "passive" | "command" = "passive") {
       const lower = text.toLowerCase();
 
       if (currentMode === "passive") {
+        // Only care about final results for wake-word detection
+        if (!isFinal) continue;
+
         const woke = WAKE_WORDS.some((w) => lower.includes(w));
         if (woke) {
           stopRecognition();
           patch({ isAwake: true, voiceState: "listening", transcript: "" });
+
           // Check if command is inline with wake word
           let inlineCmd = text;
           for (const w of WAKE_WORDS) {
-            if (lower.startsWith(w)) {
-              inlineCmd = text.slice(w.length).replace(/^[\s,]+/, "").trim();
+            if (lower.includes(w)) {
+              const idx = lower.indexOf(w);
+              inlineCmd = text.slice(idx + w.length).replace(/^[\s,]+/, "").trim();
               break;
             }
           }
-          if (isFinal && inlineCmd.length > 3) {
+
+          if (inlineCmd.length > 3) {
+            // Inline command after wake word — process directly
             handleCommand(inlineCmd);
           } else {
+            // Wake word only — start listening for command
+            accumulatedFinalText = "";
+            latestInterimText = "";
             startRecognition("command");
+            // Hard ceiling timeout
             commandTimeout = setTimeout(() => {
               if (_state.voiceState === "listening") {
                 stopRecognition();
                 patch({ isAwake: false, voiceState: "idle", transcript: "" });
                 startRecognition("passive");
               }
-            }, 7000);
+            }, MAX_LISTEN_MS);
           }
           return;
         }
       } else if (currentMode === "command") {
-        patch({ transcript: text });
+        // Reset the hard ceiling (user is still talking)
+        clearTimeout(commandTimeout);
+
         if (isFinal) {
-          clearTimeout(commandTimeout);
-          const stripped = stripWakeWord(text);
-          if (stripped.length > 1) {
-            stopRecognition();
-            handleCommand(stripped);
-          } else {
-            stopRecognition();
-            patch({ isAwake: false, voiceState: "idle", transcript: "" });
-            startRecognition("passive");
-          }
+          // Accumulate confirmed text
+          accumulatedFinalText = [accumulatedFinalText, text].filter(Boolean).join(" ").trim();
+          latestInterimText = "";
+          // Update live transcript display
+          patch({ transcript: accumulatedFinalText });
+          // Arm silence detector — waits for the user to pause
+          armSilenceTimer();
+        } else {
+          // Interim: update display but don't commit
+          latestInterimText = text;
+          patch({ transcript: [accumulatedFinalText, latestInterimText].filter(Boolean).join(" ") });
         }
+
+        // Re-arm the hard ceiling timeout
+        commandTimeout = setTimeout(() => {
+          if (_state.voiceState === "listening") {
+            // Force finalize with whatever we have
+            clearSilenceTimer();
+            const fullText = [accumulatedFinalText, latestInterimText].filter(Boolean).join(" ").trim();
+            stopRecognition();
+            if (fullText.length > 1) {
+              handleCommand(stripWakeWord(fullText));
+            } else {
+              patch({ isAwake: false, voiceState: "idle", transcript: "" });
+              if (_state.enabled) startRecognition("passive");
+            }
+          }
+        }, MAX_LISTEN_MS);
       }
     }
   };
@@ -159,11 +239,25 @@ function startRecognition(mode: "passive" | "command" = "passive") {
       stopRecognition();
       patch({ voiceState: "idle", isAwake: false });
     }
+    // "no-speech" and "aborted" are normal — let onend handle restart
   };
 
   rec.onend = () => {
     recRef = null;
     if (intentionalStop) return;
+
+    if (currentMode === "command") {
+      // Recognition ended unexpectedly while in command mode —
+      // finalize with whatever we have if there's accumulated text
+      clearSilenceTimer();
+      const fullText = [accumulatedFinalText, latestInterimText].filter(Boolean).join(" ").trim();
+      if (fullText.length > 1) {
+        handleCommand(stripWakeWord(fullText));
+        return;
+      }
+      // Nothing useful — fall through to restart passive
+    }
+
     if (_state.voiceState === "idle" && _state.enabled) {
       restartTimer = setTimeout(() => startRecognition("passive"), 600);
     }
@@ -175,6 +269,9 @@ function startRecognition(mode: "passive" | "command" = "passive") {
 function stopRecognition() {
   clearTimeout(restartTimer);
   clearTimeout(commandTimeout);
+  clearSilenceTimer();
+  accumulatedFinalText = "";
+  latestInterimText = "";
   if (recRef) {
     intentionalStop = true;
     try { recRef.abort(); } catch { /* ignore */ }
@@ -387,15 +484,23 @@ export const jarvis = {
 
   activate() {
     stopRecognition();
+    accumulatedFinalText = "";
+    latestInterimText = "";
     patch({ isAwake: true, voiceState: "listening", transcript: "" });
     startRecognition("command");
     commandTimeout = setTimeout(() => {
       if (_state.voiceState === "listening") {
+        clearSilenceTimer();
+        const fullText = [accumulatedFinalText, latestInterimText].filter(Boolean).join(" ").trim();
         stopRecognition();
-        patch({ isAwake: false, voiceState: "idle", transcript: "" });
-        if (_state.enabled) startRecognition("passive");
+        if (fullText.length > 1) {
+          handleCommand(stripWakeWord(fullText));
+        } else {
+          patch({ isAwake: false, voiceState: "idle", transcript: "" });
+          if (_state.enabled) startRecognition("passive");
+        }
       }
-    }, 7000);
+    }, MAX_LISTEN_MS);
   },
 
   async sendText(text: string) {
@@ -432,11 +537,9 @@ export const jarvis = {
         .query({ name: "microphone" as PermissionName })
         .then((r) => {
           if (r.state === "granted") doStart();
-          // If permission state changes (user grants in another tab), start then too
           r.onchange = () => { if (r.state === "granted") doStart(); };
         })
         .catch(() => {
-          // Permissions API not available — fall back to enabled flag only
           if (_state.enabled) startRecognition("passive");
         });
     } else if (_state.enabled) {

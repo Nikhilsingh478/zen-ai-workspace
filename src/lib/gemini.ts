@@ -94,12 +94,57 @@ function buildContextString(ctx: UserContext): string {
 // ─── API class ────────────────────────────────────────────────────────────────
 
 class GeminiAPI {
-  private readonly apiKey: string;
+  /**
+   * Primary API key — VITE_GEMINI_API_KEY
+   * Fallback key  — VITE_GEMINI_API_KEY_2
+   *
+   * If the primary key fails (rate-limit / auth error), the request is
+   * automatically retried once with the secondary key.
+   */
+  private readonly primaryKey: string;
+  private readonly fallbackKey: string;
   private readonly baseUrl = "https://generativelanguage.googleapis.com/v1beta/models";
 
   constructor() {
-    this.apiKey = import.meta.env.VITE_GEMINI_API_KEY ?? "";
-    if (!this.apiKey) console.warn("[Gemini] API key not configured.");
+    this.primaryKey  = import.meta.env.VITE_GEMINI_API_KEY  ?? "";
+    this.fallbackKey = import.meta.env.VITE_GEMINI_API_KEY_2 ?? "";
+
+    if (!this.primaryKey)  console.warn("[Gemini] Primary API key (VITE_GEMINI_API_KEY) not configured.");
+    if (!this.fallbackKey) console.warn("[Gemini] Fallback API key (VITE_GEMINI_API_KEY_2) not configured — single-key mode.");
+  }
+
+  /** Make a single Gemini API request with the given key. */
+  private async _request(apiKey: string, body: GeminiRequest): Promise<{ ok: boolean; text: string; status: number }> {
+    try {
+      const res = await fetch(
+        `${this.baseUrl}/gemini-flash-latest:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        },
+      );
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { error?: { message?: string } };
+        console.error("[Gemini] HTTP error:", err);
+        return {
+          ok: false,
+          text: HTTP_ERRORS[res.status] ?? `API error (${res.status}): ${err.error?.message ?? "Unknown error"}`,
+          status: res.status,
+        };
+      }
+
+      const data: GeminiResponse = await res.json();
+      return {
+        ok: true,
+        text: data.candidates?.[0]?.content?.parts?.[0]?.text ?? "No response received.",
+        status: 200,
+      };
+    } catch (err) {
+      console.error("[Gemini] Network error:", err);
+      return { ok: false, text: "Failed to reach Gemini. Please check your internet connection.", status: 0 };
+    }
   }
 
   async generateContent(
@@ -107,10 +152,9 @@ class GeminiAPI {
     conversationHistory: GeminiMessage[] = [],
     userContext?: UserContext,
   ): Promise<string> {
-    if (!this.apiKey) return "API key not configured.";
+    if (!this.primaryKey && !this.fallbackKey) return "API key not configured.";
 
     // System context is sent only on the first message of a conversation.
-    // For subsequent turns, the model already has the context from its history.
     const isFirstTurn = conversationHistory.length === 0;
 
     const userText = isFirstTurn && userContext
@@ -130,35 +174,32 @@ class GeminiAPI {
       },
     };
 
-    try {
-      const res = await fetch(
-        `${this.baseUrl}/gemini-flash-latest:generateContent?key=${this.apiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        },
-      );
+    // Try primary key first
+    if (this.primaryKey) {
+      const result = await this._request(this.primaryKey, body);
+      if (result.ok) return result.text;
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({})) as { error?: { message?: string } };
-        console.error("[Gemini] HTTP error:", err);
-        return (
-          HTTP_ERRORS[res.status] ??
-          `API error (${res.status}): ${err.error?.message ?? "Unknown error"}`
-        );
+      // On rate-limit (429) or auth error (403), try fallback key
+      const isSwitchableError = result.status === 429 || result.status === 403;
+      if (isSwitchableError && this.fallbackKey) {
+        console.warn("[Gemini] Primary key failed — retrying with fallback key.");
+        const fallbackResult = await this._request(this.fallbackKey, body);
+        return fallbackResult.text;
       }
-
-      const data: GeminiResponse = await res.json();
-      return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "No response received.";
-    } catch (err) {
-      console.error("[Gemini] Network error:", err);
-      return "Failed to reach Gemini. Please check your internet connection.";
+      return result.text;
     }
+
+    // Primary not configured — use fallback directly
+    if (this.fallbackKey) {
+      const result = await this._request(this.fallbackKey, body);
+      return result.text;
+    }
+
+    return "API key not configured.";
   }
 
   get configured(): boolean {
-    return Boolean(this.apiKey);
+    return Boolean(this.primaryKey || this.fallbackKey);
   }
 }
 

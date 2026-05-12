@@ -9,6 +9,13 @@
  * In addition, this module fires the in-app banner (Instagram-style, top of
  * screen) via showInAppNotification() so users always see it even when the
  * browser tab is focused.  The banner also plays a subtle notification sound.
+ *
+ * Notification UX improvements:
+ *  - `silent: false`        — OS sound is explicitly requested
+ *  - `vibrate`              — haptic pattern for mobile (Android)
+ *  - `requireInteraction`   — keeps notification on mobile screen (heads-up)
+ *  - `renotify: true`       — ensures sound plays even when same tag is reused
+ *  - `actions`              — View / Dismiss buttons on Android lock screen
  */
 
 import { showInAppNotification } from "@/components/in-app-notification";
@@ -19,6 +26,11 @@ export type NotificationPayload = {
   tag?: string;
   url?: string;
 };
+
+/** Detect mobile user agent — used to choose `requireInteraction` setting. */
+function isMobileUA(): boolean {
+  return /android|iphone|ipad|mobile/i.test(navigator.userAgent);
+}
 
 /**
  * Show both an in-app banner AND a browser OS notification.
@@ -49,10 +61,16 @@ export async function showBrowserNotification(
       icon:               "/favicon.png",
       badge:              "/favicon.png",
       tag:                payload.tag ?? "horizon-reminder",
-      requireInteraction: false,
-      silent:             false,
+      silent:             false,            // OS sound ON
+      vibrate:            [200, 50, 200],   // Android haptics
+      requireInteraction: isMobileUA(),     // stay on screen on mobile
+      renotify:           true,             // re-play sound on same tag
       data:               { url: payload.url ?? "/horizon" },
-    });
+      actions: [
+        { action: "view",    title: "View"    },
+        { action: "dismiss", title: "Dismiss" },
+      ],
+    } as NotificationOptions);
   } catch (err) {
     console.error("[notifications] showNotification error:", err);
   }
