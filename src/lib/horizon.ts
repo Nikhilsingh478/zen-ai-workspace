@@ -243,6 +243,33 @@ export function useHorizon() {
   };
 }
 
+// ─── Standalone addTaskDirect (callable outside React hooks) ─────────────────
+
+export async function addTaskDirect(input: HorizonTaskInput): Promise<HorizonTask | null> {
+  try {
+    await ensureBooted();
+    const { data, error } = await supabase
+      .from("horizon_tasks")
+      .insert({
+        title: input.title.trim(),
+        description: input.description?.trim() || null,
+        task_date: input.taskDate,
+        task_time: input.taskTime,
+        priority: input.priority,
+        notification_enabled: input.notificationEnabled,
+      })
+      .select("*")
+      .single();
+    if (error) throw error;
+    const task = rowToTask(data as Row);
+    setState({ tasks: [...state.tasks, task].sort(sortTasks) });
+    return task;
+  } catch (err) {
+    console.error("[horizon] addTaskDirect error", err);
+    return null;
+  }
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function sortTasks(a: HorizonTask, b: HorizonTask): number {

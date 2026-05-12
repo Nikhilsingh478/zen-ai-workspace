@@ -14,6 +14,7 @@ import { Route as MessagesRouteImport } from './routes/messages'
 import { Route as LinksRouteImport } from './routes/links'
 import { Route as InsightsRouteImport } from './routes/insights'
 import { Route as ImagesRouteImport } from './routes/images'
+import { Route as JarvisRouteImport } from './routes/jarvis'
 import { Route as HorizonRouteImport } from './routes/horizon'
 import { Route as DesktopRouteImport } from './routes/desktop'
 import { Route as AskRouteImport } from './routes/ask'
@@ -44,6 +45,11 @@ const ImagesRoute = ImagesRouteImport.update({
   path: '/images',
   getParentRoute: () => rootRouteImport,
 } as any)
+const JarvisRoute = JarvisRouteImport.update({
+  id: '/jarvis',
+  path: '/jarvis',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const HorizonRoute = HorizonRouteImport.update({
   id: '/horizon',
   path: '/horizon',
@@ -72,6 +78,7 @@ export interface FileRoutesByFullPath {
   '/horizon': typeof HorizonRoute
   '/images': typeof ImagesRoute
   '/insights': typeof InsightsRoute
+  '/jarvis': typeof JarvisRoute
   '/links': typeof LinksRoute
   '/messages': typeof MessagesRoute
   '/prompts': typeof PromptsRoute
@@ -83,6 +90,7 @@ export interface FileRoutesByTo {
   '/horizon': typeof HorizonRoute
   '/images': typeof ImagesRoute
   '/insights': typeof InsightsRoute
+  '/jarvis': typeof JarvisRoute
   '/links': typeof LinksRoute
   '/messages': typeof MessagesRoute
   '/prompts': typeof PromptsRoute
@@ -95,6 +103,7 @@ export interface FileRoutesById {
   '/horizon': typeof HorizonRoute
   '/images': typeof ImagesRoute
   '/insights': typeof InsightsRoute
+  '/jarvis': typeof JarvisRoute
   '/links': typeof LinksRoute
   '/messages': typeof MessagesRoute
   '/prompts': typeof PromptsRoute
@@ -108,6 +117,7 @@ export interface FileRouteTypes {
     | '/horizon'
     | '/images'
     | '/insights'
+    | '/jarvis'
     | '/links'
     | '/messages'
     | '/prompts'
@@ -119,6 +129,7 @@ export interface FileRouteTypes {
     | '/horizon'
     | '/images'
     | '/insights'
+    | '/jarvis'
     | '/links'
     | '/messages'
     | '/prompts'
@@ -130,6 +141,7 @@ export interface FileRouteTypes {
     | '/horizon'
     | '/images'
     | '/insights'
+    | '/jarvis'
     | '/links'
     | '/messages'
     | '/prompts'
@@ -142,6 +154,7 @@ export interface RootRouteChildren {
   HorizonRoute: typeof HorizonRoute
   ImagesRoute: typeof ImagesRoute
   InsightsRoute: typeof InsightsRoute
+  JarvisRoute: typeof JarvisRoute
   LinksRoute: typeof LinksRoute
   MessagesRoute: typeof MessagesRoute
   PromptsRoute: typeof PromptsRoute
@@ -184,6 +197,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ImagesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/jarvis': {
+      id: '/jarvis'
+      path: '/jarvis'
+      fullPath: '/jarvis'
+      preLoaderRoute: typeof JarvisRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/horizon': {
       id: '/horizon'
       path: '/horizon'
@@ -222,6 +242,7 @@ const rootRouteChildren: RootRouteChildren = {
   HorizonRoute: HorizonRoute,
   ImagesRoute: ImagesRoute,
   InsightsRoute: InsightsRoute,
+  JarvisRoute: JarvisRoute,
   LinksRoute: LinksRoute,
   MessagesRoute: MessagesRoute,
   PromptsRoute: PromptsRoute,

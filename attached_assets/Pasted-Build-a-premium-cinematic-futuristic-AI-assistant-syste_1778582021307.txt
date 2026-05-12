@@ -1,0 +1,522 @@
+Build a premium cinematic futuristic AI assistant system named **JARVIS** inside the existing AI Matrix web application.
+
+This is NOT just another chatbot UI.
+
+This should feel like:
+
+* A real futuristic AI operating system
+* A holographic assistant interface
+* A next-generation cinematic AI command center
+* A living intelligent system
+
+The implementation must be:
+
+* Production-quality
+* Smooth
+* Modern
+* Highly animated
+* Professional
+* Immersive
+* Responsive
+* Technically polished
+
+The UI/UX quality should feel comparable to:
+
+* JARVIS from Iron Man
+* Futuristic tactical HUD systems
+* High-end sci-fi operating systems
+* Neural interfaces
+* Holographic AI dashboards
+
+But adapted into:
+
+* A usable real-world SaaS product
+* Clean UX
+* Modern interaction standards
+* Professional frontend architecture
+
+---
+
+## CORE SYSTEM STRUCTURE
+
+Inside AI Matrix, create a dedicated tab named:
+
+JARVIS
+
+Behavior:
+
+* If user is inside JARVIS tab → show full immersive fullscreen assistant UI
+* If user navigates to another tab → JARVIS should minimize into a floating assistant widget at bottom-right corner
+* Floating widget should remain active globally across the application
+* Wake word detection must continue working globally throughout the entire app
+
+The floating assistant should:
+
+* Be futuristic
+* Smooth
+* Animated
+* Minimal
+* Reactive
+* Glassmorphic
+* Blue holographic styling
+* Circular pulse effects
+* Audio visualization
+* AI activity indicators
+
+The floating widget should NEVER feel annoying or intrusive.
+
+---
+
+## VERY IMPORTANT — WAKE WORD SYSTEM
+
+Wake word detection must work globally across the entire app.
+
+Meaning:
+
+* No matter which tab/page user is on
+* If wake word is spoken
+* JARVIS should activate immediately
+
+Examples:
+
+* “Hey Jarvis”
+* “Jarvis”
+* Any configured wake phrase
+
+Behavior after wake word:
+
+* Floating assistant expands smoothly
+* Voice listening state activates
+* AI pulse animations intensify
+* Audio waveform appears
+* Assistant begins listening instantly
+
+Transitions must feel cinematic and intelligent.
+
+---
+
+## CRITICAL TASK/REMINDER FIXES
+
+CURRENT ISSUES MUST BE FIXED PROPERLY.
+
+1. REMINDER TOGGLE BUG
+
+Current issue:
+When JARVIS schedules a task/reminder, the reminder toggle is OFF by default.
+
+Fix:
+Whenever JARVIS creates ANY reminder/task:
+
+* Reminder toggle MUST automatically turn ON
+* User should NOT need to enable it manually
+* This should happen consistently for:
+
+  * Single reminders
+  * Recurring reminders
+  * Multiple reminders
+  * Voice-created reminders
+  * Manual reminders
+
+This behavior is mandatory.
+
+---
+
+2. REMINDER TOGGLE UI IS BROKEN
+
+---
+
+Current reminder toggle UI feels visually broken and low quality.
+
+Redesign the reminder toggle completely.
+
+Requirements:
+
+* Modern futuristic toggle
+* Smooth animated transitions
+* Blue holographic glow
+* Soft lighting effects
+* Glassmorphism styling
+* Elegant motion
+* Premium tactile feel
+* High-quality micro-interactions
+* Smooth state animation
+
+The toggle should feel:
+
+* Futuristic
+* Expensive
+* Responsive
+* Clean
+* Premium
+
+NOT:
+
+* Basic HTML toggle
+* Cheap switch UI
+* Laggy
+* Clunky
+
+---
+
+3. NOTIFICATIONS ARE NOT SHOWING PROPERLY
+
+---
+
+Current issue:
+Notifications only appear silently in system tray/notification center.
+
+This is NOT acceptable.
+
+Implement proper push/local notification behavior.
+
+Required behavior:
+
+* Notifications must visibly appear on screen
+* Mobile notifications should appear as real popup banners
+* Desktop notifications should appear visibly on screen
+* Notifications must feel native to the operating system
+
+If user is:
+
+* Using mobile
+* Using another app
+* Browser minimized
+* Another tab active
+
+The reminder notification should STILL properly appear visually.
+
+Implement proper:
+
+* Browser notification APIs
+* Mobile notification handling
+* PWA notification behavior
+* Foreground notification support
+* Background notification support
+* Service worker notification handling
+
+---
+
+4. NOTIFICATION SOUND MISSING
+
+---
+
+Current issue:
+Notifications arrive silently.
+
+Fix:
+Whenever reminder notification triggers:
+
+* Play native/default system notification sound
+* Respect operating system notification behavior
+* Must work properly on:
+
+  * Android
+  * Desktop
+  * PWA mode
+  * Browser-supported environments
+
+The experience should feel like:
+A real assistant notifying the user.
+
+---
+
+## TASK MANAGEMENT CAPABILITIES
+
+JARVIS must support advanced task parsing.
+
+Examples:
+“Remind me tomorrow at 5 PM to call Rahul.”
+“Every Monday remind me to review reports.”
+“Tomorrow 8 PM gym and 10 PM project meeting.”
+
+JARVIS must:
+
+* Parse multiple reminders from one instruction
+* Extract dates/times/frequencies correctly
+* Confirm parsed tasks intelligently
+* Handle recurring reminders
+* Handle multiple reminders in one sentence
+
+Examples:
+“Okay. I scheduled:
+
+* Gym tomorrow at 8 PM
+* Project meeting tomorrow at 10 PM”
+
+The assistant should feel intelligent and conversational.
+
+---
+
+## UI STYLE DIRECTION
+
+STRICT COLOR RULE:
+Use ONLY a futuristic blue-based palette.
+
+NO:
+
+* RGB rainbow
+* Random accent colors
+* Purple overload
+* Red cyberpunk
+* Neon chaos
+
+ONLY:
+
+* Deep black
+* Navy blue
+* Cyan blue
+* Electric blue
+* Holographic aqua
+
+Suggested palette:
+
+* #020508
+* #07111B
+* #00BFFF
+* #4DEBFF
+* rgba(0,191,255,0.15)
+
+The interface should feel:
+
+* Tactical
+* Intelligent
+* Premium
+* Cold
+* Futuristic
+* Cinematic
+
+---
+
+## MAIN JARVIS SCREEN
+
+The fullscreen JARVIS tab should include:
+
+CENTER:
+
+* Massive animated AI core
+* Rotating concentric rings
+* Reactive pulse systems
+* Radar sweeps
+* Neural pulse effects
+* Floating holographic layers
+* Dynamic waveforms
+* Ambient particles
+* Intelligent glow reactions
+
+The AI core should feel:
+Like a living digital consciousness.
+
+Animations must be:
+
+* Slow
+* Smooth
+* Hypnotic
+* Cinematic
+* GPU accelerated
+
+NOT:
+
+* Chaotic
+* Flashy
+* Distracting
+
+---
+
+## LEFT PANEL
+
+Futuristic assistant controls:
+
+* AI status
+* Voice status
+* System metrics
+* Assistant modes
+* Pulse indicators
+* Neural diagnostics
+* Minimal navigation
+
+Design language:
+
+* Thin glowing lines
+* Holographic widgets
+* Tactical UI styling
+* Glass panels
+
+---
+
+## RIGHT PANEL
+
+Assistant interaction area:
+
+* Conversation history
+* Voice transcription
+* AI replies
+* Reminder confirmations
+* Neural activity widgets
+* Processing indicators
+* Mini charts/diagnostics
+
+Cards should:
+
+* Float subtly
+* Use glassmorphism
+* Have thin blue borders
+* Soft glow edges
+* Layered depth
+
+---
+
+## ANIMATION SYSTEM
+
+This system MUST feel alive.
+
+Implement:
+
+* Framer Motion quality animations
+* GPU accelerated transforms
+* Motion blur feeling
+* Ambient floating
+* Rotational systems
+* Cursor-reactive lighting
+* Holographic sweeps
+* Scanning effects
+* Reactive glow intensity
+* AI pulse synchronization
+* Floating particles
+* Soft parallax depth
+
+Motion philosophy:
+
+* Intelligent
+* Elegant
+* Cinematic
+* Tactical
+* Controlled
+
+NOT:
+
+* Overstimulating
+* Cheap
+* Hyperactive
+
+---
+
+## BACKGROUND SYSTEM
+
+Background should include:
+
+* Deep black futuristic environment
+* Subtle digital grids
+* Holographic circuitry
+* Dim neural pathways
+* Ambient scanning overlays
+* Procedural HUD graphics
+* Soft atmospheric gradients
+
+The background must support immersion WITHOUT visual clutter.
+
+---
+
+## VOICE INTERACTION STATES
+
+Create distinct visual states:
+
+IDLE:
+
+* Soft ambient glow
+* Minimal movement
+
+LISTENING:
+
+* Expanded pulse rings
+* Audio waveform
+* Increased glow
+* Reactive motion
+
+THINKING:
+
+* Rotating processing animations
+* Neural scan motion
+* Dynamic pulse patterns
+
+SPEAKING:
+
+* Synchronized waveform animation
+* Voice-reactive pulse systems
+* AI core intensity increase
+
+Transitions between states must feel seamless.
+
+---
+
+## RESPONSIVENESS
+
+Must work flawlessly on:
+
+* Desktop
+* Laptop
+* Tablet
+* Mobile
+* PWA mode
+
+On mobile:
+
+* Preserve futuristic feel
+* Maintain animation quality
+* Optimize performance
+* Floating assistant should feel native-app quality
+
+---
+
+## PERFORMANCE REQUIREMENTS
+
+Even with heavy animations:
+
+* Maintain excellent FPS
+* Use GPU acceleration
+* Optimize particle systems
+* Avoid layout thrashing
+* Lazy-load heavy effects
+* Maintain responsiveness
+
+The UI should feel:
+Extremely smooth and premium.
+
+---
+
+## IMPORTANT ARCHITECTURE NOTE
+
+We already decided:
+Context Window remains in a separate dedicated tab.
+
+Do NOT merge context window into JARVIS UI.
+
+Keep JARVIS focused on:
+
+* Voice assistant
+* AI interaction
+* Tasks/reminders
+* Real-time assistant experience
+
+---
+
+## FINAL EXPERIENCE GOAL
+
+The user experience should feel like:
+
+“A real futuristic AI operating system from the future.”
+
+When user opens JARVIS tab:
+Reaction should be:
+“Holy shit this looks insanely futuristic.”
+
+But still:
+
+* Clean
+* Professional
+* Usable
+* Smooth
+* Premium
+* Not cluttered
+
+The final product should feel like:
+A billion-dollar cinematic AI assistant platform.

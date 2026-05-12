@@ -1047,7 +1047,7 @@ function TaskModal({
       taskTimeMinute: "00",
       taskTimeAmpm: "AM",
       priority: "medium",
-      notificationEnabled: false,
+      notificationEnabled: true,
     };
   }, [editingTask]);
 
@@ -1204,50 +1204,67 @@ function TaskModal({
             )} />
           </div>
 
-          {/* Notification toggle */}
+          {/* Notification toggle — holographic blue */}
           <Controller name="notificationEnabled" control={control} render={({ field }) => (
             <motion.button
               type="button"
               onClick={() => handleReminderToggle(field.value, field.onChange)}
-              whileTap={{ scale: 0.99 }}
-              className={cn(
-                "w-full flex items-center gap-3 rounded-xl border px-3.5 py-3 transition-all duration-200",
-                field.value
-                  ? "border-white/[0.1] bg-white/[0.04]"
-                  : "border-white/[0.06] hover:border-white/[0.09]",
-              )}
+              whileTap={{ scale: 0.98 }}
+              style={field.value ? {
+                border: "1px solid rgba(0,191,255,0.35)",
+                background: "rgba(0,191,255,0.07)",
+                boxShadow: "0 0 18px rgba(0,191,255,0.12), inset 0 0 12px rgba(0,191,255,0.04)",
+              } : {
+                border: "1px solid rgba(255,255,255,0.07)",
+                background: "transparent",
+                boxShadow: "none",
+              }}
+              className="w-full flex items-center gap-3 rounded-xl px-3.5 py-3 transition-all duration-300"
             >
               <AnimatePresence mode="wait">
                 {field.value ? (
-                  <motion.span key="on" initial={{ scale: 0.7, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.7, opacity: 0 }} transition={{ duration: 0.15 }}>
-                    <Bell className="h-4 w-4 text-white/40 shrink-0" />
+                  <motion.span key="on" initial={{ scale: 0.6, opacity: 0, rotate: -15 }} animate={{ scale: 1, opacity: 1, rotate: 0 }} exit={{ scale: 0.6, opacity: 0 }} transition={{ type: "spring", stiffness: 400, damping: 20 }}>
+                    <Bell className="h-4 w-4 shrink-0" style={{ color: "#00BFFF", filter: "drop-shadow(0 0 6px rgba(0,191,255,0.6))" }} />
                   </motion.span>
                 ) : (
-                  <motion.span key="off" initial={{ scale: 0.7, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.7, opacity: 0 }} transition={{ duration: 0.15 }}>
-                    <BellOff className="h-4 w-4 text-white/[0.16] shrink-0" />
+                  <motion.span key="off" initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.6, opacity: 0 }} transition={{ duration: 0.15 }}>
+                    <BellOff className="h-4 w-4 text-white/[0.18] shrink-0" />
                   </motion.span>
                 )}
               </AnimatePresence>
               <div className="text-left flex-1">
-                <p className="text-[13px] font-medium text-white/50 leading-none">
-                  {field.value ? "Reminder on" : "Enable reminder"}
+                <p className="text-[13px] font-medium leading-none transition-colors duration-200"
+                  style={{ color: field.value ? "rgba(0,191,255,0.9)" : "rgba(255,255,255,0.45)" }}>
+                  {field.value ? "Reminder active" : "Enable reminder"}
                 </p>
-                <p className="text-[11px] text-white/[0.2] mt-0.5">
-                  {field.value ? "You'll be notified at task time" : "No notification"}
+                <p className="text-[11px] mt-0.5 transition-colors duration-200"
+                  style={{ color: field.value ? "rgba(0,191,255,0.45)" : "rgba(255,255,255,0.18)" }}>
+                  {field.value ? "You'll be notified at task time" : "No notification scheduled"}
                 </p>
               </div>
-              {/* Toggle */}
-              <div className={cn(
-                "h-5 w-9 rounded-full border relative shrink-0 transition-all duration-250",
-                field.value ? "bg-white/60 border-white/60" : "bg-transparent border-white/[0.13]",
-              )}>
+              {/* Blue holographic toggle switch */}
+              <div
+                className="relative h-5 w-9 rounded-full shrink-0 transition-all duration-300"
+                style={field.value ? {
+                  background: "rgba(0,191,255,0.25)",
+                  border: "1px solid rgba(0,191,255,0.5)",
+                  boxShadow: "0 0 10px rgba(0,191,255,0.3)",
+                } : {
+                  background: "transparent",
+                  border: "1px solid rgba(255,255,255,0.13)",
+                }}
+              >
                 <motion.span
                   animate={{ x: field.value ? 16 : 2 }}
-                  transition={{ type: "spring", stiffness: 450, damping: 26 }}
-                  className={cn(
-                    "absolute top-0.5 h-4 w-4 rounded-full shadow-sm",
-                    field.value ? "bg-background" : "bg-white/[0.25]",
-                  )}
+                  transition={{ type: "spring", stiffness: 500, damping: 28 }}
+                  className="absolute top-0.5 h-4 w-4 rounded-full"
+                  style={field.value ? {
+                    background: "radial-gradient(circle at 35% 35%, #4DEBFF, #00BFFF)",
+                    boxShadow: "0 0 8px rgba(0,191,255,0.7)",
+                  } : {
+                    background: "rgba(255,255,255,0.25)",
+                    boxShadow: "none",
+                  }}
                 />
               </div>
             </motion.button>

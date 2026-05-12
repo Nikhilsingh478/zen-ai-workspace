@@ -6,6 +6,8 @@ import { AppShell } from "@/components/app-shell";
 import { initFCM } from "@/lib/fcm";
 import { VoiceOverlay } from "@/components/voice-overlay";
 import { InAppNotificationHost } from "@/components/in-app-notification";
+import { JarvisFloatingOrb } from "@/components/jarvis/floating-orb";
+import { jarvis } from "@/lib/jarvis";
 
 // ─── Route ────────────────────────────────────────────────────────────────────
 
@@ -129,6 +131,7 @@ function RootComponent() {
 
   useEffect(() => {
     initFCM().catch(() => {});
+    jarvis.autoStartIfEnabled();
   }, []);
 
   return (
@@ -153,6 +156,7 @@ function RootComponent() {
       </AppShell>
 
       <VoiceOverlay />
+      <JarvisFloatingOrb />
 
       {/* In-app notification banners (Instagram-style, top of screen) */}
       <InAppNotificationHost />

@@ -10,6 +10,7 @@ import {
   Bell,
   Menu,
   CalendarDays,
+  Cpu,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, type ReactNode, type ComponentType } from "react";
@@ -33,14 +34,15 @@ const NAV = [
   { to: "/horizon", label: "Horizon", icon: CalendarDays },
   { to: "/insights", label: "Insights", icon: BarChart2 },
   { to: "/ask", label: "Ask", icon: MessageSquare },
+  { to: "/jarvis", label: "JARVIS", icon: Cpu },
 ] as const;
 
 type NavItem = { to: string; label: string; icon: ComponentType<{ className?: string; strokeWidth?: number }> };
 
 const MOBILE_PRIMARY: readonly NavItem[] = [
   { to: "/", label: "Websites", icon: Globe },
-  { to: "/desktop", label: "Desktop", icon: LayoutGrid },
   { to: "/horizon", label: "Horizon", icon: CalendarDays },
+  { to: "/jarvis", label: "JARVIS", icon: Cpu },
   { to: "/ask", label: "Ask", icon: MessageSquare },
 ];
 
