@@ -9,9 +9,9 @@
 }
 
 /*
- * Design tokens.
- * --color-* maps CSS variables to Tailwind utility classes.
- * All color values use oklch format.
+ * Premium Monochrome Design System
+ * Pure black / white / graphite / silver palette
+ * Cinematic minimal aesthetic
  */
 
 @theme inline {
@@ -22,33 +22,46 @@
   --radius-2xl: calc(var(--radius) + 8px);
   --radius-3xl: calc(var(--radius) + 12px);
   --radius-4xl: calc(var(--radius) + 16px);
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
+
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
+
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
+
   --color-copy-secondary: var(--text-secondary);
   --color-copy-muted: var(--text-muted);
+
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
+
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+
   --color-border: var(--border);
   --color-input: var(--input);
+
   --color-ring: var(--ring);
   --color-ring-offset-background: var(--background);
+
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -60,70 +73,107 @@
 }
 
 :root {
-  --radius: 0.875rem;
+  --radius: 0.95rem;
 
-  /* Background: Deep dark cyan/blue tint */
-  --background: oklch(0.14 0.03 240);
-  /* Primary text: #EDEDED */
-  --foreground: oklch(0.94 0 0);
+  /* =========================
+     CORE BACKGROUNDS
+  ========================== */
 
-  /* Cards */
-  --card: oklch(0.18 0.03 240);
-  --card-foreground: oklch(0.94 0 0);
-  --popover: oklch(0.19 0.03 240);
-  --popover-foreground: oklch(0.94 0 0);
+  --background: oklch(0.10 0 0);
+  --foreground: oklch(0.96 0 0);
 
-  /* Primary accent — sky blue (#0EA5E9), used for active states, focus rings */
-  --primary: oklch(0.6 0.2 220);
-  --primary-foreground: oklch(0.98 0 0);
+  /* =========================
+     SURFACES
+  ========================== */
 
-  --secondary: oklch(0.19 0.03 240);
+  --card: oklch(0.14 0 0);
+  --card-foreground: oklch(0.96 0 0);
+
+  --popover: oklch(0.15 0 0);
+  --popover-foreground: oklch(0.96 0 0);
+
+  --surface-1: oklch(0.14 0 0);
+  --surface-2: oklch(0.17 0 0);
+  --surface-3: oklch(0.20 0 0);
+
+  /* =========================
+     PRIMARY SYSTEM
+  ========================== */
+
+  --primary: oklch(0.92 0 0);
+  --primary-foreground: oklch(0.10 0 0);
+
+  --secondary: oklch(0.18 0 0);
   --secondary-foreground: oklch(0.94 0 0);
 
-  --muted: oklch(0.19 0.03 240);
-  --muted-foreground: oklch(0.54 0.005 286);
+  --accent: oklch(0.22 0 0);
+  --accent-foreground: oklch(0.98 0 0);
 
-  --accent: oklch(0.22 0.03 240);
-  --accent-foreground: oklch(0.94 0 0);
+  /* =========================
+     MUTED TEXT
+  ========================== */
 
-  --destructive: oklch(0.62 0.21 25);
-  --destructive-foreground: oklch(0.98 0 0);
+  --muted: oklch(0.16 0 0);
+  --muted-foreground: oklch(0.68 0 0);
+
+  --text-secondary: oklch(0.74 0 0);
+  --text-muted: oklch(0.55 0 0);
+
+  /* =========================
+     BORDERS + INPUTS
+  ========================== */
 
   --border: oklch(1 0 0 / 8%);
   --input: oklch(1 0 0 / 10%);
-  /* Focus ring uses primary accent */
-  --ring: oklch(0.6 0.2 220 / 55%);
 
-  /* Secondary text: #A1A1AA */
-  --text-secondary: oklch(0.71 0.005 286);
-  /* Muted text: #71717A */
-  --text-muted: oklch(0.54 0.005 286);
+  --ring: oklch(1 0 0 / 22%);
 
-  /* Surfaces */
-  --surface-1: oklch(0.18 0.03 240);
-  --surface-2: oklch(0.20 0.03 240);
-  --surface-3: oklch(0.24 0.03 240);
+  /* =========================
+     DESTRUCTIVE
+  ========================== */
 
-  --chart-1: oklch(0.7 0.15 250);
-  --chart-2: oklch(0.7 0.15 160);
-  --chart-3: oklch(0.7 0.15 60);
-  --chart-4: oklch(0.7 0.15 320);
-  --chart-5: oklch(0.7 0.15 20);
+  --destructive: oklch(0.60 0.22 25);
+  --destructive-foreground: oklch(0.98 0 0);
 
-  /* Sidebar — tinted deep blue to match Jarvis */
-  --sidebar: oklch(0.16 0.03 240);
-  --sidebar-foreground: oklch(0.93 0 0);
-  --sidebar-primary: oklch(0.6 0.2 220);
-  --sidebar-primary-foreground: oklch(0.98 0 0);
-  --sidebar-accent: oklch(0.22 0.03 240);
-  --sidebar-accent-foreground: oklch(0.93 0 0);
+  /* =========================
+     CHARTS
+  ========================== */
+
+  --chart-1: oklch(0.82 0 0);
+  --chart-2: oklch(0.68 0 0);
+  --chart-3: oklch(0.55 0 0);
+  --chart-4: oklch(0.42 0 0);
+  --chart-5: oklch(0.30 0 0);
+
+  /* =========================
+     SIDEBAR
+  ========================== */
+
+  --sidebar: oklch(0.12 0 0);
+  --sidebar-foreground: oklch(0.94 0 0);
+
+  --sidebar-primary: oklch(0.92 0 0);
+  --sidebar-primary-foreground: oklch(0.10 0 0);
+
+  --sidebar-accent: oklch(0.18 0 0);
+  --sidebar-accent-foreground: oklch(0.95 0 0);
+
   --sidebar-border: oklch(1 0 0 / 6%);
-  --sidebar-ring: oklch(0.6 0.2 220 / 40%);
+  --sidebar-ring: oklch(1 0 0 / 18%);
 
-  /* Jarvis design tokens — reused across the whole site */
-  --jarvis-primary: #0EA5E9;
-  --jarvis-accent:  #38BDF8;
-  --jarvis-glow:    rgba(14, 165, 233, 0.35);
+  /* =========================
+     MONOCHROME BRAND TOKENS
+  ========================== */
+
+  --mono-white: #ffffff;
+  --mono-silver: #cfcfcf;
+  --mono-grey: #7a7a7a;
+  --mono-charcoal: #1a1a1a;
+  --mono-black: #050505;
+
+  /* Premium subtle glow */
+  --mono-glow-soft: rgba(255, 255, 255, 0.06);
+  --mono-glow-medium: rgba(255, 255, 255, 0.12);
 }
 
 .dark {
@@ -140,6 +190,7 @@ html {
     border-color: var(--color-border);
   }
 
+  html,
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
@@ -147,31 +198,128 @@ html {
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
+
+  body {
+    min-height: 100vh;
+    overflow-x: hidden;
+
+    /* cinematic gradient layering */
+    background-image:
+      radial-gradient(
+        circle at top,
+        rgba(255,255,255,0.035),
+        transparent 40%
+      ),
+      radial-gradient(
+        circle at bottom,
+        rgba(255,255,255,0.02),
+        transparent 35%
+      );
+
+    background-attachment: fixed;
+  }
 }
 
-/* Scrollbar */
+/* =========================
+   SCROLLBAR
+========================= */
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
+
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.06);
-  border-radius: 8px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  border: 2px solid transparent;
 }
 
-/* Surface utilities */
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+/* =========================
+   SURFACE UTILITIES
+========================= */
+
 @utility surface-1 {
   background-color: var(--surface-1);
 }
+
 @utility surface-2 {
   background-color: var(--surface-2);
 }
+
 @utility surface-3 {
   background-color: var(--surface-3);
+}
+
+/* =========================
+   GLASS UTILITIES
+========================= */
+
+@utility glass-panel {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+@utility glass-panel-strong {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+/* =========================
+   PREMIUM SHADOWS
+========================= */
+
+@utility shadow-soft {
+  box-shadow:
+    0 4px 20px rgba(0,0,0,0.35),
+    0 1px 0 rgba(255,255,255,0.04) inset;
+}
+
+@utility shadow-elevated {
+  box-shadow:
+    0 12px 40px rgba(0,0,0,0.45),
+    0 1px 0 rgba(255,255,255,0.05) inset;
+}
+
+/* =========================
+   TEXT EFFECTS
+========================= */
+
+@utility text-soft {
+  color: rgba(255,255,255,0.72);
+}
+
+@utility text-muted-soft {
+  color: rgba(255,255,255,0.48);
+}
+
+/* =========================
+   HOVER TRANSITIONS
+========================= */
+
+@utility smooth-hover {
+  transition:
+    transform 0.25s ease,
+    opacity 0.25s ease,
+    border-color 0.25s ease,
+    background-color 0.25s ease,
+    box-shadow 0.25s ease;
+}
+
+@utility hover-lift {
+  &:hover {
+    transform: translateY(-2px);
+  }
 }
