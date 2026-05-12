@@ -62,28 +62,28 @@
 :root {
   --radius: 0.875rem;
 
-  /* Background: #0B0B0C */
-  --background: oklch(0.135 0 0);
+  /* Background: Deep dark cyan/blue tint */
+  --background: oklch(0.14 0.03 240);
   /* Primary text: #EDEDED */
   --foreground: oklch(0.94 0 0);
 
   /* Cards */
-  --card: oklch(0.175 0 0);
+  --card: oklch(0.18 0.03 240);
   --card-foreground: oklch(0.94 0 0);
-  --popover: oklch(0.185 0 0);
+  --popover: oklch(0.19 0.03 240);
   --popover-foreground: oklch(0.94 0 0);
 
   /* Primary accent — sky blue (#0EA5E9), used for active states, focus rings */
   --primary: oklch(0.6 0.2 220);
   --primary-foreground: oklch(0.98 0 0);
 
-  --secondary: oklch(0.185 0 0);
+  --secondary: oklch(0.19 0.03 240);
   --secondary-foreground: oklch(0.94 0 0);
 
-  --muted: oklch(0.185 0 0);
+  --muted: oklch(0.19 0.03 240);
   --muted-foreground: oklch(0.54 0.005 286);
 
-  --accent: oklch(0.22 0 0);
+  --accent: oklch(0.22 0.03 240);
   --accent-foreground: oklch(0.94 0 0);
 
   --destructive: oklch(0.62 0.21 25);
@@ -100,9 +100,9 @@
   --text-muted: oklch(0.54 0.005 286);
 
   /* Surfaces */
-  --surface-1: oklch(0.175 0 0);
-  --surface-2: oklch(0.195 0 0);
-  --surface-3: oklch(0.23 0 0);
+  --surface-1: oklch(0.18 0.03 240);
+  --surface-2: oklch(0.20 0.03 240);
+  --surface-3: oklch(0.24 0.03 240);
 
   --chart-1: oklch(0.7 0.15 250);
   --chart-2: oklch(0.7 0.15 160);
@@ -110,12 +110,12 @@
   --chart-4: oklch(0.7 0.15 320);
   --chart-5: oklch(0.7 0.15 20);
 
-  /* Sidebar — neutral dark, active indicator uses primary accent */
-  --sidebar: oklch(0.16 0.002 285);
+  /* Sidebar — tinted deep blue to match Jarvis */
+  --sidebar: oklch(0.16 0.03 240);
   --sidebar-foreground: oklch(0.93 0 0);
   --sidebar-primary: oklch(0.6 0.2 220);
   --sidebar-primary-foreground: oklch(0.98 0 0);
-  --sidebar-accent: oklch(0.22 0.003 285);
+  --sidebar-accent: oklch(0.22 0.03 240);
   --sidebar-accent-foreground: oklch(0.93 0 0);
   --sidebar-border: oklch(1 0 0 / 6%);
   --sidebar-ring: oklch(0.6 0.2 220 / 40%);
