@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, Loader2, AlertCircle } from "lucide-react";
+import { Loader2, AlertCircle } from "lucide-react";
 import { useSyncStatus } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -12,7 +12,7 @@ export function SyncIndicator({ compact = false }: { compact?: boolean }) {
   if (!mounted) return null;
 
   const isLoading = status === "loading";
-  const isError = status === "error";
+  const isError   = status === "error";
 
   return (
     <div
@@ -27,7 +27,11 @@ export function SyncIndicator({ compact = false }: { compact?: boolean }) {
       ) : isError ? (
         <AlertCircle className="h-3.5 w-3.5" />
       ) : (
-        <CheckCircle2 className="h-3.5 w-3.5" />
+        /* Synced state — subtle dot, no tick icon */
+        <span
+          className="h-1.5 w-1.5 rounded-full shrink-0"
+          style={{ background: "var(--jarvis-primary, #0EA5E9)", opacity: 0.7 }}
+        />
       )}
       {!compact && (
         <span>{isLoading ? "Loading…" : isError ? "Sync error" : "Synced"}</span>

@@ -25,34 +25,57 @@ import {
 } from "@/components/ui/sheet";
 
 const NAV = [
-  { to: "/", label: "Websites", icon: Globe },
-  { to: "/desktop", label: "Desktop", icon: LayoutGrid },
-  { to: "/prompts", label: "Prompts", icon: Sparkles },
-  { to: "/links", label: "Links", icon: Link2 },
-  { to: "/images", label: "Images", icon: ImageIcon },
-  { to: "/messages", label: "Messages", icon: Bell },
-  { to: "/horizon", label: "Horizon", icon: CalendarDays },
-  { to: "/insights", label: "Insights", icon: BarChart2 },
-  { to: "/ask", label: "Ask", icon: MessageSquare },
-  { to: "/jarvis", label: "JARVIS", icon: Cpu },
+  { to: "/",        label: "Websites", icon: Globe        },
+  { to: "/desktop", label: "Desktop",  icon: LayoutGrid   },
+  { to: "/prompts", label: "Prompts",  icon: Sparkles     },
+  { to: "/links",   label: "Links",    icon: Link2        },
+  { to: "/images",  label: "Images",   icon: ImageIcon    },
+  { to: "/messages",label: "Messages", icon: Bell         },
+  { to: "/horizon", label: "Horizon",  icon: CalendarDays },
+  { to: "/insights",label: "Insights", icon: BarChart2    },
+  { to: "/ask",     label: "Ask",      icon: MessageSquare},
+  { to: "/jarvis",  label: "JARVIS",   icon: Cpu          },
 ] as const;
 
 type NavItem = { to: string; label: string; icon: ComponentType<{ className?: string; strokeWidth?: number }> };
 
 const MOBILE_PRIMARY: readonly NavItem[] = [
-  { to: "/", label: "Websites", icon: Globe },
-  { to: "/horizon", label: "Horizon", icon: CalendarDays },
-  { to: "/jarvis", label: "JARVIS", icon: Cpu },
-  { to: "/ask", label: "Ask", icon: MessageSquare },
+  { to: "/",        label: "Websites", icon: Globe        },
+  { to: "/horizon", label: "Horizon",  icon: CalendarDays },
+  { to: "/jarvis",  label: "JARVIS",   icon: Cpu          },
+  { to: "/ask",     label: "Ask",      icon: MessageSquare},
 ];
 
 const MOBILE_SECONDARY: readonly NavItem[] = [
-  { to: "/prompts", label: "Prompts", icon: Sparkles },
-  { to: "/links", label: "Links", icon: Link2 },
-  { to: "/images", label: "Images", icon: ImageIcon },
-  { to: "/messages", label: "Messages", icon: Bell },
+  { to: "/prompts",  label: "Prompts",  icon: Sparkles  },
+  { to: "/links",    label: "Links",    icon: Link2     },
+  { to: "/images",   label: "Images",   icon: ImageIcon },
+  { to: "/messages", label: "Messages", icon: Bell      },
   { to: "/insights", label: "Insights", icon: BarChart2 },
 ];
+
+// ─── Brand logo mark ─────────────────────────────────────────────────────────
+
+function BrandMark() {
+  return (
+    <div
+      className="h-7 w-7 rounded-lg grid place-items-center shrink-0"
+      style={{
+        background: "linear-gradient(135deg, rgba(14,165,233,0.9) 0%, rgba(2,132,199,0.7) 100%)",
+        boxShadow: "0 0 12px rgba(14,165,233,0.3)",
+        border: "1px solid rgba(14,165,233,0.4)",
+      }}
+    >
+      {/* Inner grid mark */}
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <rect x="2" y="2" width="4" height="4" rx="1" fill="rgba(255,255,255,0.9)" />
+        <rect x="8" y="2" width="4" height="4" rx="1" fill="rgba(255,255,255,0.4)" />
+        <rect x="2" y="8" width="4" height="4" rx="1" fill="rgba(255,255,255,0.4)" />
+        <rect x="8" y="8" width="4" height="4" rx="1" fill="rgba(255,255,255,0.7)" />
+      </svg>
+    </div>
+  );
+}
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -62,24 +85,41 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="h-[100dvh] overflow-hidden flex bg-background text-foreground">
-      {/* Desktop sidebar */}
-      <aside className="hidden md:flex flex-col w-56 shrink-0 border-r border-border bg-[var(--surface-1)]">
-        <div className="px-6 pt-7 pb-10">
+
+      {/* ── Desktop sidebar ── */}
+      <aside
+        className="hidden md:flex flex-col w-56 shrink-0"
+        style={{
+          background: "var(--surface-1)",
+          borderRight: "1px solid rgba(14,165,233,0.08)",
+        }}
+      >
+        {/* Brand */}
+        <div className="px-5 pt-6 pb-8">
           <Link to="/" className="flex items-center gap-2.5 group">
-            <motion.div
-              className="h-7 w-7 rounded-lg bg-gradient-to-br from-white/90 to-white/40 grid place-items-center"
-              whileHover={{ scale: 1.08 }}
-              transition={{ type: "spring", stiffness: 400, damping: 20 }}
-            >
-              <div className="h-3 w-3 rounded-[3px] bg-background" />
+            <motion.div whileHover={{ scale: 1.08 }} transition={{ type: "spring", stiffness: 400, damping: 20 }}>
+              <BrandMark />
             </motion.div>
-            <span className="text-[15px] font-semibold tracking-tight">AI Metrics</span>
+            <div>
+              <span className="text-[14px] font-semibold tracking-tight" style={{ color: "rgba(255,255,255,0.9)" }}>
+                AI Metrics
+              </span>
+              <div className="text-[8px] tracking-[0.18em] font-medium mt-0.5" style={{ color: "rgba(14,165,233,0.55)" }}>
+                INTELLIGENCE SUITE
+              </div>
+            </div>
           </Link>
         </div>
-        <nav className="px-3 flex flex-col gap-0.5">
+
+        {/* Nav divider */}
+        <div className="mx-4 mb-3 h-px" style={{ background: "rgba(14,165,233,0.08)" }} />
+
+        {/* Nav items */}
+        <nav className="px-3 flex flex-col gap-0.5 flex-1">
           {NAV.map((item) => {
             const active = isActive(item.to);
-            const Icon = item.icon;
+            const Icon   = item.icon;
+            const isJarvis = item.to === "/jarvis";
             return (
               <Link
                 key={item.to}
@@ -95,7 +135,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                   <motion.span
                     layoutId="sidebar-active-bg"
                     className="absolute inset-0 rounded-lg"
-                    style={{ background: "rgba(14,165,233,0.07)" }}
+                    style={{ background: "rgba(14,165,233,0.08)" }}
                     transition={{ type: "spring", stiffness: 380, damping: 32 }}
                   />
                 )}
@@ -107,28 +147,55 @@ export function AppShell({ children }: { children: ReactNode }) {
                     transition={{ type: "spring", stiffness: 380, damping: 32 }}
                   />
                 )}
-                <Icon className="h-[18px] w-[18px] relative z-10 shrink-0" strokeWidth={1.75} />
-                <span className="font-medium relative z-10">{item.label}</span>
+                <Icon
+                  className="h-[17px] w-[17px] relative z-10 shrink-0"
+                  strokeWidth={1.75}
+                  style={{ color: active ? "var(--jarvis-primary, #0EA5E9)" : undefined }}
+                />
+                <span className="font-medium relative z-10 text-[13px]">{item.label}</span>
+
+                {/* JARVIS glow dot when active */}
+                {isJarvis && active && (
+                  <motion.span
+                    className="ml-auto relative z-10 h-1.5 w-1.5 rounded-full"
+                    style={{ background: "var(--jarvis-primary, #0EA5E9)" }}
+                    animate={{ opacity: [0.4, 1, 0.4] }}
+                    transition={{ duration: 2, repeat: Infinity }}
+                  />
+                )}
               </Link>
             );
           })}
         </nav>
-        <div className="mt-auto px-6 pb-6 text-[11px] text-copy-muted">
+
+        {/* Bottom */}
+        <div
+          className="px-5 py-4"
+          style={{ borderTop: "1px solid rgba(14,165,233,0.06)" }}
+        >
           <SyncIndicator />
         </div>
       </aside>
 
-      {/* Main content */}
+      {/* ── Main content ── */}
       <div className="flex-1 min-w-0 min-h-0 flex flex-col pb-20 md:pb-0">
         <main className="flex-1 min-h-0 overflow-y-auto">{children}</main>
       </div>
 
-      {/* Mobile bottom nav */}
-      <nav className="md:hidden fixed bottom-3 left-3 right-3 z-50 rounded-2xl border border-border bg-[var(--surface-2)]/90 backdrop-blur-xl shadow-[0_8px_30px_rgba(0,0,0,0.4)]">
+      {/* ── Mobile bottom nav ── */}
+      <nav
+        className="md:hidden fixed bottom-3 left-3 right-3 z-50 rounded-2xl"
+        style={{
+          background: "rgba(17,17,20,0.92)",
+          border: "1px solid rgba(14,165,233,0.1)",
+          backdropFilter: "blur(20px)",
+          boxShadow: "0 8px 32px rgba(0,0,0,0.45), 0 0 0 1px rgba(14,165,233,0.05)",
+        }}
+      >
         <div className="grid grid-cols-5">
           {MOBILE_PRIMARY.map((item) => {
             const active = isActive(item.to);
-            const Icon = item.icon;
+            const Icon   = item.icon;
             return (
               <Link
                 key={item.to}
@@ -137,19 +204,23 @@ export function AppShell({ children }: { children: ReactNode }) {
                   "relative flex flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors duration-150",
                   active ? "text-foreground" : "text-copy-secondary hover:text-foreground",
                 )}
+                style={{ color: active ? "var(--jarvis-primary, #0EA5E9)" : undefined }}
               >
                 <Icon className="h-[18px] w-[18px]" strokeWidth={1.75} />
                 <span className="truncate max-w-full px-0.5">{item.label}</span>
                 {active && (
                   <motion.span
                     layoutId="mobile-active-dot"
-                    className="absolute top-1 h-0.5 w-5 rounded-full bg-foreground/80"
+                    className="absolute top-1 h-0.5 w-5 rounded-full"
+                    style={{ background: "var(--jarvis-primary, #0EA5E9)" }}
                     transition={{ type: "spring", stiffness: 380, damping: 32 }}
                   />
                 )}
               </Link>
             );
           })}
+
+          {/* More sheet */}
           <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
             <SheetTrigger asChild>
               <button
@@ -165,7 +236,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                 {moreActive && (
                   <motion.span
                     layoutId="mobile-active-dot"
-                    className="absolute top-1 h-0.5 w-5 rounded-full bg-foreground/80"
+                    className="absolute top-1 h-0.5 w-5 rounded-full"
+                    style={{ background: "var(--jarvis-primary, #0EA5E9)" }}
                     transition={{ type: "spring", stiffness: 380, damping: 32 }}
                   />
                 )}
@@ -173,20 +245,27 @@ export function AppShell({ children }: { children: ReactNode }) {
             </SheetTrigger>
             <SheetContent
               side="right"
-              className="w-[78vw] max-w-xs border-l border-border bg-[var(--surface-1)] p-0"
+              className="w-[78vw] max-w-xs p-0"
+              style={{
+                background: "var(--surface-1)",
+                borderLeft: "1px solid rgba(14,165,233,0.1)",
+              }}
             >
-              <SheetHeader className="px-6 pt-7 pb-4 border-b border-border">
+              <SheetHeader className="px-5 pt-6 pb-4" style={{ borderBottom: "1px solid rgba(14,165,233,0.07)" }}>
                 <SheetTitle className="flex items-center gap-2.5 text-left">
-                  <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-white/90 to-white/40 grid place-items-center">
-                    <div className="h-3 w-3 rounded-[3px] bg-background" />
+                  <BrandMark />
+                  <div>
+                    <span className="text-[14px] font-semibold tracking-tight">AI Metrics</span>
+                    <div className="text-[8px] tracking-[0.18em] mt-0.5" style={{ color: "rgba(14,165,233,0.5)" }}>
+                      INTELLIGENCE SUITE
+                    </div>
                   </div>
-                  <span className="text-[15px] font-semibold tracking-tight">AI Metrics</span>
                 </SheetTitle>
               </SheetHeader>
               <nav className="px-3 py-4 flex flex-col gap-1">
                 {[...MOBILE_PRIMARY, ...MOBILE_SECONDARY].map((item) => {
                   const active = isActive(item.to);
-                  const Icon = item.icon;
+                  const Icon   = item.icon;
                   return (
                     <Link
                       key={item.to}
@@ -195,20 +274,31 @@ export function AppShell({ children }: { children: ReactNode }) {
                       className={cn(
                         "relative flex items-center gap-3 rounded-lg px-3 py-3 text-sm transition-all duration-200",
                         active
-                          ? "bg-white/[0.07] text-foreground"
-                          : "text-copy-secondary hover:text-foreground hover:bg-white/[0.04]",
+                          ? "text-foreground"
+                          : "text-copy-secondary hover:text-foreground",
                       )}
+                      style={active ? { background: "rgba(14,165,233,0.07)" } : undefined}
                     >
-                      <Icon className="h-[18px] w-[18px]" strokeWidth={1.75} />
+                      <Icon
+                        className="h-[18px] w-[18px]"
+                        strokeWidth={1.75}
+                        style={{ color: active ? "var(--jarvis-primary, #0EA5E9)" : undefined }}
+                      />
                       <span className="font-medium">{item.label}</span>
                       {active && (
-                        <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[2px] rounded-r-full bg-foreground/80" />
+                        <span
+                          className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[2px] rounded-r-full"
+                          style={{ background: "var(--jarvis-primary, #0EA5E9)" }}
+                        />
                       )}
                     </Link>
                   );
                 })}
               </nav>
-              <div className="mt-auto px-6 py-5 text-[11px] text-copy-muted border-t border-border">
+              <div
+                className="px-5 py-4 text-[11px]"
+                style={{ borderTop: "1px solid rgba(14,165,233,0.07)" }}
+              >
                 <SyncIndicator />
               </div>
             </SheetContent>
@@ -216,10 +306,17 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </nav>
 
-      {/* Sync indicator (mobile floating) */}
+      {/* Mobile sync indicator (floating) */}
       <AnimatePresence>
         <div className="fixed bottom-24 right-4 z-50 md:bottom-4">
-          <div className="rounded-full border border-border bg-[var(--surface-2)] px-3 py-2 shadow-[0_8px_30px_rgba(0,0,0,0.35)]">
+          <div
+            className="rounded-full px-3 py-2 shadow-lg"
+            style={{
+              background: "var(--surface-2)",
+              border: "1px solid rgba(14,165,233,0.1)",
+              boxShadow: "0 8px 24px rgba(0,0,0,0.3)",
+            }}
+          >
             <SyncIndicator compact />
           </div>
         </div>
