@@ -204,14 +204,14 @@ function HorizonPage() {
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-background/60 to-transparent z-0" />
 
       {/* ── Calendar view ─────────────────────────────────────────────── */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-4 md:px-10 pt-5 pb-6 relative z-10">
+      <div className="flex-1 min-h-0 overflow-y-auto md:overflow-hidden px-4 md:px-8 pt-5 md:pt-3 pb-6 md:pb-2 relative z-10 md:flex md:flex-col">
 
         {/* Page header */}
         <motion.div
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35, ease: EASE }}
-          className="flex items-center gap-3 mb-7 flex-wrap"
+          className="flex items-center gap-3 mb-4 md:mb-2.5 flex-wrap shrink-0"
         >
           {/* Icon */}
           <motion.div
@@ -304,7 +304,7 @@ function HorizonPage() {
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.32, ease: EASE, delay: 0.06 }}
-          className="flex items-center justify-between mb-5"
+          className="flex items-center justify-between mb-3 md:mb-2 shrink-0"
         >
           <AnimatePresence mode="wait" custom={direction}>
             <motion.div
@@ -314,10 +314,10 @@ function HorizonPage() {
               initial="enter" animate="center" exit="exit"
               className="flex items-baseline gap-2"
             >
-              <h2 className="text-xl md:text-[22px] font-bold tracking-tight text-white/88">
+              <h2 className="text-[18px] md:text-[19px] font-bold tracking-tight text-white/88">
                 {MONTHS[viewMonth]}
               </h2>
-              <span className="text-[13px] md:text-[15px] font-light text-white/22 tabular-nums">
+              <span className="text-[12px] md:text-[13px] font-light text-white/22 tabular-nums">
                 {viewYear}
               </span>
             </motion.div>
@@ -355,7 +355,7 @@ function HorizonPage() {
           variants={staggerContainer}
           initial="hidden"
           animate="show"
-          className="grid grid-cols-7 mb-1.5"
+          className="grid grid-cols-7 mb-1 shrink-0"
         >
           {DAYS.map((d) => (
             <motion.div
@@ -375,7 +375,7 @@ function HorizonPage() {
             custom={direction}
             variants={gridVariants}
             initial="enter" animate="center" exit="exit"
-            className="grid grid-cols-7 gap-1"
+            className="grid grid-cols-7 gap-1 md:flex-1 md:grid-rows-6"
           >
             {cells.map(({ dateStr, currentMonth, day }, cellIndex) => {
               const isToday = dateStr === todayKey;
@@ -393,7 +393,7 @@ function HorizonPage() {
                   whileHover={{ scale: 1.06, y: -1 }}
                   whileTap={{ scale: 0.94 }}
                   className={cn(
-                    "relative aspect-square flex flex-col items-center justify-center rounded-xl text-sm transition-all duration-200",
+                    "relative aspect-square md:aspect-auto md:h-full flex flex-col items-center justify-center rounded-xl text-sm transition-all duration-200",
                     isToday
                       ? "bg-white/[0.1] border border-white/[0.18] font-semibold text-white/90 shadow-[0_0_0_1px_rgba(255,255,255,0.04),0_4px_16px_rgba(0,0,0,0.3)]"
                       : isSelected
@@ -409,7 +409,7 @@ function HorizonPage() {
                       transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
                     />
                   )}
-                  <span className="text-[12px] md:text-[13px] relative z-10 tabular-nums">{day}</span>
+                  <span className="text-[11px] md:text-[12px] relative z-10 tabular-nums">{day}</span>
                   {hasTasks && (
                     <motion.span
                       initial={{ scale: 0 }}
