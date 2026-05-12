@@ -153,71 +153,72 @@ function startRecognition(mode: "passive" | "command" = "passive") {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   rec.onresult = (event: any) => {
+    if (recRef !== rec) return;
+
     for (let i = event.resultIndex; i < event.results.length; i++) {
       const text: string = event.results[i][0].transcript.trim();
       const isFinal: boolean = event.results[i].isFinal;
       const lower = text.toLowerCase();
 
       if (currentMode === "passive") {
-        // Only care about final results for wake-word detection
-        if (!isFinal) continue;
-
         const woke = WAKE_WORDS.some((w) => lower.includes(w));
         if (woke) {
-          stopRecognition();
+          // Instantly switch to command mode WITHOUT aborting the recognizer
+          currentMode = "command";
           patch({ isAwake: true, voiceState: "listening", transcript: "" });
 
-          // Check if command is inline with wake word
-          let inlineCmd = text;
-          for (const w of WAKE_WORDS) {
-            if (lower.includes(w)) {
-              const idx = lower.indexOf(w);
-              inlineCmd = text.slice(idx + w.length).replace(/^[\s,]+/, "").trim();
-              break;
+          const inlineCmd = stripWakeWord(text);
+
+          if (isFinal) {
+            if (inlineCmd.length > 3) {
+              stopRecognition();
+              handleCommand(inlineCmd);
+              return;
+            } else {
+              accumulatedFinalText = "";
+              latestInterimText = "";
             }
+          } else {
+            accumulatedFinalText = "";
+            latestInterimText = inlineCmd;
+            patch({ transcript: inlineCmd });
           }
 
-          if (inlineCmd.length > 3) {
-            // Inline command after wake word — process directly
-            handleCommand(inlineCmd);
-          } else {
-            // Wake word only — start listening for command
-            accumulatedFinalText = "";
-            latestInterimText = "";
-            startRecognition("command");
-            // Hard ceiling timeout
-            commandTimeout = setTimeout(() => {
-              if (_state.voiceState === "listening") {
-                stopRecognition();
+          // Start the hard ceiling for the command
+          clearTimeout(commandTimeout);
+          commandTimeout = setTimeout(() => {
+            if (_state.voiceState === "listening") {
+              clearSilenceTimer();
+              const fullText = [accumulatedFinalText, latestInterimText].filter(Boolean).join(" ").trim();
+              stopRecognition();
+              if (fullText.length > 1) {
+                handleCommand(stripWakeWord(fullText));
+              } else {
                 patch({ isAwake: false, voiceState: "idle", transcript: "" });
-                startRecognition("passive");
+                if (_state.enabled) startRecognition("passive");
               }
-            }, MAX_LISTEN_MS);
-          }
-          return;
+            }
+          }, MAX_LISTEN_MS);
+          
+          continue; 
         }
       } else if (currentMode === "command") {
-        // Reset the hard ceiling (user is still talking)
         clearTimeout(commandTimeout);
 
+        const stripped = stripWakeWord(text);
+
         if (isFinal) {
-          // Accumulate confirmed text
-          accumulatedFinalText = [accumulatedFinalText, text].filter(Boolean).join(" ").trim();
+          accumulatedFinalText = [accumulatedFinalText, stripped].filter(Boolean).join(" ").trim();
           latestInterimText = "";
-          // Update live transcript display
           patch({ transcript: accumulatedFinalText });
-          // Arm silence detector — waits for the user to pause
           armSilenceTimer();
         } else {
-          // Interim: update display but don't commit
-          latestInterimText = text;
+          latestInterimText = stripped;
           patch({ transcript: [accumulatedFinalText, latestInterimText].filter(Boolean).join(" ") });
         }
 
-        // Re-arm the hard ceiling timeout
         commandTimeout = setTimeout(() => {
           if (_state.voiceState === "listening") {
-            // Force finalize with whatever we have
             clearSilenceTimer();
             const fullText = [accumulatedFinalText, latestInterimText].filter(Boolean).join(" ").trim();
             stopRecognition();
@@ -235,6 +236,7 @@ function startRecognition(mode: "passive" | "command" = "passive") {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   rec.onerror = (e: any) => {
+    if (recRef !== rec) return;
     if (e.error === "not-allowed" || e.error === "service-not-allowed") {
       stopRecognition();
       patch({ voiceState: "idle", isAwake: false });
@@ -243,6 +245,7 @@ function startRecognition(mode: "passive" | "command" = "passive") {
   };
 
   rec.onend = () => {
+    if (recRef !== rec) return; // Prevent old aborted instances from triggering restarts
     recRef = null;
     if (intentionalStop) return;
 
