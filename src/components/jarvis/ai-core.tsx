@@ -107,7 +107,7 @@ interface ArcProps {
 function SpinningArc({ r, dasharray, stroke, strokeWidth, duration, reverse, linecap = "round" }: ArcProps) {
   return (
     <motion.g
-      style={{ originX: `${C}px`, originY: `${C}px` }}
+      style={{ originX: "50%", originY: "50%" }}
       animate={{ rotate: reverse ? -360 : 360 }}
       transition={{ duration, repeat: Infinity, ease: "linear" }}
     >
@@ -140,7 +140,7 @@ function RadarSweep({ active }: { active: boolean }) {
 
   return (
     <motion.g
-      style={{ originX: `${C}px`, originY: `${C}px` }}
+      style={{ originX: "50%", originY: "50%" }}
       animate={{ rotate: 360 }}
       transition={{
         duration: active ? 2.8 : 5.5,
@@ -148,6 +148,9 @@ function RadarSweep({ active }: { active: boolean }) {
         ease: "linear",
       }}
     >
+      {/* Invisible anchor ensures bounding box is exactly 200x200 centered at 100,100 */}
+      <circle cx={C} cy={C} r={C} fill="none" />
+      
       {/* Trailing gradient: 3 overlapping wedges at decreasing opacity */}
       {[1, 0.55, 0.25].map((opacity, i) => {
         const sweep = 30 + i * 10;
@@ -341,7 +344,7 @@ export function AICore({ voiceState, isAwake, size = 300 }: AICoreProps) {
           fill="url(#jv-field)"
           animate={{ opacity: isActive ? 1 : 0.4, scale: isActive ? 1.05 : 1 }}
           transition={{ duration: 1, ease: "easeInOut" }}
-          style={{ originX: `${C}px`, originY: `${C}px` }}
+          style={{ originX: "50%", originY: "50%" }}
         />
 
         {/* 2 · Outer arc — r=80, 300° span, clockwise */}
