@@ -9,9 +9,9 @@
 }
 
 /*
- * Dark Crimson Cinematic Theme
- * Futuristic tactical luxury interface
- * Premium dystopian sci-fi aesthetic
+ * Futuristic Violet Neon Theme
+ * Cinematic purple + black interface
+ * Premium sci-fi aesthetic
  */
 
 @theme inline {
@@ -79,45 +79,45 @@
      CORE BACKGROUND
   ========================================= */
 
-  --background: oklch(0.10 0.015 18);
-  --foreground: oklch(0.96 0.005 20);
+  --background: oklch(0.11 0.02 290);
+  --foreground: oklch(0.96 0.01 300);
 
   /* =========================================
      SURFACES
   ========================================= */
 
-  --card: oklch(0.15 0.02 18);
-  --card-foreground: oklch(0.95 0.005 20);
+  --card: oklch(0.16 0.025 290);
+  --card-foreground: oklch(0.95 0.01 300);
 
-  --popover: oklch(0.16 0.022 18);
-  --popover-foreground: oklch(0.95 0.005 20);
+  --popover: oklch(0.17 0.03 290);
+  --popover-foreground: oklch(0.95 0.01 300);
 
-  --surface-1: oklch(0.15 0.02 18);
-  --surface-2: oklch(0.18 0.025 18);
-  --surface-3: oklch(0.22 0.03 18);
+  --surface-1: oklch(0.16 0.025 290);
+  --surface-2: oklch(0.19 0.03 290);
+  --surface-3: oklch(0.23 0.035 290);
 
   /* =========================================
-     PRIMARY CRIMSON SYSTEM
+     PRIMARY VIOLET SYSTEM
   ========================================= */
 
-  --primary: oklch(0.68 0.20 22);
+  --primary: oklch(0.72 0.22 305);
   --primary-foreground: oklch(0.98 0 0);
 
-  --secondary: oklch(0.20 0.025 18);
-  --secondary-foreground: oklch(0.95 0.005 20);
+  --secondary: oklch(0.20 0.03 290);
+  --secondary-foreground: oklch(0.95 0.01 300);
 
-  --accent: oklch(0.28 0.05 18);
-  --accent-foreground: oklch(0.98 0 0);
+  --accent: oklch(0.27 0.05 295);
+  --accent-foreground: oklch(0.97 0 0);
 
   /* =========================================
      TEXT SYSTEM
   ========================================= */
 
-  --muted: oklch(0.18 0.02 18);
-  --muted-foreground: oklch(0.66 0.008 18);
+  --muted: oklch(0.18 0.025 290);
+  --muted-foreground: oklch(0.67 0.01 295);
 
-  --text-secondary: oklch(0.78 0.01 18);
-  --text-muted: oklch(0.56 0.008 18);
+  --text-secondary: oklch(0.78 0.015 295);
+  --text-muted: oklch(0.58 0.01 295);
 
   /* =========================================
      BORDERS + INPUTS
@@ -126,54 +126,52 @@
   --border: oklch(1 0 0 / 8%);
   --input: oklch(1 0 0 / 10%);
 
-  --ring: oklch(0.68 0.20 22 / 40%);
+  --ring: oklch(0.72 0.22 305 / 40%);
 
   /* =========================================
      DESTRUCTIVE
   ========================================= */
 
-  --destructive: oklch(0.70 0.24 25);
+  --destructive: oklch(0.62 0.23 25);
   --destructive-foreground: oklch(0.98 0 0);
 
   /* =========================================
      CHARTS
   ========================================= */
 
-  --chart-1: oklch(0.68 0.20 22);
-  --chart-2: oklch(0.62 0.18 16);
-  --chart-3: oklch(0.74 0.14 28);
-  --chart-4: oklch(0.58 0.16 10);
-  --chart-5: oklch(0.82 0.10 35);
+  --chart-1: oklch(0.72 0.20 305);
+  --chart-2: oklch(0.68 0.18 280);
+  --chart-3: oklch(0.75 0.16 330);
+  --chart-4: oklch(0.64 0.14 260);
+  --chart-5: oklch(0.82 0.12 320);
 
   /* =========================================
      SIDEBAR
   ========================================= */
 
-  --sidebar: oklch(0.12 0.018 18);
-  --sidebar-foreground: oklch(0.95 0.005 20);
+  --sidebar: oklch(0.13 0.025 290);
+  --sidebar-foreground: oklch(0.95 0.01 300);
 
-  --sidebar-primary: oklch(0.68 0.20 22);
+  --sidebar-primary: oklch(0.72 0.22 305);
   --sidebar-primary-foreground: oklch(0.98 0 0);
 
-  --sidebar-accent: oklch(0.22 0.03 18);
-  --sidebar-accent-foreground: oklch(0.96 0.005 20);
+  --sidebar-accent: oklch(0.22 0.035 295);
+  --sidebar-accent-foreground: oklch(0.96 0 0);
 
   --sidebar-border: oklch(1 0 0 / 6%);
-  --sidebar-ring: oklch(0.68 0.20 22 / 30%);
+  --sidebar-ring: oklch(0.72 0.22 305 / 35%);
 
   /* =========================================
-     CRIMSON TOKENS
+     BRAND TOKENS
   ========================================= */
 
-  --crimson-primary: #DC4C64;
-  --crimson-soft: #C93A52;
-  --scarlet-soft: #E05A6F;
-  --wine-dark: #531A24;
+  --violet-primary: #8B5CF6;
+  --violet-accent: #A855F7;
+  --violet-soft: #C084FC;
+  --violet-glow: rgba(139, 92, 246, 0.35);
 
-  --crimson-glow: rgba(220, 76, 100, 0.25);
-  --crimson-glow-soft: rgba(220, 76, 100, 0.08);
-
-  --glass-highlight: rgba(255,255,255,0.04);
+  --lavender-soft: rgba(216, 180, 254, 0.08);
+  --glass-highlight: rgba(255,255,255,0.05);
 }
 
 .dark {
@@ -194,9 +192,7 @@ html {
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
-
     font-family: var(--font-sans);
-
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
@@ -208,13 +204,13 @@ html {
     background-image:
       radial-gradient(
         circle at top,
-        rgba(220, 76, 100, 0.10),
-        transparent 35%
+        rgba(168, 85, 247, 0.12),
+        transparent 38%
       ),
       radial-gradient(
         circle at bottom right,
-        rgba(201, 58, 82, 0.06),
-        transparent 30%
+        rgba(139, 92, 246, 0.08),
+        transparent 35%
       );
 
     background-attachment: fixed;
@@ -235,12 +231,12 @@ html {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(220, 76, 100, 0.18);
+  background: rgba(168, 85, 247, 0.20);
   border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(220, 76, 100, 0.32);
+  background: rgba(168, 85, 247, 0.35);
 }
 
 /* =========================================
@@ -264,21 +260,17 @@ html {
 ========================================= */
 
 @utility glass-panel {
-  background: rgba(255,255,255,0.025);
-
+  background: rgba(255, 255, 255, 0.03);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
-
-  border: 1px solid rgba(220,76,100,0.10);
+  border: 1px solid rgba(168, 85, 247, 0.10);
 }
 
 @utility glass-panel-strong {
-  background: rgba(255,255,255,0.035);
-
+  background: rgba(255,255,255,0.04);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-
-  border: 1px solid rgba(220,76,100,0.16);
+  border: 1px solid rgba(168,85,247,0.16);
 }
 
 /* =========================================
@@ -287,21 +279,21 @@ html {
 
 @utility shadow-soft {
   box-shadow:
-    0 4px 24px rgba(0,0,0,0.50),
-    0 0 30px rgba(220,76,100,0.06);
+    0 4px 24px rgba(0,0,0,0.45),
+    0 0 30px rgba(139,92,246,0.08);
 }
 
 @utility shadow-elevated {
   box-shadow:
-    0 14px 48px rgba(0,0,0,0.60),
-    0 0 40px rgba(220,76,100,0.10);
+    0 14px 48px rgba(0,0,0,0.55),
+    0 0 40px rgba(168,85,247,0.12);
 }
 
-@utility crimson-glow {
+@utility neon-glow {
   box-shadow:
-    0 0 0 1px rgba(220,76,100,0.18),
-    0 0 24px rgba(220,76,100,0.16),
-    0 0 50px rgba(220,76,100,0.08);
+    0 0 0 1px rgba(168,85,247,0.20),
+    0 0 20px rgba(168,85,247,0.20),
+    0 0 50px rgba(168,85,247,0.12);
 }
 
 /* =========================================
@@ -313,16 +305,11 @@ html {
 }
 
 @utility text-muted-soft {
-  color: rgba(255,255,255,0.50);
+  color: rgba(255,255,255,0.52);
 }
 
-@utility text-crimson {
-  color: var(--crimson-primary);
-}
-
-@utility text-crimson-glow {
-  text-shadow:
-    0 0 12px rgba(220,76,100,0.35);
+@utility text-violet-glow {
+  text-shadow: 0 0 18px rgba(168,85,247,0.45);
 }
 
 /* =========================================
@@ -344,10 +331,10 @@ html {
   }
 }
 
-@utility hover-crimson {
+@utility hover-glow {
   &:hover {
     box-shadow:
-      0 0 0 1px rgba(220,76,100,0.20),
-      0 0 28px rgba(220,76,100,0.14);
+      0 0 0 1px rgba(168,85,247,0.25),
+      0 0 24px rgba(168,85,247,0.18);
   }
 }

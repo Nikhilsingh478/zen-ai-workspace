@@ -1213,9 +1213,9 @@ function TaskModal({
               onClick={() => handleReminderToggle(field.value, field.onChange)}
               whileTap={{ scale: 0.98 }}
               style={field.value ? {
-                border: "1px solid rgba(0,191,255,0.35)",
-                background: "rgba(0,191,255,0.07)",
-                boxShadow: "0 0 18px rgba(0,191,255,0.12), inset 0 0 12px rgba(0,191,255,0.04)",
+                border: "1px solid rgba(220,76,100,0.35)",
+                background: "rgba(220,76,100,0.07)",
+                boxShadow: "0 0 18px rgba(220,76,100,0.12), inset 0 0 12px rgba(220,76,100,0.04)",
               } : {
                 border: "1px solid rgba(255,255,255,0.07)",
                 background: "transparent",
@@ -1226,7 +1226,7 @@ function TaskModal({
               <AnimatePresence mode="wait">
                 {field.value ? (
                   <motion.span key="on" initial={{ scale: 0.6, opacity: 0, rotate: -15 }} animate={{ scale: 1, opacity: 1, rotate: 0 }} exit={{ scale: 0.6, opacity: 0 }} transition={{ type: "spring", stiffness: 400, damping: 20 }}>
-                    <Bell className="h-4 w-4 shrink-0" style={{ color: "#00BFFF", filter: "drop-shadow(0 0 6px rgba(0,191,255,0.6))" }} />
+                    <Bell className="h-4 w-4 shrink-0" style={{ color: "#DC4C64", filter: "drop-shadow(0 0 6px rgba(220,76,100,0.6))" }} />
                   </motion.span>
                 ) : (
                   <motion.span key="off" initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.6, opacity: 0 }} transition={{ duration: 0.15 }}>
@@ -1236,11 +1236,11 @@ function TaskModal({
               </AnimatePresence>
               <div className="text-left flex-1">
                 <p className="text-[13px] font-medium leading-none transition-colors duration-200"
-                  style={{ color: field.value ? "rgba(0,191,255,0.9)" : "rgba(255,255,255,0.45)" }}>
+                  style={{ color: field.value ? "rgba(220,76,100,0.9)" : "rgba(255,255,255,0.45)" }}>
                   {field.value ? "Reminder active" : "Enable reminder"}
                 </p>
                 <p className="text-[11px] mt-0.5 transition-colors duration-200"
-                  style={{ color: field.value ? "rgba(0,191,255,0.45)" : "rgba(255,255,255,0.18)" }}>
+                  style={{ color: field.value ? "rgba(220,76,100,0.45)" : "rgba(255,255,255,0.18)" }}>
                   {field.value ? "You'll be notified at task time" : "No notification scheduled"}
                 </p>
               </div>
@@ -1248,9 +1248,9 @@ function TaskModal({
               <div
                 className="relative h-5 w-9 rounded-full shrink-0 transition-all duration-300"
                 style={field.value ? {
-                  background: "rgba(0,191,255,0.25)",
-                  border: "1px solid rgba(0,191,255,0.5)",
-                  boxShadow: "0 0 10px rgba(0,191,255,0.3)",
+                  background: "rgba(220,76,100,0.25)",
+                  border: "1px solid rgba(220,76,100,0.5)",
+                  boxShadow: "0 0 10px rgba(220,76,100,0.3)",
                 } : {
                   background: "transparent",
                   border: "1px solid rgba(255,255,255,0.13)",
@@ -1261,8 +1261,8 @@ function TaskModal({
                   transition={{ type: "spring", stiffness: 500, damping: 28 }}
                   className="absolute top-[1px] left-[1px] h-4 w-4 rounded-full"
                   style={field.value ? {
-                    background: "radial-gradient(circle at 35% 35%, #4DEBFF, #00BFFF)",
-                    boxShadow: "0 0 8px rgba(0,191,255,0.7)",
+                    background: "radial-gradient(circle at 35% 35%, #E05A6F, #DC4C64)",
+                    boxShadow: "0 0 8px rgba(220,76,100,0.7)",
                   } : {
                     background: "rgba(255,255,255,0.25)",
                     boxShadow: "none",

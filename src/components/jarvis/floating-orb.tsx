@@ -21,7 +21,7 @@ function OrbWaveform() {
             display: "block",
             width: 2.5,
             borderRadius: 2,
-            background: "linear-gradient(180deg, #7EEEFF 0%, #00BFFF 100%)",
+            background: "linear-gradient(180deg, #F28D9E 0%, #DC4C64 100%)",
             originY: 1,
           }}
           animate={{
@@ -53,7 +53,7 @@ function ThinkingDots() {
             width: 4,
             height: 4,
             borderRadius: "50%",
-            background: "#00BFFF",
+            background: "#DC4C64",
           }}
           animate={{ y: [0, -5, 0], opacity: [0.4, 1, 0.4] }}
           transition={{
@@ -83,27 +83,27 @@ function JarvisIcon({ active }: { active: boolean }) {
       {/* Outer ring */}
       <circle
         cx="10" cy="10" r="8.5"
-        stroke={active ? "#4DEBFF" : "rgba(0,191,255,0.5)"}
+        stroke={active ? "#E05A6F" : "rgba(220,76,100,0.5)"}
         strokeWidth="1"
         strokeDasharray="4 2.5"
       />
       {/* Inner ring */}
       <circle
         cx="10" cy="10" r="5"
-        stroke={active ? "rgba(0,191,255,0.6)" : "rgba(0,191,255,0.25)"}
+        stroke={active ? "rgba(220,76,100,0.6)" : "rgba(220,76,100,0.25)"}
         strokeWidth="0.8"
       />
       {/* Core */}
       <circle
         cx="10" cy="10" r="2.5"
-        fill={active ? "#00BFFF" : "rgba(0,191,255,0.4)"}
+        fill={active ? "#DC4C64" : "rgba(220,76,100,0.4)"}
       />
       {/* Cardinal ticks */}
       {[[10, 1.5, 10, 4], [10, 16, 10, 18.5], [1.5, 10, 4, 10], [16, 10, 18.5, 10]].map(([x1, y1, x2, y2], i) => (
         <line
           key={i}
           x1={x1} y1={y1} x2={x2} y2={y2}
-          stroke={active ? "#4DEBFF" : "rgba(0,191,255,0.4)"}
+          stroke={active ? "#E05A6F" : "rgba(220,76,100,0.4)"}
           strokeWidth="1.2"
           strokeLinecap="round"
         />
@@ -118,7 +118,7 @@ function SpinnerArc() {
   return (
     <motion.div
       className="absolute inset-[-4px] rounded-full"
-      style={{ border: "1.5px solid transparent", borderTopColor: "#00BFFF", borderRightColor: "rgba(0,191,255,0.3)" }}
+      style={{ border: "1.5px solid transparent", borderTopColor: "#DC4C64", borderRightColor: "rgba(220,76,100,0.3)" }}
       animate={{ rotate: 360 }}
       transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
     />
@@ -134,7 +134,7 @@ function PulseRings() {
         <motion.div
           key={i}
           className="absolute inset-0 rounded-full"
-          style={{ border: "1px solid rgba(0,191,255,0.35)" }}
+          style={{ border: "1px solid rgba(220,76,100,0.35)" }}
           initial={{ scale: 1, opacity: 0.5 }}
           animate={{ scale: [1, 1.9, 1.9], opacity: [0.5, 0, 0] }}
           transition={{
@@ -188,7 +188,7 @@ export function JarvisFloatingOrb() {
               className="absolute rounded-full pointer-events-none"
               style={{
                 inset: -10,
-                background: "radial-gradient(circle, rgba(0,191,255,0.18) 0%, transparent 70%)",
+                background: "radial-gradient(circle, rgba(220,76,100,0.18) 0%, transparent 70%)",
               }}
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -214,12 +214,12 @@ export function JarvisFloatingOrb() {
             alignItems: "center",
             justifyContent: "center",
             background: isActive
-              ? "radial-gradient(circle at 38% 32%, #4DEBFF 0%, #00BFFF 40%, #00263F 100%)"
-              : "radial-gradient(circle at 38% 32%, rgba(0,191,255,0.45) 0%, rgba(0,40,70,0.97) 100%)",
-            border: `1.5px solid ${isActive ? "rgba(0,191,255,0.75)" : "rgba(0,191,255,0.2)"}`,
+              ? "radial-gradient(circle at 38% 32%, #E05A6F 0%, #DC4C64 40%, #531A24 100%)"
+              : "radial-gradient(circle at 38% 32%, rgba(220,76,100,0.45) 0%, rgba(83,26,36,0.97) 100%)",
+            border: `1.5px solid ${isActive ? "rgba(220,76,100,0.75)" : "rgba(220,76,100,0.2)"}`,
             boxShadow: isActive
-              ? "0 0 0 1px rgba(0,191,255,0.15), 0 4px 24px rgba(0,191,255,0.45), inset 0 1px 0 rgba(255,255,255,0.12)"
-              : "0 0 0 1px rgba(0,191,255,0.08), 0 2px 12px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.04)",
+              ? "0 0 0 1px rgba(220,76,100,0.15), 0 4px 24px rgba(220,76,100,0.45), inset 0 1px 0 rgba(255,255,255,0.12)"
+              : "0 0 0 1px rgba(220,76,100,0.08), 0 2px 12px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.04)",
             outline: "none",
             cursor: "pointer",
           }}
@@ -283,8 +283,8 @@ export function JarvisFloatingOrb() {
                 height: 16,
                 borderRadius: "50%",
                 background: "rgba(0,15,25,0.95)",
-                border: "1px solid rgba(0,191,255,0.3)",
-                color: "#00BFFF",
+                border: "1px solid rgba(220,76,100,0.3)",
+                color: "#DC4C64",
                 fontSize: 8,
                 fontWeight: 700,
                 display: "flex",

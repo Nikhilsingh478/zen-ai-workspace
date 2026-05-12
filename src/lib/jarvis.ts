@@ -55,6 +55,11 @@ export const isJarvisSupported = Boolean(SpeechRecognitionCtor);
 
 const WAKE_WORDS = ["jarvis", "hey jarvis", "okay jarvis"];
 
+function isMobileUA(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent);
+}
+
 // ─── Module-level store ───────────────────────────────────────────────────────
 
 const listeners = new Set<() => void>();
@@ -136,6 +141,15 @@ function armSilenceTimer() {
 function startRecognition(mode: "passive" | "command" = "passive") {
   if (!SpeechRecognitionCtor) return;
   if (recRef) return;
+
+  // FIX: On mobile, OS beeps every time the mic starts.
+  // Passive mode (wake word) constantly restarts the mic, causing an endless loop of beeps
+  // that interrupts the user's ability to speak.
+  // We disable passive listening on mobile; mobile users must use Tap-To-Talk.
+  if (mode === "passive" && isMobileUA()) {
+    patch({ voiceState: "idle", isAwake: false });
+    return;
+  }
 
   clearTimeout(restartTimer);
   currentMode = mode;
@@ -262,11 +276,9 @@ function startRecognition(mode: "passive" | "command" = "passive") {
       // Nothing useful — fall through to restart passive
     }
 
-    // WAKE WORD FIX: ALWAYS restart passive if enabled.
-    // The old condition checked voiceState === "idle" which was wrong —
-    // when command/speaking states are active, voiceState is NOT idle,
-    // so the restart never fired and wake word stopped working.
-    if (_state.enabled) {
+    // WAKE WORD FIX: ALWAYS restart passive if enabled, UNLESS on mobile
+    // Mobile OS beeps on every start, so passive mode is disabled there.
+    if (_state.enabled && !isMobileUA()) {
       restartTimer = setTimeout(() => startRecognition("passive"), 500);
     }
   };
@@ -276,7 +288,7 @@ function startRecognition(mode: "passive" | "command" = "passive") {
   } catch {
     recRef = null;
     // WAKE WORD FIX: retry on start() failure (e.g. mic still held by TTS)
-    if (_state.enabled) {
+    if (_state.enabled && !isMobileUA()) {
       restartTimer = setTimeout(() => startRecognition(mode), 1000);
     }
   }

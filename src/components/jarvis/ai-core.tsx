@@ -14,9 +14,9 @@ import type { JarvisVoiceState } from "@/lib/jarvis";
 // ─── Shared constants ─────────────────────────────────────────────────────────
 
 const C  = 100; // SVG centre x/y (viewBox 200×200)
-const C0 = "#0EA5E9"; // sky-500
-const C1 = "#38BDF8"; // sky-400
-const C2 = "#BAE6FD"; // sky-200
+const C0 = "#DC4C64"; // sky-500
+const C1 = "#E05A6F"; // sky-400
+const C2 = "#F28D9E"; // sky-200
 
 // ─── Waveform ─────────────────────────────────────────────────────────────────
 
