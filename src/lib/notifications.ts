@@ -3,9 +3,15 @@
  *
  * IMPORTANT: Chrome silently suppresses new Notification() calls when an
  * active service worker exists and notifications are permission-granted.
- * All notification display MUST go through ServiceWorkerRegistration
+ * All OS notification display MUST go through ServiceWorkerRegistration
  * .showNotification() to be visible reliably across desktop, PWA, and Android.
+ *
+ * In addition, this module fires the in-app banner (Instagram-style, top of
+ * screen) via showInAppNotification() so users always see it even when the
+ * browser tab is focused.  The banner also plays a subtle notification sound.
  */
+
+import { showInAppNotification } from "@/components/in-app-notification";
 
 export type NotificationPayload = {
   title: string;
@@ -15,14 +21,23 @@ export type NotificationPayload = {
 };
 
 /**
- * Show a notification via the active service worker registration.
- * Works in foreground, background, installed PWA, and Android Chrome.
+ * Show both an in-app banner AND a browser OS notification.
+ * The in-app banner is shown immediately regardless of OS permission state.
+ * The OS notification goes through the service worker.
  *
- * No-ops silently if permission is not granted or SW is unavailable.
+ * No-ops silently if SW is unavailable for the OS portion.
  */
 export async function showBrowserNotification(
   payload: NotificationPayload,
 ): Promise<void> {
+  // 1. Always show the in-app banner (plays sound automatically)
+  showInAppNotification({
+    title: payload.title,
+    body:  payload.body,
+    url:   payload.url ?? "/horizon",
+  });
+
+  // 2. Also send to OS notification tray if permission is granted
   if (!("Notification" in window)) return;
   if (Notification.permission !== "granted") return;
   if (!("serviceWorker" in navigator)) return;

@@ -14,7 +14,7 @@ import {
   Clock,
   BellRing,
 } from "lucide-react";
-import { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -119,8 +119,8 @@ const staggerItem = {
 
 // ─── Group tasks by hour ──────────────────────────────────────────────────────
 
-function groupByHour(tasks: HorizonTask[]): { label: string; tasks: HorizonTask[] }[] {
-  const map = new Map<string, HorizonTask[]>();
+function groupByHour(tasks: HorizonTask[]): { label: string; tasks: HorizonTask[]; hour: number }[] {
+  const map = new Map<string, { tasks: HorizonTask[]; hour: number }>();
   const sorted = [...tasks].sort((a, b) => a.taskTime.localeCompare(b.taskTime));
   for (const task of sorted) {
     const [h] = task.taskTime.split(":");
@@ -128,10 +128,10 @@ function groupByHour(tasks: HorizonTask[]): { label: string; tasks: HorizonTask[
     const ampm = hour >= 12 ? "PM" : "AM";
     const h12 = hour % 12 === 0 ? 12 : hour % 12;
     const label = `${h12} ${ampm}`;
-    if (!map.has(label)) map.set(label, []);
-    map.get(label)!.push(task);
+    if (!map.has(label)) map.set(label, { tasks: [], hour });
+    map.get(label)!.tasks.push(task);
   }
-  return Array.from(map.entries()).map(([label, tasks]) => ({ label, tasks }));
+  return Array.from(map.entries()).map(([label, v]) => ({ label, tasks: v.tasks, hour: v.hour }));
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
@@ -614,7 +614,7 @@ function Timeline({
   onEdit,
   onDelete,
 }: {
-  groups: { label: string; tasks: HorizonTask[] }[];
+  groups: { label: string; tasks: HorizonTask[]; hour: number }[];
   onToggle: (id: string) => void;
   onEdit: (t: HorizonTask) => void;
   onDelete: (id: string) => void;
@@ -623,16 +623,24 @@ function Timeline({
     <motion.div
       initial="hidden"
       animate="show"
-      variants={{ hidden: {}, show: { transition: { staggerChildren: 0.08 } } }}
-      className="space-y-0"
+      variants={{ hidden: {}, show: { transition: { staggerChildren: 0.07 } } }}
+      className="relative"
     >
-      {groups.map(({ label, tasks }, gi) => (
+      {/* Continuous vertical rail behind all groups */}
+      <div
+        className="absolute left-[27px] md:left-[35px] top-8 bottom-8 w-px pointer-events-none"
+        style={{
+          background: "linear-gradient(to bottom, transparent, rgba(255,255,255,0.09) 8%, rgba(255,255,255,0.09) 92%, transparent)",
+        }}
+      />
+      {groups.map(({ label, tasks, hour }, gi) => (
         <TimelineGroup
           key={label}
           timeLabel={label}
           tasks={tasks}
           groupIndex={gi}
           isLast={gi === groups.length - 1}
+          hour={hour}
           globalIndex={groups.slice(0, gi).reduce((acc, g) => acc + g.tasks.length, 0)}
           onToggle={onToggle}
           onEdit={onEdit}
@@ -645,11 +653,21 @@ function Timeline({
 
 // ─── Timeline group ───────────────────────────────────────────────────────────
 
+/** Colour band for the timeline node based on hour of day */
+function getHourAccent(hour: number): { outer: string; core: string; glow: string } {
+  if (hour < 6)  return { outer: "border-indigo-400/30",  core: "bg-indigo-300/70",  glow: "rgba(129,140,248,0.35)" };
+  if (hour < 12) return { outer: "border-sky-400/35",     core: "bg-sky-300/80",     glow: "rgba(56,189,248,0.38)" };
+  if (hour < 17) return { outer: "border-amber-400/35",   core: "bg-amber-300/80",   glow: "rgba(251,191,36,0.38)" };
+  if (hour < 20) return { outer: "border-orange-400/35",  core: "bg-orange-300/75",  glow: "rgba(251,146,60,0.38)" };
+  return          { outer: "border-violet-400/30",  core: "bg-violet-300/70",  glow: "rgba(167,139,250,0.35)" };
+}
+
 function TimelineGroup({
   timeLabel,
   tasks,
   groupIndex,
   isLast,
+  hour,
   globalIndex,
   onToggle,
   onEdit,
@@ -659,6 +677,7 @@ function TimelineGroup({
   tasks: HorizonTask[];
   groupIndex: number;
   isLast: boolean;
+  hour: number;
   globalIndex: number;
   onToggle: (id: string) => void;
   onEdit: (t: HorizonTask) => void;
@@ -666,28 +685,28 @@ function TimelineGroup({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const inView = useInView(ref, { once: true, margin: "0px 0px -40px 0px" });
-
-  // Node state: dim when all tasks in this group are done
   const allCompleted = tasks.every((t) => t.completed);
+  const accent = getHourAccent(hour);
 
   return (
     <motion.div
       ref={ref}
       variants={{
         hidden: { opacity: 0, y: 14 },
-        show: { opacity: 1, y: 0, transition: { duration: 0.36, ease: EASE, delay: groupIndex * 0.07 } },
+        show: { opacity: 1, y: 0, transition: { duration: 0.36, ease: EASE, delay: groupIndex * 0.06 } },
       }}
-      className="flex gap-0"
+      className="flex gap-0 mb-6"
     >
-      {/* ── Left: Timeline rail ─────────────────────────────────────── */}
-      <div className="flex flex-col items-center shrink-0 w-14 md:w-[72px]">
+      {/* ── Left: node column ─────────────────────────────────────── */}
+      <div className="flex flex-col items-center shrink-0 w-14 md:w-[72px] relative z-10">
 
         {/* Time label */}
         <motion.span
-          initial={{ opacity: 0, x: -5 }}
+          initial={{ opacity: 0, x: -6 }}
           animate={inView ? { opacity: 1, x: 0 } : {}}
-          transition={{ duration: 0.3, delay: groupIndex * 0.07 + 0.06, ease: EASE }}
-          className="text-[9px] md:text-[10px] font-medium text-white/[0.22] leading-none pt-[22px] whitespace-nowrap tabular-nums tracking-[0.08em] uppercase"
+          transition={{ duration: 0.28, delay: groupIndex * 0.06 + 0.05, ease: EASE }}
+          className="text-[9px] md:text-[10px] font-semibold tracking-[0.1em] uppercase tabular-nums whitespace-nowrap pt-1 leading-none"
+          style={{ color: allCompleted ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.38)" }}
         >
           {timeLabel}
         </motion.span>
@@ -696,57 +715,46 @@ function TimelineGroup({
         <motion.div
           initial={{ scale: 0, opacity: 0 }}
           animate={inView ? { scale: 1, opacity: 1 } : {}}
-          transition={{ type: "spring", stiffness: 340, damping: 24, delay: groupIndex * 0.07 + 0.12 }}
-          className="mt-2.5 relative flex items-center justify-center shrink-0"
-          style={{ width: 20, height: 20 }}
+          transition={{ type: "spring", stiffness: 360, damping: 22, delay: groupIndex * 0.06 + 0.1 }}
+          className="mt-2 relative flex items-center justify-center shrink-0"
+          style={{ width: 22, height: 22 }}
         >
           {/* Ambient pulse — only for incomplete groups */}
           {!allCompleted && (
             <motion.span
               className="absolute rounded-full"
-              style={{ inset: -6, background: "radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 70%)" }}
-              animate={{ opacity: [0, 0.6, 0], scale: [0.7, 1.15, 0.7] }}
-              transition={{ duration: 3.5, repeat: Infinity, ease: "easeInOut", delay: groupIndex * 0.45 }}
+              style={{
+                inset: -7,
+                background: `radial-gradient(circle, ${accent.glow} 0%, transparent 70%)`,
+              }}
+              animate={{ opacity: [0, 0.8, 0], scale: [0.7, 1.2, 0.7] }}
+              transition={{ duration: 3.2, repeat: Infinity, ease: "easeInOut", delay: groupIndex * 0.5 }}
             />
           )}
           {/* Outer ring */}
           <span className={cn(
-            "absolute inset-[-3px] rounded-full border transition-all duration-500",
-            allCompleted ? "border-white/[0.07]" : "border-white/[0.16]",
+            "absolute inset-[-4px] rounded-full border-[1.5px] transition-all duration-500",
+            allCompleted ? "border-white/[0.08]" : accent.outer,
           )} />
-          {/* Inner core */}
+          {/* Inner dot */}
           <span className={cn(
-            "h-[7px] w-[7px] rounded-full block transition-all duration-500",
+            "h-[8px] w-[8px] rounded-full block transition-all duration-500",
             allCompleted
-              ? "bg-white/[0.16]"
-              : "bg-white/[0.72] shadow-[0_0_10px_rgba(255,255,255,0.32),0_0_4px_rgba(255,255,255,0.5)]",
-          )} />
+              ? "bg-white/20"
+              : `${accent.core} shadow-[0_0_12px_var(--node-glow,rgba(255,255,255,0.4))]`,
+          )}
+          style={allCompleted ? {} : { "--node-glow": accent.glow } as React.CSSProperties}
+          />
         </motion.div>
 
-        {/* Connector spine — draws downward */}
+        {/* Spacer below node (the rail is rendered as an absolute element in Timeline) */}
         {!isLast && (
-          <motion.div
-            initial={{ scaleY: 0, opacity: 0 }}
-            animate={inView ? { scaleY: 1, opacity: 1 } : {}}
-            transition={{ duration: 0.65, delay: groupIndex * 0.07 + 0.2, ease: EASE }}
-            style={{ originY: "top" }}
-            className="relative mt-2.5 flex-1 min-h-[52px] flex justify-center"
-          >
-            {/* Main gradient line */}
-            <div className="w-px h-full bg-gradient-to-b from-white/[0.13] via-white/[0.055] to-transparent" />
-            {/* Soft glow overlay */}
-            <div className="absolute inset-0 flex justify-center pointer-events-none">
-              <div
-                className="h-full"
-                style={{ width: 3, background: "linear-gradient(to bottom, rgba(255,255,255,0.055), transparent)", filter: "blur(2px)" }}
-              />
-            </div>
-          </motion.div>
+          <div className="flex-1 min-h-[28px]" />
         )}
       </div>
 
       {/* ── Right: Task cards ─────────────────────────────────────────── */}
-      <div className="flex-1 min-w-0 pb-8 md:pb-11 pl-3 md:pl-4 space-y-2.5">
+      <div className="flex-1 min-w-0 pl-3 md:pl-4 space-y-2.5 pb-0">
         {tasks.map((task, i) => (
           <TimelineTaskCard
             key={task.id}

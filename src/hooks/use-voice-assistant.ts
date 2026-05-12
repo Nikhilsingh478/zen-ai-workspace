@@ -6,18 +6,20 @@
  *   passive    → active     (wake word detected)
  *   active     → processing (silence confirmed + at least one final chunk received)
  *   processing → speaking   (response ready, voiceResponses=true)
- *   speaking   → passive    (utterance ends)
+ *   speaking   → passive    (utterance ends → recognition restarts)
  *   any        → idle       (disabled)
  *   any        → error      (permission denied / unsupported)
  *
- * Wake-word stability:
- *   - ONE persistent SpeechRecognition instance — created once, reused via .start().
+ * Wake-word stability fixes (v2):
+ *   - Recognition instance is destroyed & recreated after each command cycle.
+ *     This fully sidesteps Chrome's "recognition already started" stale-state bug
+ *     that caused the listener to silently stop after a few uses.
  *   - isListeningRef/isStartingRef/manuallyStopped prevent duplicate .start() calls.
- *   - onend auto-recovers after 1s if not manually stopped.
+ *   - onend auto-recovers with scheduled restart when not manually stopped.
  *   - visibilitychange recovers listening when tab regains focus.
  *   - MIN_RESTART_MS cooldown prevents mobile restart storms.
  *   - Fuzzy wake-word matching: "hey jarvis", "he jarvis", "hi jarvis", "jarvis", etc.
- *   - Rolling 200-char passive buffer preserves context across interim chunks.
+ *   - Rolling 220-char passive buffer preserves context across interim chunks.
  *
  * Transcript robustness:
  *   - Silence timer (SILENCE_MS) only fires after at least one final chunk landed.
@@ -26,6 +28,9 @@
  *   - transcriptBufferRef accumulates only isFinal segments — never overwritten by interim.
  *   - interimRef holds the current live interim — joined to buffer for display only.
  *   - Max command window (MAX_CMD_MS) submits whatever is buffered if still active.
+ *
+ * Voice: always male — prefers Google UK English Male, then David, then any male
+ *   English voice.  Falls back to default if no male voice is found.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -52,6 +57,8 @@ const SILENCE_AFTER_FINAL_MS = 4500;
 const MAX_CMD_MS = 25000;
 /** Minimum ms between recognition .start() calls */
 const MIN_RESTART_MS = 1200;
+/** Delay before restarting recognition after a command cycle completes */
+const POST_COMMAND_RESTART_MS = 1000;
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -93,21 +100,73 @@ function containsWakePhrase(text: string, configuredWakeWord: string): boolean {
   return [...WAKE_PHRASES, cwn].some((p) => n.includes(p));
 }
 
-// ─── SpeechSynthesis helper ────────────────────────────────────────────────────
+// ─── SpeechSynthesis helper — MALE VOICE ONLY ─────────────────────────────────
 
-function speak(text: string, onEnd?: () => void) {
+/**
+ * Speaks `text` using a male English voice.
+ * Priority: Google UK English Male → Microsoft David → any male English voice.
+ * Falls back to browser default if no male voice is found.
+ */
+function speak(text: string, onEnd?: () => void): void {
   if (!("speechSynthesis" in window)) { onEnd?.(); return; }
   window.speechSynthesis.cancel();
+
   const utt = new SpeechSynthesisUtterance(text);
   utt.rate = 1.0; utt.pitch = 1.0; utt.volume = 1.0; utt.lang = "en-US";
-  const pref = window.speechSynthesis.getVoices().find(
-    (v) => v.lang.startsWith("en") &&
-      (v.name.includes("Google") || v.name.includes("Natural") || v.name.includes("Samantha")),
-  );
-  if (pref) utt.voice = pref;
-  utt.onend = () => onEnd?.();
-  utt.onerror = () => onEnd?.();
-  window.speechSynthesis.speak(utt);
+
+  const trySpeak = () => {
+    const voices = window.speechSynthesis.getVoices();
+
+    // Preference order: named male voices first, then any male-labeled voice
+    const malePreferences = [
+      "Google UK English Male",
+      "Microsoft David Desktop",
+      "Microsoft David",
+      "David",
+      "Google US English",  // Usually male default in Chrome
+    ];
+
+    let chosen = malePreferences
+      .map((name) => voices.find((v) => v.name.toLowerCase().includes(name.toLowerCase())))
+      .find(Boolean);
+
+    // Fallback: any English voice whose name suggests male (no "female" or "woman")
+    if (!chosen) {
+      chosen = voices.find(
+        (v) =>
+          v.lang.startsWith("en") &&
+          !v.name.toLowerCase().includes("female") &&
+          !v.name.toLowerCase().includes("woman") &&
+          !v.name.toLowerCase().includes("samantha") &&
+          !v.name.toLowerCase().includes("zira") &&
+          !v.name.toLowerCase().includes("hazel") &&
+          !v.name.toLowerCase().includes("karen") &&
+          !v.name.toLowerCase().includes("moira") &&
+          !v.name.toLowerCase().includes("tessa") &&
+          !v.name.toLowerCase().includes("victoria"),
+      );
+    }
+
+    if (chosen) utt.voice = chosen;
+    utt.onend = () => onEnd?.();
+    utt.onerror = () => onEnd?.();
+    window.speechSynthesis.speak(utt);
+  };
+
+  const voices = window.speechSynthesis.getVoices();
+  if (voices.length > 0) {
+    trySpeak();
+  } else {
+    // Voices not yet loaded — wait for the event
+    window.speechSynthesis.onvoiceschanged = () => {
+      window.speechSynthesis.onvoiceschanged = null;
+      trySpeak();
+    };
+    // Safety timeout: speak anyway after 300ms even if event never fires
+    setTimeout(() => {
+      if (!utt.voice) trySpeak();
+    }, 300);
+  }
 }
 
 // ─── Hook ──────────────────────────────────────────────────────────────────────
@@ -120,7 +179,7 @@ export function useVoiceAssistant(): VoiceAssistantHandle {
 
   // ── Core refs ────────────────────────────────────────────────────────────
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const recRef = useRef<any>(null);            // single persistent SpeechRecognition
+  const recRef = useRef<any>(null);            // current SpeechRecognition instance
   const stateRef = useRef<AssistantState>("idle");
   const mountedRef = useRef(true);
 
@@ -176,6 +235,27 @@ export function useVoiceAssistant(): VoiceAssistantHandle {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleCommandRef = useRef<(cmd: string) => Promise<void>>(null as any);
 
+  // ── Destroy the current recognition instance ──────────────────────────────
+  /**
+   * Tears down the existing SpeechRecognition instance completely.
+   * This is called before creating a fresh one for the next listening cycle.
+   * Chrome has a known bug where a reused instance can silently stop working
+   * after a few cycles — destroying & recreating fixes this reliably.
+   */
+  const destroyRecognition = useCallback(() => {
+    if (!recRef.current) return;
+    try {
+      recRef.current.onstart = null;
+      recRef.current.onresult = null;
+      recRef.current.onerror = null;
+      recRef.current.onend = null;
+      if (isListeningRef.current) recRef.current.abort();
+    } catch { /* ignore */ }
+    recRef.current = null;
+    isListeningRef.current = false;
+    isStartingRef.current = false;
+  }, []);
+
   // ── Submit accumulated command ────────────────────────────────────────────
   /**
    * Called once we're confident the user has finished speaking.
@@ -204,11 +284,6 @@ export function useVoiceAssistant(): VoiceAssistantHandle {
   }, [setStateSync, clearActiveState]);
 
   // ── Arm/reset the silence timer ───────────────────────────────────────────
-  /**
-   * Called on every speech event (interim or final).
-   * Uses a longer window once a final chunk has landed,
-   * preventing premature submission during mid-sentence pauses.
-   */
   const resetSilenceTimer = useCallback(() => {
     clearTimeout(silenceTimerRef.current);
     const delay = hasFinalRef.current ? SILENCE_AFTER_FINAL_MS : SILENCE_MS;
@@ -220,52 +295,32 @@ export function useVoiceAssistant(): VoiceAssistantHandle {
     }, delay);
   }, [submitCommand]);
 
-  // ── Attempt to (re-)start the persistent recognition instance ─────────────
-  const attemptStart = useCallback(() => {
-    if (!recRef.current || !mountedRef.current) return;
-    if (manuallyStopped.current) { console.log("[jarvis] restart prevented — manually stopped"); return; }
-    if (isListeningRef.current) { console.log("[jarvis] restart prevented — already listening"); return; }
-    if (isStartingRef.current) { console.log("[jarvis] restart prevented — start in flight"); return; }
+  // ── Build a fresh recognition instance and start it ───────────────────────
+  /**
+   * Creates a brand-new SpeechRecognition instance with all handlers wired up,
+   * then starts it.  By recreating every cycle we avoid Chrome's stale-instance
+   * bug that causes recognition to silently fail after a few activations.
+   */
+  const buildAndStartRecognition = useCallback(() => {
+    if (!SpeechRecognitionCtor) return;
+    if (!mountedRef.current) return;
+    if (manuallyStopped.current) {
+      console.log("[jarvis] build prevented — manually stopped");
+      return;
+    }
 
+    // Enforce cooldown
     const elapsed = Date.now() - lastRestartTimeRef.current;
     if (elapsed < MIN_RESTART_MS) {
       const delay = MIN_RESTART_MS - elapsed + 80;
       console.log(`[jarvis] restart scheduled in ${delay}ms (cooldown)`);
       clearTimeout(restartTimerRef.current);
-      restartTimerRef.current = setTimeout(attemptStart, delay);
+      restartTimerRef.current = setTimeout(buildAndStartRecognition, delay);
       return;
     }
 
-    isStartingRef.current = true;
-    lastRestartTimeRef.current = Date.now();
-    console.log("[jarvis] recognition starting");
-    try {
-      recRef.current.start();
-    } catch (err) {
-      isStartingRef.current = false;
-      console.warn("[jarvis] .start() threw:", err);
-      if (!manuallyStopped.current && mountedRef.current) {
-        restartTimerRef.current = setTimeout(attemptStart, 1500);
-      }
-    }
-  }, []);
-
-  // ── Schedule a recovery restart ───────────────────────────────────────────
-  const scheduleRestart = useCallback((delayMs = 1000) => {
-    if (manuallyStopped.current || !mountedRef.current) return;
-    clearTimeout(restartTimerRef.current);
-    restartTimerRef.current = setTimeout(() => {
-      const s = stateRef.current;
-      if ((s === "passive" || s === "active") && mountedRef.current && !manuallyStopped.current) {
-        console.log("[jarvis] passive recovery triggered");
-        attemptStart();
-      }
-    }, delayMs);
-  }, [attemptStart]);
-
-  // ── Build the ONE persistent SpeechRecognition instance ───────────────────
-  const initRecognition = useCallback(() => {
-    if (!SpeechRecognitionCtor || recRef.current) return;
+    // Tear down any existing instance first
+    destroyRecognition();
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rec = new SpeechRecognitionCtor() as any;
@@ -299,7 +354,6 @@ export function useVoiceAssistant(): VoiceAssistantHandle {
 
         // ── PASSIVE: detect wake phrase ────────────────────────────────
         if (stateRef.current === "passive") {
-          // Accumulate rolling context — preserves phrase across interim chunks
           passiveRollingRef.current = (passiveRollingRef.current + " " + text).trim().slice(-220);
 
           const ww = settingsRef.current.wakeWord;
@@ -318,7 +372,6 @@ export function useVoiceAssistant(): VoiceAssistantHandle {
                 hasFinalRef.current = true;
                 if (mountedRef.current) setTranscript(inlineCmd);
                 resetSilenceTimer();
-                // Also set max window
                 clearTimeout(commandMaxTimerRef.current);
                 commandMaxTimerRef.current = setTimeout(() => {
                   if (stateRef.current === "active" && mountedRef.current) submitCommand();
@@ -336,7 +389,6 @@ export function useVoiceAssistant(): VoiceAssistantHandle {
               }
             }, MAX_CMD_MS);
 
-            // Arm initial silence timer — user may still be speaking
             resetSilenceTimer();
           }
           return;
@@ -345,7 +397,6 @@ export function useVoiceAssistant(): VoiceAssistantHandle {
         // ── ACTIVE: accumulate command transcript ──────────────────────
         if (stateRef.current === "active") {
           if (isFinal) {
-            // Strip any wake-word residue from finals and append
             const stripped = stripWakeWord(text, settingsRef.current.wakeWord);
             if (stripped.length > 0) {
               transcriptBufferRef.current = (transcriptBufferRef.current + " " + stripped).trim();
@@ -354,19 +405,14 @@ export function useVoiceAssistant(): VoiceAssistantHandle {
             }
             interimRef.current = "";
           } else {
-            // Interim — update display ref only
             interimRef.current = stripWakeWord(text, settingsRef.current.wakeWord);
           }
 
-          // Live display: finalized buffer + current interim
           const display = (
             transcriptBufferRef.current +
             (interimRef.current ? " " + interimRef.current : "")
           ).trim();
           if (mountedRef.current) setTranscript(display);
-
-          // Reset silence timer on every speech event — interim or final
-          // The timer uses a longer window after the first final chunk lands
           resetSilenceTimer();
         }
       }
@@ -399,24 +445,39 @@ export function useVoiceAssistant(): VoiceAssistantHandle {
 
       if (manuallyStopped.current) return;
 
-      // Auto-recover in any listening state
+      // Auto-recover in passive state only — active/processing/speaking
+      // will trigger their own restart via the command completion flow.
       const s = stateRef.current;
-      if (s === "passive" || s === "active") {
-        scheduleRestart(1000);
+      if (s === "passive") {
+        clearTimeout(restartTimerRef.current);
+        restartTimerRef.current = setTimeout(buildAndStartRecognition, 1000);
       }
     };
-  }, [setStateSync, clearActiveState, resetSilenceTimer, scheduleRestart, submitCommand]);
+
+    // Start
+    isStartingRef.current = true;
+    lastRestartTimeRef.current = Date.now();
+    console.log("[jarvis] recognition starting (fresh instance)");
+    try {
+      rec.start();
+    } catch (err) {
+      isStartingRef.current = false;
+      console.warn("[jarvis] .start() threw:", err);
+      if (!manuallyStopped.current && mountedRef.current) {
+        clearTimeout(restartTimerRef.current);
+        restartTimerRef.current = setTimeout(buildAndStartRecognition, 1500);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clearActiveState, destroyRecognition, resetSilenceTimer, setStateSync, submitCommand]);
 
   // ── Stop listening cleanly ────────────────────────────────────────────────
   const stopListening = useCallback(() => {
     manuallyStopped.current = true;
     isStartingRef.current = false;
     clearTimeout(restartTimerRef.current);
-    if (recRef.current && isListeningRef.current) {
-      try { recRef.current.abort(); } catch { /* ignore */ }
-    }
-    isListeningRef.current = false;
-  }, []);
+    destroyRecognition();
+  }, [destroyRecognition]);
 
   // ── Command handler ───────────────────────────────────────────────────────
   const handleCommand = useCallback(
@@ -426,22 +487,25 @@ export function useVoiceAssistant(): VoiceAssistantHandle {
       setStateSync("processing");
       if (mountedRef.current) setTranscript(cmd);
 
-      // Detect command category for logging
-      const lower = cmd.toLowerCase();
-      const isNav = ["open", "go to", "show", "take me to", "navigate", "switch", "launch"]
-        .some((v) => lower.includes(v));
-      const isTask = ["remind", "schedule", "appointment", "task", "add to horizon", "meeting"]
-        .some((v) => lower.includes(v));
-      const category = isNav ? "navigation" : isTask ? "task-creation" : "ai-query";
-      console.log("[jarvis] parser confidence: high | category:", category);
-      if (!isNav && !isTask) console.log("[jarvis] fallback to Gemini: yes");
+      // Stop recognition during processing to avoid spurious input
+      if (recRef.current && isListeningRef.current) {
+        try { recRef.current.stop(); } catch { /* ignore */ }
+      }
 
       const result = await executeVoiceCommand(cmd, tasksRef.current);
       if (!mountedRef.current) return;
 
       console.log("[jarvis] command result:", result.type, result.type !== "navigate" ? result.text?.slice(0, 80) : result.route);
 
-      const returnToPassive = () => { clearActiveState(); setStateSync("passive"); };
+      const returnToPassive = () => {
+        clearActiveState();
+        setStateSync("passive");
+        // KEY FIX: always spin up a fresh recognition instance after each command
+        if (!manuallyStopped.current && mountedRef.current) {
+          clearTimeout(restartTimerRef.current);
+          restartTimerRef.current = setTimeout(buildAndStartRecognition, POST_COMMAND_RESTART_MS);
+        }
+      };
 
       const respond = (responseText: string, afterSpeak: () => void) => {
         if (settingsRef.current.voiceResponses) {
@@ -465,7 +529,7 @@ export function useVoiceAssistant(): VoiceAssistantHandle {
       if (mountedRef.current) setLastResponse(result.text);
       respond(result.text, returnToPassive);
     },
-    [setStateSync, clearActiveState],
+    [setStateSync, clearActiveState, buildAndStartRecognition],
   );
 
   useEffect(() => { handleCommandRef.current = handleCommand; }, [handleCommand]);
@@ -486,11 +550,10 @@ export function useVoiceAssistant(): VoiceAssistantHandle {
       setStateSync("error");
       return;
     }
-    initRecognition();
     manuallyStopped.current = false;
     setStateSync("passive");
-    attemptStart();
-  }, [setStateSync, initRecognition, attemptStart]);
+    buildAndStartRecognition();
+  }, [setStateSync, buildAndStartRecognition]);
 
   // ── Public disable ────────────────────────────────────────────────────────
   const disable = useCallback(() => {
@@ -517,8 +580,13 @@ export function useVoiceAssistant(): VoiceAssistantHandle {
     if (stateRef.current !== "idle" && stateRef.current !== "error") {
       clearActiveState();
       setStateSync("passive");
+      // Restart recognition immediately on dismiss
+      if (!manuallyStopped.current && mountedRef.current) {
+        clearTimeout(restartTimerRef.current);
+        restartTimerRef.current = setTimeout(buildAndStartRecognition, 600);
+      }
     }
-  }, [setStateSync, clearActiveState]);
+  }, [setStateSync, clearActiveState, buildAndStartRecognition]);
 
   // ── visibilitychange: recover on tab focus ────────────────────────────────
   useEffect(() => {
@@ -527,12 +595,13 @@ export function useVoiceAssistant(): VoiceAssistantHandle {
       console.log("[jarvis] tab visible — checking recovery");
       const s = stateRef.current;
       if ((s === "passive" || s === "active") && !manuallyStopped.current && !isListeningRef.current) {
-        scheduleRestart(800);
+        clearTimeout(restartTimerRef.current);
+        restartTimerRef.current = setTimeout(buildAndStartRecognition, 800);
       }
     };
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
-  }, [scheduleRestart]);
+  }, [buildAndStartRecognition]);
 
   // ── Auto-start on mount ───────────────────────────────────────────────────
   useEffect(() => {
@@ -545,10 +614,9 @@ export function useVoiceAssistant(): VoiceAssistantHandle {
         .then((result) => {
           if (result.state === "granted") {
             setPermission("granted");
-            initRecognition();
             manuallyStopped.current = false;
             setStateSync("passive");
-            attemptStart();
+            buildAndStartRecognition();
           } else if (result.state === "denied") {
             setPermission("denied");
             setStateSync("error");
@@ -579,10 +647,9 @@ export function useVoiceAssistant(): VoiceAssistantHandle {
       clearTimeout(commandMaxTimerRef.current);
       clearTimeout(silenceTimerRef.current);
       if ("speechSynthesis" in window) window.speechSynthesis.cancel();
-      isStartingRef.current = false;
-      if (recRef.current) { try { recRef.current.abort(); } catch { /* ignore */ } }
+      destroyRecognition();
     };
-  }, []);
+  }, [destroyRecognition]);
 
   return { state, permission, transcript, lastResponse, enable, disable, dismiss };
 }

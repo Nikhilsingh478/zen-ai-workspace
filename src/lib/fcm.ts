@@ -3,6 +3,7 @@ import { useSyncExternalStore } from "react";
 import { getMessagingInstance, isFirebaseConfigured } from "@/lib/firebase";
 import { isPushSupported } from "@/lib/notifications";
 import { supabase } from "@/lib/supabase";
+import { showInAppNotification } from "@/components/in-app-notification";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -163,14 +164,16 @@ function attachForegroundListener(): void {
     const body  = payload.notification?.body  ?? "";
     const url   = (payload.data?.url as string | undefined) ?? "/horizon";
 
+    // Always show the in-app banner (visible immediately, plays sound)
+    showInAppNotification({ title, body, url });
+
     if (Notification.permission !== "granted") {
       console.warn("[fcm] Foreground message received but permission is not granted");
       return;
     }
 
     try {
-      // Use the SW registration to show the notification — this works in all
-      // contexts (foreground, background, PWA, Android Chrome).
+      // Also send the OS notification so it lands in the notification tray
       const reg = await navigator.serviceWorker.ready;
       await reg.showNotification(title, {
         body,
@@ -264,25 +267,35 @@ export function getNotificationStatus(): NotificationStatus {
  * of FCM delivery. Throws if permission is not granted or SW is unavailable.
  */
 export async function sendTestNotification(): Promise<void> {
-  if (Notification.permission !== "granted") {
-    throw new Error("Notification permission is not granted");
-  }
-  if (!("serviceWorker" in navigator)) {
-    throw new Error("Service workers not supported");
-  }
-
-  const reg = await navigator.serviceWorker.ready;
-  console.debug("[fcm] Sending test notification via SW:", reg.active?.scriptURL);
-
-  await reg.showNotification("Test Notification", {
-    body: "If you see this, browser notifications are working correctly.",
-    icon:               "/favicon.png",
-    badge:              "/favicon.png",
-    tag:                "horizon-test",
-    requireInteraction: false,
-    silent:             false,
-    data:               { url: "/horizon" },
+  // Always show the in-app banner (works even without OS permission)
+  showInAppNotification({
+    title: "Test Notification",
+    body: "If you see this, in-app notifications are working correctly.",
+    url: "/horizon",
   });
 
-  console.debug("[fcm] Test notification dispatched");
+  if (!("serviceWorker" in navigator) || Notification.permission !== "granted") {
+    // In-app banner already shown — skip SW notification
+    console.debug("[fcm] Test notification shown in-app only (no OS permission or SW)");
+    return;
+  }
+
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    console.debug("[fcm] Sending test notification via SW:", reg.active?.scriptURL);
+
+    await reg.showNotification("Test Notification", {
+      body: "If you see this, browser notifications are working correctly.",
+      icon:               "/favicon.png",
+      badge:              "/favicon.png",
+      tag:                "horizon-test",
+      requireInteraction: false,
+      silent:             false,
+      data:               { url: "/horizon" },
+    });
+
+    console.debug("[fcm] Test notification dispatched to OS tray");
+  } catch (err) {
+    console.error("[fcm] SW showNotification error:", err);
+  }
 }
