@@ -353,26 +353,23 @@ html {
 @utility scanning-glow {
   position: relative;
   overflow: hidden;
-}
 
-@utility scanning-glow::before {
-  content: "";
-
-  position: absolute;
-  inset: 0;
-
-  background:
-    linear-gradient(
-      120deg,
-      transparent 0%,
-      rgba(125,211,252,0.08) 45%,
-      rgba(125,211,252,0.14) 50%,
-      rgba(125,211,252,0.08) 55%,
-      transparent 100%
-    );
-
-  transform: translateX(-100%);
-  animation: scanMove 5s linear infinite;
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(
+        120deg,
+        transparent 0%,
+        rgba(125,211,252,0.08) 45%,
+        rgba(125,211,252,0.14) 50%,
+        rgba(125,211,252,0.08) 55%,
+        transparent 100%
+      );
+    transform: translateX(-100%);
+    animation: scanMove 5s linear infinite;
+  }
 }
 
 @keyframes scanMove {
