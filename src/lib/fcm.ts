@@ -184,8 +184,8 @@ function attachForegroundListener(): void {
       const uniqueTag = `horizon-${Date.now()}`;
       await reg.showNotification(title, {
         body,
-        icon:               "/favicon.png",
-        badge:              "/favicon.png",
+        icon:               "/icon.svg",
+        badge:              "/badge.svg",
         tag:                uniqueTag,
         silent:             false,
         vibrate:            [200, 60, 200],
@@ -299,8 +299,8 @@ export async function sendTestNotification(): Promise<void> {
 
     await reg.showNotification("Test Notification", {
       body: "If you see this, browser notifications are working correctly.",
-      icon:               "/favicon.png",
-      badge:              "/favicon.png",
+      icon:               "/icon.svg",
+      badge:              "/badge.svg",
       tag:                "horizon-test",
       silent:             false,
       vibrate:            [200, 50, 200],

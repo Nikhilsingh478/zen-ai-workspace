@@ -18,7 +18,7 @@
 // ─── PWA Cache ────────────────────────────────────────────────────────────────
 
 const CACHE_NAME = "ai-metrics-v4";
-const PRECACHE = ["/", "/manifest.json", "/favicon.png"];
+const PRECACHE = ["/", "/manifest.json", "/icon.svg", "/badge.svg"];
 
 self.addEventListener("install", (event) => {
   console.debug("[sw] install | cache:", CACHE_NAME);
@@ -80,8 +80,8 @@ async function isMobileClient() {
 async function buildNotificationOptions(body, url, tag) {
   return {
     body,
-    icon:               "/favicon.png",
-    badge:              "/favicon.png",
+    icon:               "/icon.svg",
+    badge:              "/badge.svg",
     tag:                tag ?? "horizon-reminder",
     silent:             false,          // OS sound ON
     vibrate:            [200, 50, 200], // Android haptics
