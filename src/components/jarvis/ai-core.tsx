@@ -1,63 +1,32 @@
 /**
- * JARVIS AI Core — holographic centerpiece.
- * FIX: Clean UI with consistent color palette (Sky blue theme)
- * Removed awkwardly placed circles and cluttered elements
- * Smooth animations with proper centering
+ * JARVIS AI Core — Complete SVG rewrite.
+ *
+ * Using SVG guarantees perfect centering — no more misaligned circles.
+ * Design: elegant arc-based holographic interface with reactive animations.
  */
 
 import { motion, AnimatePresence } from "framer-motion";
 import type { JarvisVoiceState } from "@/lib/jarvis";
 
-// Consistent color palette using CSS variables (matches globals.css)
-// Primary: #0EA5E9 (sky-500)
-// Accent: #38BDF8 (sky-400)
-// Dark: #0284C7 (sky-600)
-// Glow: rgba(14, 165, 233, 0.4)
-
-const KEYFRAMES = `
-@keyframes jarvis-cw   { to { transform: translate(-50%,-50%) rotate(360deg);  } }
-@keyframes jarvis-ccw  { to { transform: translate(-50%,-50%) rotate(-360deg); } }
-@keyframes jarvis-sweep { from { transform: rotate(-90deg); } to { transform: rotate(270deg); } }
-@keyframes jarvis-pulse-out {
-  0%   { transform: translate(-50%,-50%) scale(1);   opacity: 0.5; }
-  100% { transform: translate(-50%,-50%) scale(2.2); opacity: 0;   }
+const STYLES = `
+@keyframes jv-orb-breathe {
+  0%,100% { filter: drop-shadow(0 0 8px rgba(14,165,233,0.55)) drop-shadow(0 0 20px rgba(14,165,233,0.25)); }
+  50%      { filter: drop-shadow(0 0 16px rgba(56,189,248,0.75)) drop-shadow(0 0 40px rgba(56,189,248,0.35)); }
 }
-@keyframes jarvis-orb-breathe {
-  0%, 100% { box-shadow: 0 0 24px 6px rgba(14,165,233,0.3), 0 0 60px 12px rgba(14,165,233,0.1); }
-  50%       { box-shadow: 0 0 40px 12px rgba(56,189,248,0.45), 0 0 100px 24px rgba(56,189,248,0.15); }
-}
-@keyframes jarvis-glow-pulse {
-  0%, 100% { opacity: 0.4; }
-  50%       { opacity: 0.8; }
-}
+.jv-orb { animation: jv-orb-breathe 3s ease-in-out infinite; }
 `;
-
-function InjectKeyframes() { return <style>{KEYFRAMES}</style>; }
-
-// Clean rings - fewer, more elegant
-const RINGS = [
-  { size: "88%", dur: 14, dir: "jarvis-cw",  opacity: 0.35, dashed: false, sw: 1.2 },
-  { size: "68%", dur: 22, dir: "jarvis-ccw", opacity: 0.25, dashed: true,  sw: 0.8 },
-  { size: "48%", dur: 30, dir: "jarvis-cw",  opacity: 0.2,  dashed: false, sw: 0.6 },
-];
 
 function Waveform({ active }: { active: boolean }) {
   const bars = [0.4, 0.65, 0.9, 0.7, 1, 0.75, 0.5, 0.8, 0.6];
   return (
-    <div className="flex items-center gap-[3px]" style={{ height: 28 }}>
+    <div className="flex items-center gap-[3px]" style={{ height: 26 }}>
       {bars.map((base, i) => (
         <motion.div
           key={i}
-          style={{
-            width: 2.5,
-            height: "100%",
-            borderRadius: 2,
-            background: "var(--jarvis-accent, #38BDF8)",
-            originY: "center",
-          }}
+          style={{ width: 2.5, height: "100%", borderRadius: 2, background: "#38BDF8", originY: "center" }}
           animate={active
-            ? { scaleY: [base, base * 1.6, base * 0.5, base * 1.3, base], opacity: [0.6, 1, 0.5, 1, 0.6] }
-            : { scaleY: 0.15, opacity: 0.35 }}
+            ? { scaleY: [base, base * 1.7, base * 0.4, base * 1.4, base], opacity: [0.6, 1, 0.5, 1, 0.6] }
+            : { scaleY: 0.15, opacity: 0.3 }}
           transition={active
             ? { duration: 0.55 + i * 0.06, repeat: Infinity, repeatType: "mirror", ease: "easeInOut", delay: i * 0.04 }
             : { duration: 0.3 }}
@@ -73,14 +42,9 @@ function ProcessingDots() {
       {[0, 1, 2].map((i) => (
         <motion.div
           key={i}
-          style={{
-            width: 5,
-            height: 5,
-            borderRadius: "50%",
-            background: "var(--jarvis-accent, #38BDF8)",
-          }}
+          style={{ width: 5, height: 5, borderRadius: "50%", background: "#38BDF8" }}
           animate={{ opacity: [0.2, 1, 0.2], scale: [0.8, 1.3, 0.8] }}
-          transition={{ duration: 0.9, repeat: Infinity, delay: i * 0.2, ease: "easeInOut" }}
+          transition={{ duration: 0.85, repeat: Infinity, delay: i * 0.2, ease: "easeInOut" }}
         />
       ))}
     </div>
@@ -94,226 +58,212 @@ interface AICoreProps {
 }
 
 export function AICore({ voiceState, isAwake, size = 300 }: AICoreProps) {
-  const isListening = voiceState === "listening";
+  const isListening  = voiceState === "listening";
   const isProcessing = voiceState === "processing";
-  const isSpeaking = voiceState === "speaking";
-  const isActive = isAwake || isListening || isProcessing || isSpeaking;
-  const speedMul = isActive ? 0.5 : 1;
+  const isSpeaking   = voiceState === "speaking";
+  const isActive     = isAwake || isListening || isProcessing || isSpeaking;
+  const speed        = isActive ? 0.5 : 1;
+
+  // Arc stroke-dasharray calculations (circumference = 2πr)
+  // Arc 1: r=80, 300° arc  → dasharray = "419 84"  (502*300/360=419, gap=84)
+  // Arc 2: r=62, 240° arc  → dasharray = "259 130"  (389*240/360=259)
+  // Arc 3: r=44, 200° arc  → dasharray = "153 124"  (277*200/360=153)
+  const bracket = `rgba(14,165,233,${isActive ? 0.45 : 0.2})`;
 
   return (
-    <div className="relative select-none" style={{ width: size, height: size }}>
-      <InjectKeyframes />
+    <div className="select-none" style={{ width: size, height: size, position: "relative" }}>
+      <style>{STYLES}</style>
 
-      {/* Ambient glow - cleaner and smoother */}
-      <motion.div
-        className="absolute inset-[-15%] rounded-full pointer-events-none"
-        animate={{
-          opacity: isActive ? 0.6 : 0.2,
-          background: isActive
-            ? "radial-gradient(circle, rgba(14,165,233,0.12) 0%, rgba(14,165,233,0) 70%)"
-            : "radial-gradient(circle, rgba(14,165,233,0.06) 0%, rgba(14,165,233,0) 70%)",
-        }}
-        transition={{ duration: 0.7 }}
-      />
-
-      {/* Rotating rings — clean and minimal */}
-      {RINGS.map((ring, idx) => (
-        <div
-          key={idx}
-          style={{
-            position: "absolute",
-            width: ring.size,
-            height: ring.size,
-            top: "50%",
-            left: "50%",
-            borderRadius: "50%",
-            border: `${ring.sw}px ${ring.dashed ? "dashed" : "solid"} rgba(14,165,233,${ring.opacity})`,
-            animation: `${ring.dir} ${ring.dur * speedMul}s linear infinite`,
-            transition: "border-color 0.3s",
-          }}
-        />
-      ))}
-
-      {/* Radar sweep - subtle and elegant */}
-      <div
-        style={{
-          position: "absolute",
-          width: "72%",
-          height: "72%",
-          top: "50%",
-          left: "50%",
-          transform: "translate(-50%,-50%)",
-          borderRadius: "50%",
-          overflow: "hidden",
-          opacity: isActive ? 0.7 : 0.3,
-          transition: "opacity 0.3s",
-        }}
+      <svg
+        viewBox="0 0 200 200"
+        width={size}
+        height={size}
+        style={{ overflow: "visible" }}
       >
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            background: "conic-gradient(from 0deg, transparent 0deg, rgba(56,189,248,0.1) 30deg, transparent 70deg)",
-            animation: `jarvis-sweep ${isActive ? "2.8s" : "5s"} linear infinite`,
-            transformOrigin: "center",
-          }}
-        />
-      </div>
+        <defs>
+          {/* Orb gradient */}
+          <radialGradient id="jv-orb-grad" cx="38%" cy="32%" r="65%">
+            <stop offset="0%"   stopColor="#BAE6FD" />
+            <stop offset="45%"  stopColor="#0EA5E9" />
+            <stop offset="100%" stopColor="#0369A1" />
+          </radialGradient>
 
-      {/* Pulse rings - only 2, cleaner */}
-      {[0, 1].map((i) => (
-        <div
-          key={i}
-          style={{
-            position: "absolute",
-            width: "28%",
-            height: "28%",
-            top: "50%",
-            left: "50%",
-            borderRadius: "50%",
-            border: `0.8px solid rgba(56,189,248,${isActive ? 0.5 : 0.25})`,
-            animation: `jarvis-pulse-out ${isActive ? 2.2 + i * 0.8 : 3.5 + i * 1.2}s ease-out ${i * (isActive ? 0.7 : 1.0)}s infinite`,
-          }}
-        />
-      ))}
+          {/* Ambient glow fill */}
+          <radialGradient id="jv-glow-fill" cx="50%" cy="50%">
+            <stop offset="0%"   stopColor="rgba(14,165,233,0.18)" />
+            <stop offset="60%"  stopColor="rgba(14,165,233,0.04)" />
+            <stop offset="100%" stopColor="rgba(14,165,233,0)"    stopOpacity="0" />
+          </radialGradient>
 
-      {/* Center orb — wrapper handles centering */}
-      <div
-        style={{
-          position: "absolute",
-          width: "24%",
-          height: "24%",
-          top: "50%",
-          left: "50%",
-          transform: "translate(-50%, -50%)",
-        }}
-      >
-        <motion.div
-          className="w-full h-full rounded-full"
-          style={{
-            background: "radial-gradient(circle at 35% 35%, #7DD3FC, #0EA5E9 60%, #0369A1)",
-            animation: "jarvis-orb-breathe 2.5s ease-in-out infinite",
-            cursor: "pointer",
-          }}
-          animate={{
-            scale: isListening ? 1.12 : isProcessing ? [1, 1.06, 1] : 1,
-          }}
-          transition={{
-            scale: isProcessing
-              ? { duration: 0.45, repeat: Infinity, repeatType: "mirror" }
-              : { type: "spring", stiffness: 240, damping: 24 },
-          }}
+          {/* Blurred glow behind orb */}
+          <filter id="jv-orb-glow" x="-100%" y="-100%" width="300%" height="300%">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+
+        {/* ── Ambient glow ── */}
+        <motion.circle
+          cx="100" cy="100" r="96"
+          fill="url(#jv-glow-fill)"
+          animate={{ opacity: isActive ? 1 : 0.45 }}
+          transition={{ duration: 0.8 }}
+        />
+
+        {/* ── Arc 1 — outer, clockwise, 300° ── */}
+        <motion.g
+          style={{ originX: "100px", originY: "100px" }}
+          animate={{ rotate: 360 }}
+          transition={{ duration: 14 * speed, repeat: Infinity, ease: "linear" }}
         >
-          {/* Inner highlight - subtle and elegant */}
-          <div
-            style={{
-              position: "absolute",
-              width: "35%",
-              height: "35%",
-              top: "15%",
-              left: "15%",
-              borderRadius: "50%",
-              background: "radial-gradient(circle, rgba(255,255,255,0.7), transparent)",
-            }}
+          <circle
+            cx="100" cy="100" r="80"
+            fill="none"
+            stroke={`rgba(14,165,233,${isActive ? 0.45 : 0.28})`}
+            strokeWidth="1.3"
+            strokeDasharray="419 84"
+            strokeLinecap="round"
+            style={{ transition: "stroke 0.6s" }}
           />
-          
-          {/* Inner core glow */}
-          <div
-            style={{
-              position: "absolute",
-              width: "60%",
-              height: "60%",
-              top: "20%",
-              left: "20%",
-              borderRadius: "50%",
-              background: "radial-gradient(circle, rgba(56,189,248,0.4), transparent)",
-            }}
-          />
-        </motion.div>
-      </div>
+        </motion.g>
 
-      {/* Minimal HUD brackets - only 4 corners, cleaner positioning */}
-      {[
-        "top-[6%] left-[6%] border-t border-l",
-        "top-[6%] right-[6%] border-t border-r",
-        "bottom-[6%] left-[6%] border-b border-l",
-        "bottom-[6%] right-[6%] border-b border-r",
-      ].map((cls, i) => (
-        <div
-          key={i}
-          className={`absolute ${cls} w-5 h-5`}
-          style={{
-            borderColor: `rgba(14,165,233,${isActive ? 0.4 : 0.2})`,
-            transition: "border-color 0.3s",
-          }}
+        {/* ── Arc 2 — middle, counter-clockwise, 240° ── */}
+        <motion.g
+          style={{ originX: "100px", originY: "100px" }}
+          animate={{ rotate: -360 }}
+          transition={{ duration: 20 * speed, repeat: Infinity, ease: "linear" }}
+        >
+          <circle
+            cx="100" cy="100" r="62"
+            fill="none"
+            stroke={`rgba(56,189,248,${isActive ? 0.32 : 0.18})`}
+            strokeWidth="0.9"
+            strokeDasharray="259 130"
+            strokeLinecap="round"
+            style={{ transition: "stroke 0.6s" }}
+          />
+        </motion.g>
+
+        {/* ── Arc 3 — inner, clockwise, dotted, 200° ── */}
+        <motion.g
+          style={{ originX: "100px", originY: "100px" }}
+          animate={{ rotate: 360 }}
+          transition={{ duration: 28 * speed, repeat: Infinity, ease: "linear" }}
+        >
+          <circle
+            cx="100" cy="100" r="44"
+            fill="none"
+            stroke={`rgba(14,165,233,${isActive ? 0.28 : 0.14})`}
+            strokeWidth="0.7"
+            strokeDasharray="8 8"
+            strokeLinecap="round"
+            style={{ transition: "stroke 0.6s" }}
+          />
+        </motion.g>
+
+        {/* ── Radar sweep ── */}
+        <motion.g
+          style={{ originX: "100px", originY: "100px" }}
+          animate={{ rotate: 360 }}
+          transition={{ duration: (isActive ? 3 : 5.5), repeat: Infinity, ease: "linear" }}
+        >
+          {/* Wedge: 30° sweep */}
+          <path
+            d="M 100 100 L 100 18 A 82 82 0 0 1 141 29 Z"
+            fill={`rgba(56,189,248,${isActive ? 0.09 : 0.04})`}
+            style={{ transition: "fill 0.6s" }}
+          />
+        </motion.g>
+
+        {/* ── Pulse ring ── */}
+        <motion.circle
+          cx="100" cy="100" r="30"
+          fill="none"
+          stroke="rgba(56,189,248,0.5)"
+          strokeWidth="0.8"
+          animate={isActive
+            ? { r: [30, 70], opacity: [0.5, 0], strokeWidth: [1, 0.3] }
+            : { r: [30, 55], opacity: [0.25, 0], strokeWidth: [0.8, 0.2] }}
+          transition={{ duration: isActive ? 2 : 3.5, repeat: Infinity, ease: "easeOut", delay: 0 }}
         />
-      ))}
+        <motion.circle
+          cx="100" cy="100" r="30"
+          fill="none"
+          stroke="rgba(14,165,233,0.4)"
+          strokeWidth="0.6"
+          animate={isActive
+            ? { r: [30, 70], opacity: [0.4, 0], strokeWidth: [0.8, 0.2] }
+            : { r: [30, 55], opacity: [0.2, 0], strokeWidth: [0.6, 0.1] }}
+          transition={{ duration: isActive ? 2 : 3.5, repeat: Infinity, ease: "easeOut", delay: isActive ? 1 : 1.75 }}
+        />
 
-      {/* State indicator overlay - centered and clean */}
-      <div
-        style={{
-          position: "absolute",
-          bottom: "12%",
-          width: "100%",
-          display: "flex",
-          justifyContent: "center",
-        }}
-      >
+        {/* ── Orb glow (blurred copy) ── */}
+        <circle cx="100" cy="100" r="22" fill="rgba(14,165,233,0.5)" filter="url(#jv-orb-glow)" />
+
+        {/* ── Centre orb ── */}
+        <motion.circle
+          cx="100" cy="100"
+          fill="url(#jv-orb-grad)"
+          filter="url(#jv-orb-glow)"
+          className="jv-orb"
+          animate={{
+            r: isListening ? 24 : isProcessing ? [22, 23.5, 22] : 22,
+          }}
+          transition={isProcessing
+            ? { duration: 0.45, repeat: Infinity, repeatType: "mirror" }
+            : { type: "spring", stiffness: 200, damping: 20 }}
+        />
+
+        {/* Highlight */}
+        <circle cx="93" cy="91" r="7"  fill="rgba(255,255,255,0.5)"  />
+        <circle cx="91" cy="89" r="3"  fill="rgba(255,255,255,0.75)" />
+
+        {/* ── HUD corner brackets ── */}
+        <path d="M22 32 L22 22 L32 22" fill="none" stroke={bracket} strokeWidth="1.2" strokeLinecap="round" />
+        <path d="M178 32 L178 22 L168 22" fill="none" stroke={bracket} strokeWidth="1.2" strokeLinecap="round" />
+        <path d="M22 168 L22 178 L32 178" fill="none" stroke={bracket} strokeWidth="1.2" strokeLinecap="round" />
+        <path d="M178 168 L178 178 L168 178" fill="none" stroke={bracket} strokeWidth="1.2" strokeLinecap="round" />
+      </svg>
+
+      {/* ── State overlay (HTML, below orb) ── */}
+      <div style={{ position: "absolute", bottom: "11%", width: "100%", display: "flex", justifyContent: "center" }}>
         <AnimatePresence mode="wait">
           {isSpeaking && (
-            <motion.div
-              key="wave"
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 6 }}
-              transition={{ duration: 0.18 }}
-            >
+            <motion.div key="wave"
+              initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 5 }} transition={{ duration: 0.18 }}>
               <Waveform active />
             </motion.div>
           )}
           {isProcessing && (
-            <motion.div
-              key="dots"
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 6 }}
-              transition={{ duration: 0.18 }}
-            >
+            <motion.div key="dots"
+              initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 5 }} transition={{ duration: 0.18 }}>
               <ProcessingDots />
             </motion.div>
           )}
           {isListening && !isSpeaking && (
-            <motion.div
-              key="listen"
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 6 }}
-              transition={{ duration: 0.18 }}
-            >
-              <div className="flex items-center gap-1">
-                <div className="h-2 w-2 rounded-full bg-[#10B981] animate-pulse" />
-                <span className="text-[11px] text-sky-400/70 font-mono tracking-wider">LISTENING</span>
+            <motion.div key="listen"
+              initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 5 }} transition={{ duration: 0.18 }}>
+              <div className="flex items-center gap-1.5">
+                <motion.div
+                  className="h-1.5 w-1.5 rounded-full"
+                  style={{ background: "#10B981" }}
+                  animate={{ opacity: [0.4, 1, 0.4] }}
+                  transition={{ duration: 1, repeat: Infinity }}
+                />
+                <span style={{ fontSize: 10, color: "rgba(56,189,248,0.65)", letterSpacing: "0.15em", fontFamily: "monospace" }}>
+                  LISTENING
+                </span>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
-
-      {/* Wake word indicator - subtle corner badge when awake */}
-      <AnimatePresence>
-        {isAwake && !isProcessing && !isSpeaking && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.8 }}
-            className="absolute top-[8%] right-[8%]"
-          >
-            <div className="text-[9px] font-mono text-sky-400/60 tracking-wider px-2 py-0.5 rounded-full bg-sky-500/10 border border-sky-500/20 backdrop-blur-sm">
-              AWAKE
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

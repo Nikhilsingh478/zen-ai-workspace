@@ -67,14 +67,15 @@
   /* Primary text: #EDEDED */
   --foreground: oklch(0.94 0 0);
 
-  /* Cards: #141416 / #18181B */
+  /* Cards */
   --card: oklch(0.175 0 0);
   --card-foreground: oklch(0.94 0 0);
   --popover: oklch(0.185 0 0);
   --popover-foreground: oklch(0.94 0 0);
 
-  --primary: oklch(0.94 0 0);
-  --primary-foreground: oklch(0.135 0 0);
+  /* Primary accent — sky blue (#0EA5E9), used for active states, focus rings */
+  --primary: oklch(0.6 0.2 220);
+  --primary-foreground: oklch(0.98 0 0);
 
   --secondary: oklch(0.185 0 0);
   --secondary-foreground: oklch(0.94 0 0);
@@ -90,14 +91,15 @@
 
   --border: oklch(1 0 0 / 8%);
   --input: oklch(1 0 0 / 10%);
-  --ring: oklch(1 0 0 / 18%);
+  /* Focus ring uses primary accent */
+  --ring: oklch(0.6 0.2 220 / 55%);
 
   /* Secondary text: #A1A1AA */
   --text-secondary: oklch(0.71 0.005 286);
   /* Muted text: #71717A */
   --text-muted: oklch(0.54 0.005 286);
 
-  /* Surfaces: #141416, #18181B, #1F1F23 */
+  /* Surfaces */
   --surface-1: oklch(0.175 0 0);
   --surface-2: oklch(0.195 0 0);
   --surface-3: oklch(0.23 0 0);
@@ -108,14 +110,20 @@
   --chart-4: oklch(0.7 0.15 320);
   --chart-5: oklch(0.7 0.15 20);
 
+  /* Sidebar — neutral dark, active indicator uses primary accent */
   --sidebar: oklch(0.16 0.002 285);
   --sidebar-foreground: oklch(0.93 0 0);
-  --sidebar-primary: oklch(0.93 0 0);
-  --sidebar-primary-foreground: oklch(0.145 0.002 285);
+  --sidebar-primary: oklch(0.6 0.2 220);
+  --sidebar-primary-foreground: oklch(0.98 0 0);
   --sidebar-accent: oklch(0.22 0.003 285);
   --sidebar-accent-foreground: oklch(0.93 0 0);
   --sidebar-border: oklch(1 0 0 / 6%);
-  --sidebar-ring: oklch(1 0 0 / 14%);
+  --sidebar-ring: oklch(0.6 0.2 220 / 40%);
+
+  /* Jarvis design tokens — reused across the whole site */
+  --jarvis-primary: #0EA5E9;
+  --jarvis-accent:  #38BDF8;
+  --jarvis-glow:    rgba(14, 165, 233, 0.35);
 }
 
 .dark {

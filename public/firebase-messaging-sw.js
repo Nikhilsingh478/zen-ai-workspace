@@ -130,8 +130,10 @@ if (_fcmReady) {
       const body  = payload.notification?.body  ?? "";
       const url   = payload.data?.url           ?? "/horizon";
 
-      const options = await buildNotificationOptions(body, url, "horizon-reminder");
+      // SOUND FIX: unique tag every time so the OS always plays its sound
+      const uniqueTag = `horizon-${Date.now()}`;
 
+      const options = await buildNotificationOptions(body, url, uniqueTag);
       console.debug("[sw] Showing notification:", title, "|", body);
       event.waitUntil(self.registration.showNotification(title, options));
     });
@@ -156,11 +158,14 @@ if (_fcmReady) {
       payload = { title: "AI Metrics", body: event.data.text() };
     }
 
+    // SOUND FIX: unique tag so OS always plays sound
+    const uniqueTag = `ai-metrics-${Date.now()}`;
+
     event.waitUntil(
       buildNotificationOptions(
-        payload.body  ?? "",
+        payload.body ?? "",
         payload.data?.url ?? "/horizon",
-        "ai-metrics"
+        uniqueTag
       ).then((options) =>
         self.registration.showNotification(payload.title ?? "AI Metrics", options)
       )

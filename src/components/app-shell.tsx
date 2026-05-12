@@ -94,14 +94,16 @@ export function AppShell({ children }: { children: ReactNode }) {
                 {active && (
                   <motion.span
                     layoutId="sidebar-active-bg"
-                    className="absolute inset-0 rounded-lg bg-white/[0.07]"
+                    className="absolute inset-0 rounded-lg"
+                    style={{ background: "rgba(14,165,233,0.07)" }}
                     transition={{ type: "spring", stiffness: 380, damping: 32 }}
                   />
                 )}
                 {active && (
                   <motion.span
                     layoutId="sidebar-active-bar"
-                    className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[2px] rounded-r-full bg-foreground/80"
+                    className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[2px] rounded-r-full"
+                    style={{ background: "var(--jarvis-primary, #0EA5E9)" }}
                     transition={{ type: "spring", stiffness: 380, damping: 32 }}
                   />
                 )}

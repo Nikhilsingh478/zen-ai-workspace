@@ -180,15 +180,17 @@ function attachForegroundListener(): void {
     try {
       // Also send the OS notification so it lands in the notification tray
       const reg = await navigator.serviceWorker.ready;
+      // SOUND FIX: unique tag guarantees OS plays its sound every time
+      const uniqueTag = `horizon-${Date.now()}`;
       await reg.showNotification(title, {
         body,
         icon:               "/favicon.png",
         badge:              "/favicon.png",
-        tag:                "horizon-reminder",
-        silent:             false,            // OS sound ON
-        vibrate:            [200, 50, 200],   // Android haptics
-        requireInteraction: isMobileUA(),     // stay on mobile screen
-        renotify:           true,             // re-play sound on same tag
+        tag:                uniqueTag,
+        silent:             false,
+        vibrate:            [200, 60, 200],
+        requireInteraction: isMobileUA(),
+        renotify:           true,
         data:               { url },
         actions: [
           { action: "view",    title: "View"    },
