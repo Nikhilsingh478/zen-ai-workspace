@@ -416,11 +416,31 @@ export const jarvis = {
   },
 
   autoStartIfEnabled() {
-    if (!_state.enabled || !SpeechRecognitionCtor) return;
+    if (!SpeechRecognitionCtor) return;
+
+    const doStart = () => {
+      if (!_state.enabled) {
+        // Auto-enable permanently since permission is already granted
+        try { localStorage.setItem("jarvis:enabled", "true"); } catch { /* ignore */ }
+        patch({ enabled: true, voiceState: "idle" });
+      }
+      if (!recRef) startRecognition("passive");
+    };
+
     if (navigator.permissions) {
-      navigator.permissions.query({ name: "microphone" as PermissionName }).then((r) => {
-        if (r.state === "granted") startRecognition("passive");
-      }).catch(() => {});
+      navigator.permissions
+        .query({ name: "microphone" as PermissionName })
+        .then((r) => {
+          if (r.state === "granted") doStart();
+          // If permission state changes (user grants in another tab), start then too
+          r.onchange = () => { if (r.state === "granted") doStart(); };
+        })
+        .catch(() => {
+          // Permissions API not available — fall back to enabled flag only
+          if (_state.enabled) startRecognition("passive");
+        });
+    } else if (_state.enabled) {
+      startRecognition("passive");
     }
   },
 } as const;
