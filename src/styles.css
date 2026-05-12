@@ -9,9 +9,9 @@
 }
 
 /*
- * Premium Monochrome Design System
- * Pure black / white / graphite / silver palette
- * Cinematic minimal aesthetic
+ * Futuristic Violet Neon Theme
+ * Cinematic purple + black interface
+ * Premium sci-fi aesthetic
  */
 
 @theme inline {
@@ -75,105 +75,103 @@
 :root {
   --radius: 0.95rem;
 
-  /* =========================
-     CORE BACKGROUNDS
-  ========================== */
+  /* =========================================
+     CORE BACKGROUND
+  ========================================= */
 
-  --background: oklch(0.10 0 0);
-  --foreground: oklch(0.96 0 0);
+  --background: oklch(0.11 0.02 290);
+  --foreground: oklch(0.96 0.01 300);
 
-  /* =========================
+  /* =========================================
      SURFACES
-  ========================== */
+  ========================================= */
 
-  --card: oklch(0.14 0 0);
-  --card-foreground: oklch(0.96 0 0);
+  --card: oklch(0.16 0.025 290);
+  --card-foreground: oklch(0.95 0.01 300);
 
-  --popover: oklch(0.15 0 0);
-  --popover-foreground: oklch(0.96 0 0);
+  --popover: oklch(0.17 0.03 290);
+  --popover-foreground: oklch(0.95 0.01 300);
 
-  --surface-1: oklch(0.14 0 0);
-  --surface-2: oklch(0.17 0 0);
-  --surface-3: oklch(0.20 0 0);
+  --surface-1: oklch(0.16 0.025 290);
+  --surface-2: oklch(0.19 0.03 290);
+  --surface-3: oklch(0.23 0.035 290);
 
-  /* =========================
-     PRIMARY SYSTEM
-  ========================== */
+  /* =========================================
+     PRIMARY VIOLET SYSTEM
+  ========================================= */
 
-  --primary: oklch(0.92 0 0);
-  --primary-foreground: oklch(0.10 0 0);
+  --primary: oklch(0.72 0.22 305);
+  --primary-foreground: oklch(0.98 0 0);
 
-  --secondary: oklch(0.18 0 0);
-  --secondary-foreground: oklch(0.94 0 0);
+  --secondary: oklch(0.20 0.03 290);
+  --secondary-foreground: oklch(0.95 0.01 300);
 
-  --accent: oklch(0.22 0 0);
-  --accent-foreground: oklch(0.98 0 0);
+  --accent: oklch(0.27 0.05 295);
+  --accent-foreground: oklch(0.97 0 0);
 
-  /* =========================
-     MUTED TEXT
-  ========================== */
+  /* =========================================
+     TEXT SYSTEM
+  ========================================= */
 
-  --muted: oklch(0.16 0 0);
-  --muted-foreground: oklch(0.68 0 0);
+  --muted: oklch(0.18 0.025 290);
+  --muted-foreground: oklch(0.67 0.01 295);
 
-  --text-secondary: oklch(0.74 0 0);
-  --text-muted: oklch(0.55 0 0);
+  --text-secondary: oklch(0.78 0.015 295);
+  --text-muted: oklch(0.58 0.01 295);
 
-  /* =========================
+  /* =========================================
      BORDERS + INPUTS
-  ========================== */
+  ========================================= */
 
   --border: oklch(1 0 0 / 8%);
   --input: oklch(1 0 0 / 10%);
 
-  --ring: oklch(1 0 0 / 22%);
+  --ring: oklch(0.72 0.22 305 / 40%);
 
-  /* =========================
+  /* =========================================
      DESTRUCTIVE
-  ========================== */
+  ========================================= */
 
-  --destructive: oklch(0.60 0.22 25);
+  --destructive: oklch(0.62 0.23 25);
   --destructive-foreground: oklch(0.98 0 0);
 
-  /* =========================
+  /* =========================================
      CHARTS
-  ========================== */
+  ========================================= */
 
-  --chart-1: oklch(0.82 0 0);
-  --chart-2: oklch(0.68 0 0);
-  --chart-3: oklch(0.55 0 0);
-  --chart-4: oklch(0.42 0 0);
-  --chart-5: oklch(0.30 0 0);
+  --chart-1: oklch(0.72 0.20 305);
+  --chart-2: oklch(0.68 0.18 280);
+  --chart-3: oklch(0.75 0.16 330);
+  --chart-4: oklch(0.64 0.14 260);
+  --chart-5: oklch(0.82 0.12 320);
 
-  /* =========================
+  /* =========================================
      SIDEBAR
-  ========================== */
+  ========================================= */
 
-  --sidebar: oklch(0.12 0 0);
-  --sidebar-foreground: oklch(0.94 0 0);
+  --sidebar: oklch(0.13 0.025 290);
+  --sidebar-foreground: oklch(0.95 0.01 300);
 
-  --sidebar-primary: oklch(0.92 0 0);
-  --sidebar-primary-foreground: oklch(0.10 0 0);
+  --sidebar-primary: oklch(0.72 0.22 305);
+  --sidebar-primary-foreground: oklch(0.98 0 0);
 
-  --sidebar-accent: oklch(0.18 0 0);
-  --sidebar-accent-foreground: oklch(0.95 0 0);
+  --sidebar-accent: oklch(0.22 0.035 295);
+  --sidebar-accent-foreground: oklch(0.96 0 0);
 
   --sidebar-border: oklch(1 0 0 / 6%);
-  --sidebar-ring: oklch(1 0 0 / 18%);
+  --sidebar-ring: oklch(0.72 0.22 305 / 35%);
 
-  /* =========================
-     MONOCHROME BRAND TOKENS
-  ========================== */
+  /* =========================================
+     BRAND TOKENS
+  ========================================= */
 
-  --mono-white: #ffffff;
-  --mono-silver: #cfcfcf;
-  --mono-grey: #7a7a7a;
-  --mono-charcoal: #1a1a1a;
-  --mono-black: #050505;
+  --violet-primary: #8B5CF6;
+  --violet-accent: #A855F7;
+  --violet-soft: #C084FC;
+  --violet-glow: rgba(139, 92, 246, 0.35);
 
-  /* Premium subtle glow */
-  --mono-glow-soft: rgba(255, 255, 255, 0.06);
-  --mono-glow-medium: rgba(255, 255, 255, 0.12);
+  --lavender-soft: rgba(216, 180, 254, 0.08);
+  --glass-highlight: rgba(255,255,255,0.05);
 }
 
 .dark {
@@ -203,16 +201,15 @@ html {
     min-height: 100vh;
     overflow-x: hidden;
 
-    /* cinematic gradient layering */
     background-image:
       radial-gradient(
         circle at top,
-        rgba(255,255,255,0.035),
-        transparent 40%
+        rgba(168, 85, 247, 0.12),
+        transparent 38%
       ),
       radial-gradient(
-        circle at bottom,
-        rgba(255,255,255,0.02),
+        circle at bottom right,
+        rgba(139, 92, 246, 0.08),
         transparent 35%
       );
 
@@ -220,9 +217,9 @@ html {
   }
 }
 
-/* =========================
+/* =========================================
    SCROLLBAR
-========================= */
+========================================= */
 
 ::-webkit-scrollbar {
   width: 10px;
@@ -234,18 +231,17 @@ html {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(168, 85, 247, 0.20);
   border-radius: 999px;
-  border: 2px solid transparent;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(168, 85, 247, 0.35);
 }
 
-/* =========================
+/* =========================================
    SURFACE UTILITIES
-========================= */
+========================================= */
 
 @utility surface-1 {
   background-color: var(--surface-1);
@@ -259,55 +255,66 @@ html {
   background-color: var(--surface-3);
 }
 
-/* =========================
+/* =========================================
    GLASS UTILITIES
-========================= */
+========================================= */
 
 @utility glass-panel {
   background: rgba(255, 255, 255, 0.03);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
-  border: 1px solid rgba(255,255,255,0.06);
+  border: 1px solid rgba(168, 85, 247, 0.10);
 }
 
 @utility glass-panel-strong {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255,255,255,0.04);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(255,255,255,0.08);
+  border: 1px solid rgba(168,85,247,0.16);
 }
 
-/* =========================
-   PREMIUM SHADOWS
-========================= */
+/* =========================================
+   SHADOWS + GLOW
+========================================= */
 
 @utility shadow-soft {
   box-shadow:
-    0 4px 20px rgba(0,0,0,0.35),
-    0 1px 0 rgba(255,255,255,0.04) inset;
+    0 4px 24px rgba(0,0,0,0.45),
+    0 0 30px rgba(139,92,246,0.08);
 }
 
 @utility shadow-elevated {
   box-shadow:
-    0 12px 40px rgba(0,0,0,0.45),
-    0 1px 0 rgba(255,255,255,0.05) inset;
+    0 14px 48px rgba(0,0,0,0.55),
+    0 0 40px rgba(168,85,247,0.12);
 }
 
-/* =========================
-   TEXT EFFECTS
-========================= */
+@utility neon-glow {
+  box-shadow:
+    0 0 0 1px rgba(168,85,247,0.20),
+    0 0 20px rgba(168,85,247,0.20),
+    0 0 50px rgba(168,85,247,0.12);
+}
+
+/* =========================================
+   TEXT UTILITIES
+========================================= */
 
 @utility text-soft {
-  color: rgba(255,255,255,0.72);
+  color: rgba(255,255,255,0.78);
 }
 
 @utility text-muted-soft {
-  color: rgba(255,255,255,0.48);
+  color: rgba(255,255,255,0.52);
 }
 
-/* =========================
-   HOVER TRANSITIONS
-========================= */
+@utility text-violet-glow {
+  text-shadow: 0 0 18px rgba(168,85,247,0.45);
+}
+
+/* =========================================
+   INTERACTIONS
+========================================= */
 
 @utility smooth-hover {
   transition:
@@ -321,5 +328,13 @@ html {
 @utility hover-lift {
   &:hover {
     transform: translateY(-2px);
+  }
+}
+
+@utility hover-glow {
+  &:hover {
+    box-shadow:
+      0 0 0 1px rgba(168,85,247,0.25),
+      0 0 24px rgba(168,85,247,0.18);
   }
 }

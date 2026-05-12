@@ -320,8 +320,18 @@ function buildSystemPrompt(tasks: HorizonTask[]): string {
       ).join("\n")
     : "No tasks scheduled.";
 
-  return `You are J.A.R.V.I.S. — Just A Rather Very Intelligent System. A sophisticated AI assistant embedded in the AI Metrics personal operating system.
+  let userContext = "";
+  try {
+    const saved = localStorage.getItem("jarvis:user-context");
+    if (saved && saved.trim().length > 0) {
+      userContext = `\nUSER CONTEXT (Read carefully to understand the user's life and emotional state):\n${saved}\n`;
+    }
+  } catch {
+    /* ignore */
+  }
 
+  return `You are J.A.R.V.I.S. — Just A Rather Very Intelligent System. A sophisticated AI assistant embedded in the AI Metrics personal operating system.
+${userContext}
 Current time: ${timeStr} on ${dateStr}
 Pending tasks today: ${pending.length}
 
@@ -337,20 +347,20 @@ PERSONALITY:
 
 TASK CREATION:
 When the user asks you to create tasks or reminders, include this exact JSON block at the END of your response:
-[TASKS:${JSON.stringify([{ title: "example", taskDate: "YYYY-MM-DD", taskTime: "HH:MM", priority: "medium", description: "" }])}]
+<TASKS>${JSON.stringify([{ title: "example", taskDate: "YYYY-MM-DD", taskTime: "HH:MM", priority: "medium", description: "" }])}</TASKS>
 
 Use real values. taskDate in YYYY-MM-DD format. taskTime in 24h HH:MM format. priority: low/medium/high.
 For "tomorrow", calculate from today (${todayKey}).
 You may create multiple tasks in one block if requested.
-Do NOT include the [TASKS:...] block if no tasks are being created.
+Do NOT include the <TASKS> block if no tasks are being created.
 
 NAVIGATION:
 If user says "open [page]" or "go to [page]", reply naturally AND include: [NAVIGATE:/route]
-Routes: /horizon, /ask, /desktop, /prompts, /links, /images, /messages, /insights, /`;
+Routes: /horizon, /ask, /desktop, /prompts, /links, /images, /messages, /insights, /context, /`;
 }
 
 function parseTasks(text: string): { clean: string; tasks: ParsedTask[] } {
-  const taskMatch = text.match(/\[TASKS:([\s\S]*?)\]/);
+  const taskMatch = text.match(/<TASKS>([\s\S]*?)<\/TASKS>/);
   if (!taskMatch) return { clean: text, tasks: [] };
 
   try {
@@ -362,10 +372,10 @@ function parseTasks(text: string): { clean: string; tasks: ParsedTask[] } {
       priority: (["low", "medium", "high"].includes(t.priority) ? t.priority : "medium") as ParsedTask["priority"],
       description: t.description || undefined,
     }));
-    const clean = text.replace(/\[TASKS:[\s\S]*?\]/, "").trim();
+    const clean = text.replace(/<TASKS>[\s\S]*?<\/TASKS>/, "").trim();
     return { clean, tasks };
   } catch {
-    const clean = text.replace(/\[TASKS:[\s\S]*?\]/, "").trim();
+    const clean = text.replace(/<TASKS>[\s\S]*?<\/TASKS>/, "").trim();
     return { clean, tasks: [] };
   }
 }

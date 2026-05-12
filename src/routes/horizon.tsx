@@ -1255,9 +1255,9 @@ function TaskModal({
                 }}
               >
                 <motion.span
-                  animate={{ x: field.value ? 16 : 2 }}
+                  animate={{ x: field.value ? 16 : 0 }}
                   transition={{ type: "spring", stiffness: 500, damping: 28 }}
-                  className="absolute top-0.5 h-4 w-4 rounded-full"
+                  className="absolute top-[1px] left-[1px] h-4 w-4 rounded-full"
                   style={field.value ? {
                     background: "radial-gradient(circle at 35% 35%, #4DEBFF, #00BFFF)",
                     boxShadow: "0 0 8px rgba(0,191,255,0.7)",

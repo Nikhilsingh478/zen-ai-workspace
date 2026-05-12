@@ -12,11 +12,12 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as PromptsRouteImport } from './routes/prompts'
 import { Route as MessagesRouteImport } from './routes/messages'
 import { Route as LinksRouteImport } from './routes/links'
+import { Route as JarvisRouteImport } from './routes/jarvis'
 import { Route as InsightsRouteImport } from './routes/insights'
 import { Route as ImagesRouteImport } from './routes/images'
-import { Route as JarvisRouteImport } from './routes/jarvis'
 import { Route as HorizonRouteImport } from './routes/horizon'
 import { Route as DesktopRouteImport } from './routes/desktop'
+import { Route as ContextRouteImport } from './routes/context'
 import { Route as AskRouteImport } from './routes/ask'
 import { Route as IndexRouteImport } from './routes/index'
 
@@ -35,6 +36,11 @@ const LinksRoute = LinksRouteImport.update({
   path: '/links',
   getParentRoute: () => rootRouteImport,
 } as any)
+const JarvisRoute = JarvisRouteImport.update({
+  id: '/jarvis',
+  path: '/jarvis',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const InsightsRoute = InsightsRouteImport.update({
   id: '/insights',
   path: '/insights',
@@ -45,11 +51,6 @@ const ImagesRoute = ImagesRouteImport.update({
   path: '/images',
   getParentRoute: () => rootRouteImport,
 } as any)
-const JarvisRoute = JarvisRouteImport.update({
-  id: '/jarvis',
-  path: '/jarvis',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const HorizonRoute = HorizonRouteImport.update({
   id: '/horizon',
   path: '/horizon',
@@ -58,6 +59,11 @@ const HorizonRoute = HorizonRouteImport.update({
 const DesktopRoute = DesktopRouteImport.update({
   id: '/desktop',
   path: '/desktop',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ContextRoute = ContextRouteImport.update({
+  id: '/context',
+  path: '/context',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AskRoute = AskRouteImport.update({
@@ -74,6 +80,7 @@ const IndexRoute = IndexRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/ask': typeof AskRoute
+  '/context': typeof ContextRoute
   '/desktop': typeof DesktopRoute
   '/horizon': typeof HorizonRoute
   '/images': typeof ImagesRoute
@@ -86,6 +93,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/ask': typeof AskRoute
+  '/context': typeof ContextRoute
   '/desktop': typeof DesktopRoute
   '/horizon': typeof HorizonRoute
   '/images': typeof ImagesRoute
@@ -99,6 +107,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/ask': typeof AskRoute
+  '/context': typeof ContextRoute
   '/desktop': typeof DesktopRoute
   '/horizon': typeof HorizonRoute
   '/images': typeof ImagesRoute
@@ -113,6 +122,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/ask'
+    | '/context'
     | '/desktop'
     | '/horizon'
     | '/images'
@@ -125,6 +135,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/ask'
+    | '/context'
     | '/desktop'
     | '/horizon'
     | '/images'
@@ -137,6 +148,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/ask'
+    | '/context'
     | '/desktop'
     | '/horizon'
     | '/images'
@@ -150,6 +162,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AskRoute: typeof AskRoute
+  ContextRoute: typeof ContextRoute
   DesktopRoute: typeof DesktopRoute
   HorizonRoute: typeof HorizonRoute
   ImagesRoute: typeof ImagesRoute
@@ -183,6 +196,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LinksRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/jarvis': {
+      id: '/jarvis'
+      path: '/jarvis'
+      fullPath: '/jarvis'
+      preLoaderRoute: typeof JarvisRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/insights': {
       id: '/insights'
       path: '/insights'
@@ -197,13 +217,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ImagesRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/jarvis': {
-      id: '/jarvis'
-      path: '/jarvis'
-      fullPath: '/jarvis'
-      preLoaderRoute: typeof JarvisRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/horizon': {
       id: '/horizon'
       path: '/horizon'
@@ -216,6 +229,13 @@ declare module '@tanstack/react-router' {
       path: '/desktop'
       fullPath: '/desktop'
       preLoaderRoute: typeof DesktopRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/context': {
+      id: '/context'
+      path: '/context'
+      fullPath: '/context'
+      preLoaderRoute: typeof ContextRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/ask': {
@@ -238,6 +258,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AskRoute: AskRoute,
+  ContextRoute: ContextRoute,
   DesktopRoute: DesktopRoute,
   HorizonRoute: HorizonRoute,
   ImagesRoute: ImagesRoute,

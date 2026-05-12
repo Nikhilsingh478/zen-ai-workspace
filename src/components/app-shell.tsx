@@ -11,6 +11,7 @@ import {
   Menu,
   CalendarDays,
   Cpu,
+  Brain,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, type ReactNode, type ComponentType } from "react";
@@ -35,6 +36,7 @@ const NAV = [
   { to: "/insights",label: "Insights", icon: BarChart2    },
   { to: "/ask",     label: "Ask",      icon: MessageSquare},
   { to: "/jarvis",  label: "JARVIS",   icon: Cpu          },
+  { to: "/context", label: "Context",  icon: Brain        },
 ] as const;
 
 type NavItem = { to: string; label: string; icon: ComponentType<{ className?: string; strokeWidth?: number }> };
@@ -52,6 +54,7 @@ const MOBILE_SECONDARY: readonly NavItem[] = [
   { to: "/images",   label: "Images",   icon: ImageIcon },
   { to: "/messages", label: "Messages", icon: Bell      },
   { to: "/insights", label: "Insights", icon: BarChart2 },
+  { to: "/context",  label: "Context",  icon: Brain     },
 ];
 
 // ─── Brand logo mark ─────────────────────────────────────────────────────────
