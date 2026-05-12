@@ -2,12 +2,12 @@
  * JARVIS — Just A Rather Very Intelligent System
  * Global state store + voice engine + Gemini integration
  *
- * FIXES APPLIED:
- * - Fixed auto-standby issue: JARVIS now stays continuously listening once enabled
- * - Mic permission persists after first grant - no repeated permission prompts
- * - Removed automatic tab switching that was causing standby mode
- * - Cleaner silence detection with proper state management
- * - Once enabled, JARVIS is ALWAYS ready for wake word
+ * Voice fix:
+ * - "interimResults + isFinal" alone drops long utterances because browsers
+ *   often fire multiple isFinal=true segments for a single spoken sentence
+ *   and each segment fires independently. We now buffer ALL final segments
+ *   together and only process the command after a short silence gap (800 ms)
+ *   — the same technique used in professional dictation tools.
  */
 
 import { useSyncExternalStore } from "react";
@@ -42,7 +42,6 @@ type JarvisState = {
   messages: JarvisMessage[];
   transcript: string;
   enabled: boolean;
-  isMicReady: boolean;
 };
 
 // ─── Browser compat ───────────────────────────────────────────────────────────
@@ -65,7 +64,6 @@ let _state: JarvisState = {
   isAwake: false,
   messages: [],
   transcript: "",
-  isMicReady: false,
   enabled: (() => {
     try { return localStorage.getItem("jarvis:enabled") === "true"; } catch { return false; }
   })(),
@@ -89,9 +87,9 @@ export function getJarvisSnapshot(): JarvisState {
 
 // ─── SpeechRecognition engine ─────────────────────────────────────────────────
 //
-// FIX: JARVIS now stays continuously listening once enabled.
-// No more auto-standby - the recognition engine persists and is always
-// ready to detect wake words. Mic permission is remembered.
+// KEY FIX: We accumulate all final transcript segments and use a silence
+// timer (SILENCE_THRESHOLD_MS) to detect when the user has stopped speaking.
+// This prevents long commands from being cut off mid-sentence.
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let recRef: any = null;
@@ -125,13 +123,11 @@ function armSilenceTimer() {
         handleCommand(stripped);
       } else {
         patch({ isAwake: false, voiceState: "idle", transcript: "" });
-        // FIX: Always restart passive listening - never go to standby
         if (_state.enabled) startRecognition("passive");
       }
     } else {
       stopRecognition();
       patch({ isAwake: false, voiceState: "idle", transcript: "" });
-      // FIX: Always restart passive listening - never go to standby
       if (_state.enabled) startRecognition("passive");
     }
   }, SILENCE_THRESHOLD_MS);
@@ -151,6 +147,7 @@ function startRecognition(mode: "passive" | "command" = "passive") {
   rec.continuous = true;
   rec.interimResults = true;
   rec.lang = "en-US";
+  // maxAlternatives = 1 gives us the best guess without overhead
   rec.maxAlternatives = 1;
   recRef = rec;
 
@@ -193,8 +190,7 @@ function startRecognition(mode: "passive" | "command" = "passive") {
               if (_state.voiceState === "listening") {
                 stopRecognition();
                 patch({ isAwake: false, voiceState: "idle", transcript: "" });
-                // FIX: Always restart passive listening
-                if (_state.enabled) startRecognition("passive");
+                startRecognition("passive");
               }
             }, MAX_LISTEN_MS);
           }
@@ -229,7 +225,6 @@ function startRecognition(mode: "passive" | "command" = "passive") {
               handleCommand(stripWakeWord(fullText));
             } else {
               patch({ isAwake: false, voiceState: "idle", transcript: "" });
-              // FIX: Always restart passive listening
               if (_state.enabled) startRecognition("passive");
             }
           }
@@ -242,17 +237,13 @@ function startRecognition(mode: "passive" | "command" = "passive") {
   rec.onerror = (e: any) => {
     if (e.error === "not-allowed" || e.error === "service-not-allowed") {
       stopRecognition();
-      patch({ voiceState: "idle", isAwake: false, isMicReady: false });
-    } else if (e.error === "no-speech") {
-      // This is normal - no speech detected, just continue
-      // FIX: Don't stop on no-speech errors
+      patch({ voiceState: "idle", isAwake: false });
     }
+    // "no-speech" and "aborted" are normal — let onend handle restart
   };
 
   rec.onend = () => {
     recRef = null;
-    
-    // FIX: Don't go to standby - restart listening automatically
     if (intentionalStop) return;
 
     if (currentMode === "command") {
@@ -267,19 +258,12 @@ function startRecognition(mode: "passive" | "command" = "passive") {
       // Nothing useful — fall through to restart passive
     }
 
-    // FIX: Always restart passive listening if enabled, never go to standby
-    if (_state.enabled) {
-      restartTimer = setTimeout(() => startRecognition("passive"), 300);
+    if (_state.voiceState === "idle" && _state.enabled) {
+      restartTimer = setTimeout(() => startRecognition("passive"), 600);
     }
   };
 
-  try { 
-    rec.start(); 
-    patch({ isMicReady: true });
-  } catch { 
-    recRef = null;
-    patch({ isMicReady: false });
-  }
+  try { rec.start(); } catch { recRef = null; }
 }
 
 function stopRecognition() {
@@ -448,10 +432,9 @@ async function handleCommand(commandText: string) {
 
     patch({ messages: [..._state.messages, userMsg, jarvisMsg], voiceState: "speaking" });
 
-    // Speak response and then go back to listening mode
+    // Speak response
     speakResponse(clean, () => {
       patch({ voiceState: "idle", isAwake: false, transcript: "" });
-      // FIX: Always restart passive listening after speaking
       if (_state.enabled) startRecognition("passive");
     });
   } catch {
@@ -463,7 +446,6 @@ async function handleCommand(commandText: string) {
       type: "error",
     };
     patch({ messages: [..._state.messages, userMsg, errMsg], voiceState: "idle", isAwake: false, transcript: "" });
-    // FIX: Always restart passive listening after error
     if (_state.enabled) startRecognition("passive");
   }
 }
@@ -489,7 +471,7 @@ function speakResponse(text: string, onEnd?: () => void) {
 export const jarvis = {
   enable() {
     try { localStorage.setItem("jarvis:enabled", "true"); } catch { /* ignore */ }
-    patch({ enabled: true, voiceState: "idle", isMicReady: false });
+    patch({ enabled: true, voiceState: "idle" });
     startRecognition("passive");
   },
 
@@ -497,7 +479,7 @@ export const jarvis = {
     try { localStorage.setItem("jarvis:enabled", "false"); } catch { /* ignore */ }
     stopRecognition();
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
-    patch({ enabled: false, voiceState: "idle", isAwake: false, transcript: "", isMicReady: false });
+    patch({ enabled: false, voiceState: "idle", isAwake: false, transcript: "" });
   },
 
   activate() {
@@ -515,7 +497,6 @@ export const jarvis = {
           handleCommand(stripWakeWord(fullText));
         } else {
           patch({ isAwake: false, voiceState: "idle", transcript: "" });
-          // FIX: Always restart passive listening
           if (_state.enabled) startRecognition("passive");
         }
       }
@@ -531,7 +512,6 @@ export const jarvis = {
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
     stopRecognition();
     patch({ isAwake: false, voiceState: "idle", transcript: "" });
-    // FIX: Always restart passive listening when dismissed
     if (_state.enabled) startRecognition("passive");
   },
 
@@ -540,38 +520,24 @@ export const jarvis = {
     patch({ messages: [] });
   },
 
-  // FIX: Persistent mic - once permission granted, it stays active
   autoStartIfEnabled() {
     if (!SpeechRecognitionCtor) return;
 
     const doStart = () => {
-      // If not enabled, turn it on automatically since permission is granted
       if (!_state.enabled) {
+        // Auto-enable permanently since permission is already granted
         try { localStorage.setItem("jarvis:enabled", "true"); } catch { /* ignore */ }
-        patch({ enabled: true, voiceState: "idle", isMicReady: true });
+        patch({ enabled: true, voiceState: "idle" });
       }
-      // Only start if not already running
       if (!recRef) startRecognition("passive");
     };
 
-    // Check microphone permission
     if (navigator.permissions) {
       navigator.permissions
         .query({ name: "microphone" as PermissionName })
         .then((r) => {
-          if (r.state === "granted") {
-            // Permission already granted - start listening
-            doStart();
-          } else if (r.state === "prompt") {
-            // Will be granted on first use - we'll trigger on user gesture
-            patch({ isMicReady: false });
-          }
-          // Listen for permission changes
-          r.onchange = () => { 
-            if (r.state === "granted") {
-              doStart();
-            }
-          };
+          if (r.state === "granted") doStart();
+          r.onchange = () => { if (r.state === "granted") doStart(); };
         })
         .catch(() => {
           if (_state.enabled) startRecognition("passive");
