@@ -3,62 +3,159 @@
  * Reacts to wake word and JARVIS state. Click to open the JARVIS tab.
  */
 
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useMotionValue, useTransform, animate } from "framer-motion";
+import { useEffect, useRef } from "react";
 import { useRouterState, useNavigate } from "@tanstack/react-router";
 import { useJarvis, jarvis } from "@/lib/jarvis";
 
-const STYLE = `
-@keyframes jarvis-orb-pulse {
-  0%, 100% { transform: scale(1);   opacity: 0.55; }
-  50%       { transform: scale(1.7); opacity: 0;    }
-}
-@keyframes jarvis-orb-spin {
-  from { transform: rotate(0deg);   }
-  to   { transform: rotate(360deg); }
-}
-`;
+// ─── Waveform (speaking state) ────────────────────────────────────────────────
 
-function OrbWaveform({ active }: { active: boolean }) {
-  const bars = [0.4, 0.7, 1, 0.8, 0.5];
+function OrbWaveform() {
+  const heights = [0.35, 0.65, 1, 0.7, 0.4];
   return (
-    <div className="flex items-center gap-[2px]" style={{ height: 14 }}>
-      {bars.map((base, i) => (
-        <motion.div
+    <div className="flex items-end justify-center gap-[2.5px]" style={{ height: 16, width: 22 }}>
+      {heights.map((base, i) => (
+        <motion.span
           key={i}
-          style={{ width: 2, height: "100%", borderRadius: 1, background: "#00BFFF", originY: "center" }}
-          animate={active
-            ? { scaleY: [base, base * 2, base * 0.5, base], opacity: [0.7, 1, 0.6, 0.7] }
-            : { scaleY: 0.25, opacity: 0.4 }}
-          transition={active
-            ? { duration: 0.5 + i * 0.1, repeat: Infinity, repeatType: "mirror", delay: i * 0.07 }
-            : { duration: 0.2 }}
+          style={{
+            display: "block",
+            width: 2.5,
+            borderRadius: 2,
+            background: "linear-gradient(180deg, #7EEEFF 0%, #00BFFF 100%)",
+            originY: 1,
+          }}
+          animate={{
+            height: ["40%", `${base * 100}%`, "20%", `${base * 80}%`, "40%"],
+            opacity: [0.6, 1, 0.5, 0.9, 0.6],
+          }}
+          transition={{
+            duration: 0.9 + i * 0.08,
+            repeat: Infinity,
+            ease: "easeInOut",
+            delay: i * 0.09,
+          }}
         />
       ))}
     </div>
   );
 }
 
-function JarvisLogo({ active }: { active: boolean }) {
-  const color = active ? "#4DEBFF" : "rgba(0,191,255,0.7)";
-  const fill  = active ? "#00BFFF" : "rgba(0,191,255,0.5)";
+// ─── Thinking dots ────────────────────────────────────────────────────────────
+
+function ThinkingDots() {
   return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-      <circle cx="9" cy="9" r="7"   stroke={color} strokeWidth="1.2" />
-      <circle cx="9" cy="9" r="3.5" fill={fill} />
-      <line x1="9" y1="2" x2="9" y2="6"   stroke={color} strokeWidth="1" />
-      <line x1="9" y1="12" x2="9" y2="16" stroke={color} strokeWidth="1" />
-      <line x1="2" y1="9" x2="6"  y2="9"  stroke={color} strokeWidth="1" />
-      <line x1="12" y1="9" x2="16" y2="9" stroke={color} strokeWidth="1" />
-    </svg>
+    <div className="flex items-center gap-[4px]">
+      {[0, 1, 2].map((i) => (
+        <motion.span
+          key={i}
+          style={{
+            display: "block",
+            width: 4,
+            height: 4,
+            borderRadius: "50%",
+            background: "#00BFFF",
+          }}
+          animate={{ y: [0, -5, 0], opacity: [0.4, 1, 0.4] }}
+          transition={{
+            duration: 0.75,
+            repeat: Infinity,
+            ease: "easeInOut",
+            delay: i * 0.18,
+          }}
+        />
+      ))}
+    </div>
   );
 }
 
+// ─── JARVIS logo icon ─────────────────────────────────────────────────────────
+
+function JarvisIcon({ active }: { active: boolean }) {
+  return (
+    <motion.svg
+      width="20"
+      height="20"
+      viewBox="0 0 20 20"
+      fill="none"
+      animate={{ rotate: active ? [0, 360] : 0 }}
+      transition={active ? { duration: 12, repeat: Infinity, ease: "linear" } : { duration: 0.4 }}
+    >
+      {/* Outer ring */}
+      <circle
+        cx="10" cy="10" r="8.5"
+        stroke={active ? "#4DEBFF" : "rgba(0,191,255,0.5)"}
+        strokeWidth="1"
+        strokeDasharray="4 2.5"
+      />
+      {/* Inner ring */}
+      <circle
+        cx="10" cy="10" r="5"
+        stroke={active ? "rgba(0,191,255,0.6)" : "rgba(0,191,255,0.25)"}
+        strokeWidth="0.8"
+      />
+      {/* Core */}
+      <circle
+        cx="10" cy="10" r="2.5"
+        fill={active ? "#00BFFF" : "rgba(0,191,255,0.4)"}
+      />
+      {/* Cardinal ticks */}
+      {[[10, 1.5, 10, 4], [10, 16, 10, 18.5], [1.5, 10, 4, 10], [16, 10, 18.5, 10]].map(([x1, y1, x2, y2], i) => (
+        <line
+          key={i}
+          x1={x1} y1={y1} x2={x2} y2={y2}
+          stroke={active ? "#4DEBFF" : "rgba(0,191,255,0.4)"}
+          strokeWidth="1.2"
+          strokeLinecap="round"
+        />
+      ))}
+    </motion.svg>
+  );
+}
+
+// ─── Spinning arc (processing state) ─────────────────────────────────────────
+
+function SpinnerArc() {
+  return (
+    <motion.div
+      className="absolute inset-[-4px] rounded-full"
+      style={{ border: "1.5px solid transparent", borderTopColor: "#00BFFF", borderRightColor: "rgba(0,191,255,0.3)" }}
+      animate={{ rotate: 360 }}
+      transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+    />
+  );
+}
+
+// ─── Pulse rings ──────────────────────────────────────────────────────────────
+
+function PulseRings() {
+  return (
+    <>
+      {[0, 1].map((i) => (
+        <motion.div
+          key={i}
+          className="absolute inset-0 rounded-full"
+          style={{ border: "1px solid rgba(0,191,255,0.35)" }}
+          initial={{ scale: 1, opacity: 0.5 }}
+          animate={{ scale: [1, 1.9, 1.9], opacity: [0.5, 0, 0] }}
+          transition={{
+            duration: 2,
+            repeat: Infinity,
+            ease: "easeOut",
+            delay: i * 1,
+          }}
+        />
+      ))}
+    </>
+  );
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
 export function JarvisFloatingOrb() {
-  const pathname  = useRouterState({ select: (s) => s.location.pathname });
-  const navigate  = useNavigate();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const navigate = useNavigate();
   const { voiceState, isAwake, enabled } = useJarvis();
 
-  // Don't render when the user is already on the JARVIS page
   if (pathname === "/jarvis") return null;
 
   const isListening = voiceState === "listening";
@@ -75,93 +172,133 @@ export function JarvisFloatingOrb() {
   };
 
   return (
-    <>
-      <style>{STYLE}</style>
+    <div className="fixed z-[55] bottom-[5.5rem] right-4 md:bottom-6 md:right-6">
+      <div className="relative flex items-center justify-center">
 
-      {/* Fixed bottom-right — above the mobile nav bar on small screens */}
-      <div className="fixed z-[55] bottom-[5.5rem] right-4 md:bottom-6 md:right-6">
-        <div className="relative">
-          {/* Pulse rings — shown only when active/speaking */}
-          {(isActive || isSpeaking) && [0, 1].map((i) => (
-            <div
-              key={i}
-              className="absolute inset-0 rounded-full border border-[rgba(0,191,255,0.4)]"
-              style={{ animation: `jarvis-orb-pulse ${1.4 + i * 0.65}s ease-out ${i * 0.5}s infinite` }}
+        {/* Pulse rings — active / speaking only */}
+        <AnimatePresence>
+          {(isActive || isSpeaking) && <PulseRings key="pulses" />}
+        </AnimatePresence>
+
+        {/* Ambient glow */}
+        <AnimatePresence>
+          {isActive && (
+            <motion.div
+              key="glow"
+              className="absolute rounded-full pointer-events-none"
+              style={{
+                inset: -10,
+                background: "radial-gradient(circle, rgba(0,191,255,0.18) 0%, transparent 70%)",
+              }}
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8 }}
+              transition={{ duration: 0.4, ease: "easeOut" }}
             />
-          ))}
+          )}
+        </AnimatePresence>
 
-          {/* Ambient glow when active */}
-          <AnimatePresence>
-            {isActive && (
+        {/* Main orb button */}
+        <motion.button
+          onClick={handleClick}
+          aria-label="Open JARVIS"
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.92 }}
+          transition={{ type: "spring", stiffness: 380, damping: 22 }}
+          style={{
+            position: "relative",
+            width: 44,
+            height: 44,
+            borderRadius: "50%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: isActive
+              ? "radial-gradient(circle at 38% 32%, #4DEBFF 0%, #00BFFF 40%, #00263F 100%)"
+              : "radial-gradient(circle at 38% 32%, rgba(0,191,255,0.45) 0%, rgba(0,40,70,0.97) 100%)",
+            border: `1.5px solid ${isActive ? "rgba(0,191,255,0.75)" : "rgba(0,191,255,0.2)"}`,
+            boxShadow: isActive
+              ? "0 0 0 1px rgba(0,191,255,0.15), 0 4px 24px rgba(0,191,255,0.45), inset 0 1px 0 rgba(255,255,255,0.12)"
+              : "0 0 0 1px rgba(0,191,255,0.08), 0 2px 12px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.04)",
+            outline: "none",
+            cursor: "pointer",
+          }}
+          initial={{ opacity: 0, scale: 0.7, y: 12 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.7, y: 12 }}
+        >
+          {/* Spinner arc when thinking */}
+          {isThinking && <SpinnerArc />}
+
+          {/* Icon content — cross-fade between states */}
+          <AnimatePresence mode="wait">
+            {isSpeaking ? (
               <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="absolute inset-[-8px] rounded-full pointer-events-none"
-                style={{ boxShadow: "0 0 24px 8px rgba(0,191,255,0.25)" }}
-              />
+                key="wave"
+                initial={{ opacity: 0, scale: 0.75 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.75 }}
+                transition={{ duration: 0.2 }}
+              >
+                <OrbWaveform />
+              </motion.div>
+            ) : isThinking ? (
+              <motion.div
+                key="dots"
+                initial={{ opacity: 0, scale: 0.75 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.75 }}
+                transition={{ duration: 0.2 }}
+              >
+                <ThinkingDots />
+              </motion.div>
+            ) : (
+              <motion.div
+                key="logo"
+                initial={{ opacity: 0, scale: 0.75, rotate: -15 }}
+                animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                exit={{ opacity: 0, scale: 0.75, rotate: 15 }}
+                transition={{ duration: 0.25, ease: "easeOut" }}
+              >
+                <JarvisIcon active={isActive} />
+              </motion.div>
             )}
           </AnimatePresence>
+        </motion.button>
 
-          {/* Main button */}
-          <motion.button
-            onClick={handleClick}
-            whileHover={{ scale: 1.08 }}
-            whileTap={{ scale: 0.93 }}
-            transition={{ type: "spring", stiffness: 400, damping: 20 }}
-            className="relative h-11 w-11 rounded-full flex items-center justify-center"
-            aria-label="Open JARVIS"
-            style={{
-              background: isActive
-                ? "radial-gradient(circle at 35% 35%, #4DEBFF, #00BFFF 50%, #003060)"
-                : "radial-gradient(circle at 35% 35%, rgba(0,191,255,0.55), rgba(0,30,60,0.95))",
-              border: `1.5px solid ${isActive ? "rgba(0,191,255,0.8)" : "rgba(0,191,255,0.22)"}`,
-              boxShadow: isActive
-                ? "0 0 20px rgba(0,191,255,0.5), inset 0 1px 0 rgba(255,255,255,0.15)"
-                : "0 0 10px rgba(0,191,255,0.12), inset 0 1px 0 rgba(255,255,255,0.05)",
-            }}
-          >
-            {/* Spinner ring when thinking */}
-            {isThinking && (
-              <div
-                className="absolute inset-[-3px] rounded-full border-2 border-transparent"
-                style={{ borderTopColor: "#00BFFF", animation: "jarvis-orb-spin 0.9s linear infinite" }}
-              />
-            )}
-
-            {/* Icon content — state-reactive */}
-            <AnimatePresence mode="wait">
-              {isSpeaking ? (
-                <motion.div key="wave" initial={{ opacity: 0, scale: 0.7 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.7 }}>
-                  <OrbWaveform active />
-                </motion.div>
-              ) : isThinking ? (
-                <motion.div key="think" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex gap-[3px]">
-                  {[0, 1, 2].map((i) => (
-                    <motion.div key={i} className="h-[3px] w-[3px] rounded-full" style={{ background: "#00BFFF" }}
-                      animate={{ opacity: [0.3, 1, 0.3], scale: [0.8, 1.2, 0.8] }}
-                      transition={{ duration: 0.7, repeat: Infinity, delay: i * 0.2 }} />
-                  ))}
-                </motion.div>
-              ) : (
-                <motion.div key="logo" initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }}>
-                  <JarvisLogo active={isActive} />
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </motion.button>
-
-          {/* "J" badge when JARVIS is not enabled */}
+        {/* Disabled badge */}
+        <AnimatePresence>
           {!enabled && (
-            <div
-              className="absolute -top-1 -right-1 h-4 w-4 rounded-full flex items-center justify-center text-[8px] font-bold"
-              style={{ background: "rgba(0,17,27,0.9)", border: "1px solid rgba(0,191,255,0.3)", color: "#00BFFF" }}
+            <motion.div
+              key="badge"
+              initial={{ opacity: 0, scale: 0.5 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.5 }}
+              transition={{ type: "spring", stiffness: 400, damping: 20 }}
+              style={{
+                position: "absolute",
+                top: -4,
+                right: -4,
+                width: 16,
+                height: 16,
+                borderRadius: "50%",
+                background: "rgba(0,15,25,0.95)",
+                border: "1px solid rgba(0,191,255,0.3)",
+                color: "#00BFFF",
+                fontSize: 8,
+                fontWeight: 700,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                letterSpacing: "0.03em",
+                fontFamily: "monospace",
+              }}
             >
               J
-            </div>
+            </motion.div>
           )}
-        </div>
+        </AnimatePresence>
       </div>
-    </>
+    </div>
   );
 }

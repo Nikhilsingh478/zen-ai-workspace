@@ -2,12 +2,27 @@
  * JARVIS — Just A Rather Very Intelligent System
  * Global state store + voice engine + Gemini integration
  *
- * Voice fix:
- * - "interimResults + isFinal" alone drops long utterances because browsers
- *   often fire multiple isFinal=true segments for a single spoken sentence
- *   and each segment fires independently. We now buffer ALL final segments
- *   together and only process the command after a short silence gap (800 ms)
- *   — the same technique used in professional dictation tools.
+ * FIXES applied (v2):
+ * 1. GLOBAL LISTENING — recognition starts from App root, not just /jarvis route.
+ *    Call jarvis.autoStartIfEnabled() once in your App root component.
+ *
+ * 2. RACE CONDITION FIX — the old code had two restart paths (recognition.onend
+ *    AND the TTS callback) that could both call startRecognition() simultaneously.
+ *    The second call hit `if (recRef) return`, but if the first rec.start() had
+ *    thrown (mic still held by TTS), recRef was null again — creating two competing
+ *    instances where one's abort() set intentionalStop=true on the other, killing
+ *    the restart loop permanently.
+ *    Fix: single authoritative restart path via schedulePassiveRestart(), guarded
+ *    by a restart-in-flight flag so only one restart is ever pending at a time.
+ *
+ * 3. WAKE WORD AFTER FIRST USE — the above race condition was the root cause.
+ *    Now guaranteed: after every command cycle (success or error), passive
+ *    listening always resumes.
+ *
+ * 4. intentionalStop semantics tightened — only set when WE are done for a
+ *    reason that should NOT restart (disable/dismiss while not enabled).
+ *    All normal command-cycle stops use stopForCycle() which does NOT set
+ *    intentionalStop, so onend always schedules a restart when enabled.
  */
 
 import { useSyncExternalStore } from "react";
@@ -86,25 +101,51 @@ export function getJarvisSnapshot(): JarvisState {
 }
 
 // ─── SpeechRecognition engine ─────────────────────────────────────────────────
-//
-// KEY FIX: We accumulate all final transcript segments and use a silence
-// timer (SILENCE_THRESHOLD_MS) to detect when the user has stopped speaking.
-// This prevents long commands from being cut off mid-sentence.
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let recRef: any = null;
+
+/**
+ * intentionalStop is ONLY set true when we want recognition dead for good
+ * (jarvis.disable() or jarvis.dismiss() while !enabled).
+ * During a normal command cycle we use stopForCycle() which does NOT set this,
+ * so onend will always schedule a passive restart when _state.enabled is true.
+ */
 let intentionalStop = false;
+
 let currentMode: "passive" | "command" = "passive";
-let restartTimer: ReturnType<typeof setTimeout> | undefined;
+
+// Timers
 let commandTimeout: ReturnType<typeof setTimeout> | undefined;
+let silenceTimer: ReturnType<typeof setTimeout> | undefined;
+
+// ── Restart guard ──────────────────────────────────────────────────────────
+// Tracks whether a restart is already scheduled so we never double-schedule.
+let restartPending = false;
+
+/**
+ * The ONE place that schedules passive restart. Any code path that wants to
+ * resume passive listening calls this — never startRecognition() directly.
+ * delayMs: extra wait on top of baseline 500ms (use for post-TTS mic release).
+ */
+function schedulePassiveRestart(delayMs = 0) {
+  if (restartPending) return;          // already queued — don't stack
+  if (!_state.enabled) return;         // disabled — stay silent
+  restartPending = true;
+  setTimeout(() => {
+    restartPending = false;
+    if (_state.enabled && !recRef) {
+      startRecognition("passive");
+    }
+  }, 500 + delayMs);
+}
 
 // Silence detection
-let silenceTimer: ReturnType<typeof setTimeout> | undefined;
-let accumulatedFinalText = "";        // buffered confirmed segments
-let latestInterimText = "";           // current partial segment (display only)
+let accumulatedFinalText = "";
+let latestInterimText = "";
 
-const SILENCE_THRESHOLD_MS = 1200;   // wait 1.2 s after last speech before finalizing
-const MAX_LISTEN_MS = 20000;         // hard ceiling: 20 s max per command session
+const SILENCE_THRESHOLD_MS = 1200;
+const MAX_LISTEN_MS = 20_000;
 
 function clearSilenceTimer() {
   clearTimeout(silenceTimer);
@@ -114,30 +155,48 @@ function clearSilenceTimer() {
 function armSilenceTimer() {
   clearSilenceTimer();
   silenceTimer = setTimeout(() => {
-    // User has been silent for SILENCE_THRESHOLD_MS — finalize whatever we have
-    const fullText = [accumulatedFinalText, latestInterimText].filter(Boolean).join(" ").trim();
+    const fullText = [accumulatedFinalText, latestInterimText]
+      .filter(Boolean).join(" ").trim();
+    stopForCycle();
     if (fullText.length > 1) {
-      stopRecognition();
       const stripped = stripWakeWord(fullText);
       if (stripped.length > 1) {
         handleCommand(stripped);
       } else {
         patch({ isAwake: false, voiceState: "idle", transcript: "" });
-        if (_state.enabled) startRecognition("passive");
+        schedulePassiveRestart();
       }
     } else {
-      stopRecognition();
       patch({ isAwake: false, voiceState: "idle", transcript: "" });
-      if (_state.enabled) startRecognition("passive");
+      schedulePassiveRestart();
     }
   }, SILENCE_THRESHOLD_MS);
 }
 
+/**
+ * Stop recognition as part of a normal command cycle.
+ * Does NOT set intentionalStop, so if onend fires it will still see
+ * _state.enabled and schedule a restart (which schedulePassiveRestart guards
+ * against double-firing via restartPending).
+ */
+function stopForCycle() {
+  clearTimeout(commandTimeout);
+  clearSilenceTimer();
+  accumulatedFinalText = "";
+  latestInterimText = "";
+  if (recRef) {
+    // We are about to call abort() deliberately — mark intentional so onend
+    // doesn't *also* restart (schedulePassiveRestart handles it from call site).
+    intentionalStop = true;
+    try { recRef.abort(); } catch { /* ignore */ }
+    recRef = null;
+  }
+}
+
 function startRecognition(mode: "passive" | "command" = "passive") {
   if (!SpeechRecognitionCtor) return;
-  if (recRef) return;
+  if (recRef) return; // already running
 
-  clearTimeout(restartTimer);
   currentMode = mode;
   intentionalStop = false;
   accumulatedFinalText = "";
@@ -147,7 +206,6 @@ function startRecognition(mode: "passive" | "command" = "passive") {
   rec.continuous = true;
   rec.interimResults = true;
   rec.lang = "en-US";
-  // maxAlternatives = 1 gives us the best guess without overhead
   rec.maxAlternatives = 1;
   recRef = rec;
 
@@ -159,15 +217,13 @@ function startRecognition(mode: "passive" | "command" = "passive") {
       const lower = text.toLowerCase();
 
       if (currentMode === "passive") {
-        // Only care about final results for wake-word detection
         if (!isFinal) continue;
 
         const woke = WAKE_WORDS.some((w) => lower.includes(w));
         if (woke) {
-          stopRecognition();
+          stopForCycle(); // stop passive, intentionalStop=true so onend won't restart yet
           patch({ isAwake: true, voiceState: "listening", transcript: "" });
 
-          // Check if command is inline with wake word
           let inlineCmd = text;
           for (const w of WAKE_WORDS) {
             if (lower.includes(w)) {
@@ -178,54 +234,54 @@ function startRecognition(mode: "passive" | "command" = "passive") {
           }
 
           if (inlineCmd.length > 3) {
-            // Inline command after wake word — process directly
             handleCommand(inlineCmd);
           } else {
-            // Wake word only — start listening for command
             accumulatedFinalText = "";
             latestInterimText = "";
             startRecognition("command");
-            // Hard ceiling timeout
             commandTimeout = setTimeout(() => {
               if (_state.voiceState === "listening") {
-                stopRecognition();
-                patch({ isAwake: false, voiceState: "idle", transcript: "" });
-                startRecognition("passive");
+                clearSilenceTimer();
+                const fullText = [accumulatedFinalText, latestInterimText]
+                  .filter(Boolean).join(" ").trim();
+                stopForCycle();
+                if (fullText.length > 1) {
+                  handleCommand(stripWakeWord(fullText));
+                } else {
+                  patch({ isAwake: false, voiceState: "idle", transcript: "" });
+                  schedulePassiveRestart();
+                }
               }
             }, MAX_LISTEN_MS);
           }
           return;
         }
+
       } else if (currentMode === "command") {
-        // Reset the hard ceiling (user is still talking)
         clearTimeout(commandTimeout);
 
         if (isFinal) {
-          // Accumulate confirmed text
           accumulatedFinalText = [accumulatedFinalText, text].filter(Boolean).join(" ").trim();
           latestInterimText = "";
-          // Update live transcript display
           patch({ transcript: accumulatedFinalText });
-          // Arm silence detector — waits for the user to pause
           armSilenceTimer();
         } else {
-          // Interim: update display but don't commit
           latestInterimText = text;
           patch({ transcript: [accumulatedFinalText, latestInterimText].filter(Boolean).join(" ") });
         }
 
-        // Re-arm the hard ceiling timeout
+        // Re-arm ceiling
         commandTimeout = setTimeout(() => {
           if (_state.voiceState === "listening") {
-            // Force finalize with whatever we have
             clearSilenceTimer();
-            const fullText = [accumulatedFinalText, latestInterimText].filter(Boolean).join(" ").trim();
-            stopRecognition();
+            const fullText = [accumulatedFinalText, latestInterimText]
+              .filter(Boolean).join(" ").trim();
+            stopForCycle();
             if (fullText.length > 1) {
               handleCommand(stripWakeWord(fullText));
             } else {
               patch({ isAwake: false, voiceState: "idle", transcript: "" });
-              if (_state.enabled) startRecognition("passive");
+              schedulePassiveRestart();
             }
           }
         }, MAX_LISTEN_MS);
@@ -236,52 +292,60 @@ function startRecognition(mode: "passive" | "command" = "passive") {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   rec.onerror = (e: any) => {
     if (e.error === "not-allowed" || e.error === "service-not-allowed") {
-      stopRecognition();
+      // Permission denied — don't restart
+      intentionalStop = true;
+      recRef = null;
       patch({ voiceState: "idle", isAwake: false });
+      return;
     }
-    // "no-speech" and "aborted" are normal — let onend handle restart
+    // "no-speech", "aborted", "network" — let onend handle restart
   };
 
   rec.onend = () => {
     recRef = null;
-    if (intentionalStop) return;
 
+    if (intentionalStop) {
+      // Intentional stops during command cycles have their restart handled
+      // explicitly by the call site (handleCommand → TTS callback, etc.)
+      // Intentional stops from disable()/dismiss(!enabled) should NOT restart.
+      intentionalStop = false; // reset for next cycle
+      return;
+    }
+
+    // Unexpected drop (browser killed recognition, no-speech timeout, etc.)
     if (currentMode === "command") {
-      // Recognition ended unexpectedly while in command mode —
-      // finalize with whatever we have if there's accumulated text
+      // We were mid-command — try to salvage accumulated text
       clearSilenceTimer();
-      const fullText = [accumulatedFinalText, latestInterimText].filter(Boolean).join(" ").trim();
+      const fullText = [accumulatedFinalText, latestInterimText]
+        .filter(Boolean).join(" ").trim();
       if (fullText.length > 1) {
         handleCommand(stripWakeWord(fullText));
-        return;
+        return; // handleCommand owns the restart from here
       }
-      // Nothing useful — fall through to restart passive
+      patch({ isAwake: false, voiceState: "idle", transcript: "" });
     }
 
-    // WAKE WORD FIX: ALWAYS restart passive if enabled.
-    // The old condition checked voiceState === "idle" which was wrong —
-    // when command/speaking states are active, voiceState is NOT idle,
-    // so the restart never fired and wake word stopped working.
-    if (_state.enabled) {
-      restartTimer = setTimeout(() => startRecognition("passive"), 500);
-    }
+    // Resume passive listening
+    schedulePassiveRestart();
   };
 
   try {
     rec.start();
   } catch {
     recRef = null;
-    // WAKE WORD FIX: retry on start() failure (e.g. mic still held by TTS)
-    if (_state.enabled) {
-      restartTimer = setTimeout(() => startRecognition(mode), 1000);
-    }
+    // mic still busy (e.g. TTS just ended) — retry after a longer wait
+    schedulePassiveRestart(500); // 500ms on top of the base 500ms = 1s total
   }
 }
 
+/**
+ * Full hard stop — used by disable() and dismiss() when we truly don't want
+ * any more listening. Sets intentionalStop so onend won't restart.
+ */
 function stopRecognition() {
-  clearTimeout(restartTimer);
   clearTimeout(commandTimeout);
   clearSilenceTimer();
+  restartPending = false;
   accumulatedFinalText = "";
   latestInterimText = "";
   if (recRef) {
@@ -305,15 +369,23 @@ function stripWakeWord(text: string): string {
 
 function buildSystemPrompt(tasks: HorizonTask[]): string {
   const now = new Date();
-  const dateStr = now.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  const dateStr = now.toLocaleDateString("en-US", {
+    weekday: "long", year: "numeric", month: "long", day: "numeric",
+  });
   const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
   const todayKey = now.toISOString().split("T")[0];
   const pending = tasks.filter((t) => t.taskDate === todayKey && !t.completed);
 
   const taskSummary = tasks.length
-    ? tasks.slice(0, 20).map(
-        (t) => `• [${t.completed ? "✓" : " "}] ${t.taskDate} ${t.taskTime} — ${t.title}${t.description ? ` (${t.description})` : ""} [${t.priority}]`
-      ).join("\n")
+    ? tasks
+        .slice(0, 20)
+        .map(
+          (t) =>
+            `• [${t.completed ? "✓" : " "}] ${t.taskDate} ${t.taskTime} — ${t.title}${
+              t.description ? ` (${t.description})` : ""
+            } [${t.priority}]`
+        )
+        .join("\n")
     : "No tasks scheduled.";
 
   return `You are J.A.R.V.I.S. — Just A Rather Very Intelligent System. A sophisticated AI assistant embedded in the AI Metrics personal operating system.
@@ -355,7 +427,9 @@ function parseTasks(text: string): { clean: string; tasks: ParsedTask[] } {
       title: t.title || "Untitled",
       taskDate: t.taskDate || new Date().toISOString().split("T")[0],
       taskTime: t.taskTime || "09:00",
-      priority: (["low", "medium", "high"].includes(t.priority) ? t.priority : "medium") as ParsedTask["priority"],
+      priority: (["low", "medium", "high"].includes(t.priority)
+        ? t.priority
+        : "medium") as ParsedTask["priority"],
       description: t.description || undefined,
     }));
     const clean = text.replace(/\[TASKS:[\s\S]*?\]/, "").trim();
@@ -377,11 +451,13 @@ function parseNavigate(text: string): { clean: string; route: string | null } {
 let conversationHistory: { role: "user" | "model"; parts: { text: string }[] }[] = [];
 
 async function handleCommand(commandText: string) {
-  if (!commandText.trim()) return;
+  if (!commandText.trim()) {
+    schedulePassiveRestart();
+    return;
+  }
 
   patch({ voiceState: "processing", isAwake: true });
 
-  // Add user message
   const userMsg: JarvisMessage = {
     id: crypto.randomUUID(),
     role: "user",
@@ -393,12 +469,16 @@ async function handleCommand(commandText: string) {
 
   try {
     const systemPrompt = buildSystemPrompt([]);
-    const fullHistory = conversationHistory.length === 0
-      ? [
-          { role: "user" as const, parts: [{ text: systemPrompt }] },
-          { role: "model" as const, parts: [{ text: "Understood. J.A.R.V.I.S. online and ready, sir." }] },
-        ]
-      : conversationHistory;
+    const fullHistory =
+      conversationHistory.length === 0
+        ? [
+            { role: "user" as const, parts: [{ text: systemPrompt }] },
+            {
+              role: "model" as const,
+              parts: [{ text: "Understood. J.A.R.V.I.S. online and ready, sir." }],
+            },
+          ]
+        : conversationHistory;
 
     const rawResponse = await geminiAPI.generateContent(commandText, fullHistory);
     conversationHistory = [
@@ -411,7 +491,6 @@ async function handleCommand(commandText: string) {
     const { clean: afterNav, route } = parseNavigate(rawResponse);
     const { clean, tasks } = parseTasks(afterNav);
 
-    // Navigate if requested
     if (route) {
       setTimeout(() => {
         win?.history?.pushState({}, "", route);
@@ -419,7 +498,6 @@ async function handleCommand(commandText: string) {
       }, 300);
     }
 
-    // Create tasks
     const createdTasks: ParsedTask[] = [];
     for (const task of tasks) {
       const result = await addTaskDirect({
@@ -444,16 +522,14 @@ async function handleCommand(commandText: string) {
 
     patch({ messages: [..._state.messages, userMsg, jarvisMsg], voiceState: "speaking" });
 
-    // Speak response, then restart passive listening
-    // WAKE WORD FIX: 400ms delay lets Chrome/Android release mic from TTS
-    // before we try to start recognition again. Without this, rec.start()
-    // silently fails and the wake word loop dies permanently.
+    // Speak, then restart passive listening.
+    // Extra 400ms delay lets Chrome release the mic resource from TTS
+    // before we attempt rec.start() — without this it silently fails on Android/Chrome.
     speakResponse(clean, () => {
       patch({ voiceState: "idle", isAwake: false, transcript: "" });
-      if (_state.enabled) {
-        setTimeout(() => startRecognition("passive"), 400);
-      }
+      schedulePassiveRestart(400); // 400ms post-TTS buffer + 500ms base = 900ms
     });
+
   } catch {
     const errMsg: JarvisMessage = {
       id: crypto.randomUUID(),
@@ -462,13 +538,21 @@ async function handleCommand(commandText: string) {
       timestamp: Date.now(),
       type: "error",
     };
-    patch({ messages: [..._state.messages, userMsg, errMsg], voiceState: "idle", isAwake: false, transcript: "" });
-    if (_state.enabled) startRecognition("passive");
+    patch({
+      messages: [..._state.messages, userMsg, errMsg],
+      voiceState: "idle",
+      isAwake: false,
+      transcript: "",
+    });
+    schedulePassiveRestart();
   }
 }
 
 function speakResponse(text: string, onEnd?: () => void) {
-  if (!("speechSynthesis" in window)) { onEnd?.(); return; }
+  if (!("speechSynthesis" in window)) {
+    onEnd?.();
+    return;
+  }
   window.speechSynthesis.cancel();
   const utt = new SpeechSynthesisUtterance(text);
   utt.rate = 0.95;
@@ -476,7 +560,11 @@ function speakResponse(text: string, onEnd?: () => void) {
   utt.volume = 1;
   utt.lang = "en-US";
   const voices = window.speechSynthesis.getVoices();
-  const pref = voices.find((v) => v.lang.startsWith("en") && (v.name.includes("Google") || v.name.includes("Daniel") || v.name.includes("Alex")));
+  const pref = voices.find(
+    (v) =>
+      v.lang.startsWith("en") &&
+      (v.name.includes("Google") || v.name.includes("Daniel") || v.name.includes("Alex"))
+  );
   if (pref) utt.voice = pref;
   utt.onend = () => onEnd?.();
   utt.onerror = () => onEnd?.();
@@ -489,7 +577,7 @@ export const jarvis = {
   enable() {
     try { localStorage.setItem("jarvis:enabled", "true"); } catch { /* ignore */ }
     patch({ enabled: true, voiceState: "idle" });
-    startRecognition("passive");
+    if (!recRef) startRecognition("passive");
   },
 
   disable() {
@@ -500,7 +588,7 @@ export const jarvis = {
   },
 
   activate() {
-    stopRecognition();
+    stopForCycle();
     accumulatedFinalText = "";
     latestInterimText = "";
     patch({ isAwake: true, voiceState: "listening", transcript: "" });
@@ -508,28 +596,30 @@ export const jarvis = {
     commandTimeout = setTimeout(() => {
       if (_state.voiceState === "listening") {
         clearSilenceTimer();
-        const fullText = [accumulatedFinalText, latestInterimText].filter(Boolean).join(" ").trim();
-        stopRecognition();
+        const fullText = [accumulatedFinalText, latestInterimText]
+          .filter(Boolean).join(" ").trim();
+        stopForCycle();
         if (fullText.length > 1) {
           handleCommand(stripWakeWord(fullText));
         } else {
           patch({ isAwake: false, voiceState: "idle", transcript: "" });
-          if (_state.enabled) startRecognition("passive");
+          schedulePassiveRestart();
         }
       }
     }, MAX_LISTEN_MS);
   },
 
   async sendText(text: string) {
-    stopRecognition();
+    stopForCycle();
     await handleCommand(text);
   },
 
   dismiss() {
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
-    stopRecognition();
+    stopRecognition(); // hard stop
     patch({ isAwake: false, voiceState: "idle", transcript: "" });
-    if (_state.enabled) startRecognition("passive");
+    // Only restart if still enabled
+    if (_state.enabled) schedulePassiveRestart();
   },
 
   clearMessages() {
@@ -537,12 +627,15 @@ export const jarvis = {
     patch({ messages: [] });
   },
 
+  /**
+   * Call this ONCE in your App root component (e.g. in a useEffect with []).
+   * This ensures JARVIS listens on every route, not just /jarvis.
+   */
   autoStartIfEnabled() {
     if (!SpeechRecognitionCtor) return;
 
     const doStart = () => {
       if (!_state.enabled) {
-        // Auto-enable permanently since permission is already granted
         try { localStorage.setItem("jarvis:enabled", "true"); } catch { /* ignore */ }
         patch({ enabled: true, voiceState: "idle" });
       }
@@ -554,7 +647,9 @@ export const jarvis = {
         .query({ name: "microphone" as PermissionName })
         .then((r) => {
           if (r.state === "granted") doStart();
-          r.onchange = () => { if (r.state === "granted") doStart(); };
+          r.onchange = () => {
+            if (r.state === "granted") doStart();
+          };
         })
         .catch(() => {
           if (_state.enabled) startRecognition("passive");

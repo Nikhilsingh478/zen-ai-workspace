@@ -1,55 +1,287 @@
 /**
- * JARVIS AI Core — Complete SVG rewrite.
+ * JARVIS AI Core — production rewrite.
  *
- * Using SVG guarantees perfect centering — no more misaligned circles.
- * Design: elegant arc-based holographic interface with reactive animations.
+ * Principles:
+ *  - Zero raw CSS keyframe strings — everything via framer-motion
+ *  - Correct SVG geometry for all arcs and elements
+ *  - Smooth state transitions with AnimatePresence + mode="wait"
+ *  - Layered depth: glow → arcs → radar → pulse → orb → HUD
  */
 
 import { motion, AnimatePresence } from "framer-motion";
 import type { JarvisVoiceState } from "@/lib/jarvis";
 
-const STYLES = `
-@keyframes jv-orb-breathe {
-  0%,100% { filter: drop-shadow(0 0 8px rgba(14,165,233,0.55)) drop-shadow(0 0 20px rgba(14,165,233,0.25)); }
-  50%      { filter: drop-shadow(0 0 16px rgba(56,189,248,0.75)) drop-shadow(0 0 40px rgba(56,189,248,0.35)); }
-}
-.jv-orb { animation: jv-orb-breathe 3s ease-in-out infinite; }
-`;
+// ─── Shared constants ─────────────────────────────────────────────────────────
 
-function Waveform({ active }: { active: boolean }) {
-  const bars = [0.4, 0.65, 0.9, 0.7, 1, 0.75, 0.5, 0.8, 0.6];
+const C  = 100; // SVG centre x/y (viewBox 200×200)
+const C0 = "#0EA5E9"; // sky-500
+const C1 = "#38BDF8"; // sky-400
+const C2 = "#BAE6FD"; // sky-200
+
+// ─── Waveform ─────────────────────────────────────────────────────────────────
+
+function Waveform() {
+  const profile = [0.35, 0.6, 0.9, 0.65, 1, 0.7, 0.5, 0.8, 0.45];
   return (
-    <div className="flex items-center gap-[3px]" style={{ height: 26 }}>
-      {bars.map((base, i) => (
-        <motion.div
+    <div
+      style={{
+        display: "flex",
+        alignItems: "flex-end",
+        gap: 3,
+        height: 22,
+        padding: "0 2px",
+      }}
+    >
+      {profile.map((base, i) => (
+        <motion.span
           key={i}
-          style={{ width: 2.5, height: "100%", borderRadius: 2, background: "#38BDF8", originY: "center" }}
-          animate={active
-            ? { scaleY: [base, base * 1.7, base * 0.4, base * 1.4, base], opacity: [0.6, 1, 0.5, 1, 0.6] }
-            : { scaleY: 0.15, opacity: 0.3 }}
-          transition={active
-            ? { duration: 0.55 + i * 0.06, repeat: Infinity, repeatType: "mirror", ease: "easeInOut", delay: i * 0.04 }
-            : { duration: 0.3 }}
+          style={{
+            display: "block",
+            width: 2.5,
+            borderRadius: 2,
+            background: `linear-gradient(180deg, ${C2} 0%, ${C0} 100%)`,
+            originY: 1,
+          }}
+          animate={{
+            height: [
+              `${base * 35}%`,
+              `${base * 100}%`,
+              `${base * 25}%`,
+              `${base * 85}%`,
+              `${base * 35}%`,
+            ],
+            opacity: [0.55, 1, 0.45, 0.9, 0.55],
+          }}
+          transition={{
+            duration: 0.85 + i * 0.06,
+            repeat: Infinity,
+            ease: "easeInOut",
+            delay: i * 0.07,
+          }}
         />
       ))}
     </div>
   );
 }
+
+// ─── Processing dots ──────────────────────────────────────────────────────────
 
 function ProcessingDots() {
   return (
-    <div className="flex gap-2 items-center">
+    <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
       {[0, 1, 2].map((i) => (
-        <motion.div
+        <motion.span
           key={i}
-          style={{ width: 5, height: 5, borderRadius: "50%", background: "#38BDF8" }}
-          animate={{ opacity: [0.2, 1, 0.2], scale: [0.8, 1.3, 0.8] }}
-          transition={{ duration: 0.85, repeat: Infinity, delay: i * 0.2, ease: "easeInOut" }}
+          style={{
+            display: "block",
+            width: 5,
+            height: 5,
+            borderRadius: "50%",
+            background: C1,
+          }}
+          animate={{ y: [0, -6, 0], opacity: [0.35, 1, 0.35] }}
+          transition={{
+            duration: 0.8,
+            repeat: Infinity,
+            ease: "easeInOut",
+            delay: i * 0.18,
+          }}
         />
       ))}
     </div>
   );
 }
+
+// ─── Spinning arc helper ──────────────────────────────────────────────────────
+
+interface ArcProps {
+  r: number;
+  dasharray: string;
+  stroke: string;
+  strokeWidth: number;
+  duration: number;   // seconds for one full rotation
+  reverse?: boolean;
+  linecap?: "round" | "butt";
+}
+
+function SpinningArc({ r, dasharray, stroke, strokeWidth, duration, reverse, linecap = "round" }: ArcProps) {
+  return (
+    <motion.g
+      style={{ originX: `${C}px`, originY: `${C}px` }}
+      animate={{ rotate: reverse ? -360 : 360 }}
+      transition={{ duration, repeat: Infinity, ease: "linear" }}
+    >
+      <circle
+        cx={C} cy={C} r={r}
+        fill="none"
+        stroke={stroke}
+        strokeWidth={strokeWidth}
+        strokeDasharray={dasharray}
+        strokeLinecap={linecap}
+      />
+    </motion.g>
+  );
+}
+
+// ─── Radar sweep (proper SVG conic wedge) ─────────────────────────────────────
+// Draws a 30° filled arc sector at r=82, rotated by framer-motion.
+
+function RadarSweep({ active }: { active: boolean }) {
+  // Sector: centre (100,100), r=82, from -90° to -60° (i.e. pointing up, 30° wide)
+  const r = 82;
+  const startAngle = -90; // degrees (pointing up)
+  const endAngle   = -60;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const x1 = C + r * Math.cos(toRad(startAngle));
+  const y1 = C + r * Math.sin(toRad(startAngle));
+  const x2 = C + r * Math.cos(toRad(endAngle));
+  const y2 = C + r * Math.sin(toRad(endAngle));
+  const d  = `M ${C} ${C} L ${x1} ${y1} A ${r} ${r} 0 0 1 ${x2} ${y2} Z`;
+
+  return (
+    <motion.g
+      style={{ originX: `${C}px`, originY: `${C}px` }}
+      animate={{ rotate: 360 }}
+      transition={{
+        duration: active ? 2.8 : 5.5,
+        repeat: Infinity,
+        ease: "linear",
+      }}
+    >
+      {/* Trailing gradient: 3 overlapping wedges at decreasing opacity */}
+      {[1, 0.55, 0.25].map((opacity, i) => {
+        const sweep = 30 + i * 10;
+        const ex  = C + r * Math.cos(toRad(startAngle - sweep));
+        const ey  = C + r * Math.sin(toRad(startAngle - sweep));
+        const trail = `M ${C} ${C} L ${x1} ${y1} A ${r} ${r} 0 0 0 ${ex} ${ey} Z`;
+        return (
+          <path
+            key={i}
+            d={i === 0 ? d : trail}
+            fill={`rgba(56,189,248,${(active ? 0.13 : 0.05) * opacity})`}
+          />
+        );
+      })}
+      {/* Leading edge line */}
+      <line
+        x1={C} y1={C} x2={x2} y2={y2}
+        stroke={`rgba(56,189,248,${active ? 0.6 : 0.25})`}
+        strokeWidth="0.8"
+      />
+    </motion.g>
+  );
+}
+
+// ─── Pulse rings ──────────────────────────────────────────────────────────────
+
+function PulseRings({ active }: { active: boolean }) {
+  return (
+    <>
+      {[0, 1].map((i) => (
+        <motion.circle
+          key={i}
+          cx={C} cy={C}
+          fill="none"
+          stroke={i === 0 ? `rgba(56,189,248,0.55)` : `rgba(14,165,233,0.4)`}
+          strokeWidth="0.7"
+          animate={{
+            r:            [28, active ? 74 : 58],
+            opacity:      [active ? 0.6 : 0.3, 0],
+            strokeWidth:  [0.9, 0.2],
+          }}
+          transition={{
+            duration: active ? 2.2 : 3.8,
+            repeat: Infinity,
+            ease: "easeOut",
+            delay: i * (active ? 1.1 : 1.9),
+          }}
+        />
+      ))}
+    </>
+  );
+}
+
+// ─── HUD corner brackets ──────────────────────────────────────────────────────
+
+const BRACKETS = [
+  { d: "M22 32 L22 22 L32 22" },
+  { d: "M178 32 L178 22 L168 22" },
+  { d: "M22 168 L22 178 L32 178" },
+  { d: "M178 168 L178 178 L168 178" },
+];
+
+function HUDBrackets({ active }: { active: boolean }) {
+  return (
+    <>
+      {BRACKETS.map(({ d }, i) => (
+        <motion.path
+          key={i}
+          d={d}
+          fill="none"
+          stroke={`rgba(14,165,233,${active ? 0.55 : 0.22})`}
+          strokeWidth="1.3"
+          strokeLinecap="round"
+          animate={{ opacity: active ? 1 : 0.6, pathLength: [0, 1] }}
+          initial={{ pathLength: 0, opacity: 0 }}
+          transition={{
+            pathLength: { duration: 0.6, delay: i * 0.1, ease: "easeOut" },
+            opacity:    { duration: 0.4, delay: i * 0.1 },
+          }}
+        />
+      ))}
+    </>
+  );
+}
+
+// ─── Status label ─────────────────────────────────────────────────────────────
+
+function StatusLabel({ voiceState, isAwake }: { voiceState: JarvisVoiceState; isAwake: boolean }) {
+  const isListening  = voiceState === "listening";
+  const isProcessing = voiceState === "processing";
+  const isSpeaking   = voiceState === "speaking";
+
+  const labelStyle: React.CSSProperties = {
+    fontFamily: "'DM Mono', 'Fira Code', 'Courier New', monospace",
+    fontSize: 9,
+    letterSpacing: "0.22em",
+    textTransform: "uppercase" as const,
+    color: `rgba(186,230,253,0.75)`,
+  };
+
+  const wrap = (key: string, node: React.ReactNode) => (
+    <motion.div
+      key={key}
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -4 }}
+      transition={{ duration: 0.2, ease: "easeOut" }}
+    >
+      {node}
+    </motion.div>
+  );
+
+  return (
+    <AnimatePresence mode="wait">
+      {isSpeaking   && wrap("speaking",   <Waveform />)}
+      {isProcessing && wrap("processing", <ProcessingDots />)}
+      {isListening  && !isSpeaking && wrap("listening", (
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <motion.span
+            style={{ display: "block", width: 5, height: 5, borderRadius: "50%", background: "#10B981" }}
+            animate={{ opacity: [0.4, 1, 0.4] }}
+            transition={{ duration: 1.1, repeat: Infinity }}
+          />
+          <span style={labelStyle}>Listening</span>
+        </div>
+      ))}
+      {isAwake && !isListening && !isProcessing && !isSpeaking && wrap("awake", (
+        <span style={labelStyle}>Online</span>
+      ))}
+    </AnimatePresence>
+  );
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
 
 interface AICoreProps {
   voiceState: JarvisVoiceState;
@@ -62,207 +294,143 @@ export function AICore({ voiceState, isAwake, size = 300 }: AICoreProps) {
   const isProcessing = voiceState === "processing";
   const isSpeaking   = voiceState === "speaking";
   const isActive     = isAwake || isListening || isProcessing || isSpeaking;
-  const speed        = isActive ? 0.5 : 1;
 
-  // Arc stroke-dasharray calculations (circumference = 2πr)
-  // Arc 1: r=80, 300° arc  → dasharray = "419 84"  (502*300/360=419, gap=84)
-  // Arc 2: r=62, 240° arc  → dasharray = "259 130"  (389*240/360=259)
-  // Arc 3: r=44, 200° arc  → dasharray = "153 124"  (277*200/360=153)
-  const bracket = `rgba(14,165,233,${isActive ? 0.45 : 0.2})`;
+  // Arc stroke params: circumference = 2πr
+  // r=80 → circ≈502  | 300° arc → dash 419, gap 84
+  // r=62 → circ≈390  | 240° arc → dash 260, gap 130
+  // r=44 → circ≈277  | dotted pattern
 
   return (
-    <div className="select-none" style={{ width: size, height: size, position: "relative" }}>
-      <style>{STYLES}</style>
-
+    <div style={{ width: size, height: size, position: "relative", userSelect: "none" }}>
       <svg
         viewBox="0 0 200 200"
         width={size}
         height={size}
-        style={{ overflow: "visible" }}
+        style={{ overflow: "visible", display: "block" }}
       >
         <defs>
-          {/* Orb gradient */}
-          <radialGradient id="jv-orb-grad" cx="38%" cy="32%" r="65%">
-            <stop offset="0%"   stopColor="#BAE6FD" />
-            <stop offset="45%"  stopColor="#0EA5E9" />
+          {/* Orb fill — specular highlight offset to top-left */}
+          <radialGradient id="jv-orb" cx="36%" cy="30%" r="68%">
+            <stop offset="0%"   stopColor={C2} />
+            <stop offset="40%"  stopColor={C1} />
             <stop offset="100%" stopColor="#0369A1" />
           </radialGradient>
 
-          {/* Ambient glow fill */}
-          <radialGradient id="jv-glow-fill" cx="50%" cy="50%">
-            <stop offset="0%"   stopColor="rgba(14,165,233,0.18)" />
-            <stop offset="60%"  stopColor="rgba(14,165,233,0.04)" />
-            <stop offset="100%" stopColor="rgba(14,165,233,0)"    stopOpacity="0" />
+          {/* Soft ambient field */}
+          <radialGradient id="jv-field" cx="50%" cy="50%" r="50%">
+            <stop offset="0%"   stopColor="rgba(14,165,233,0.22)" />
+            <stop offset="55%"  stopColor="rgba(14,165,233,0.06)" />
+            <stop offset="100%" stopColor="rgba(14,165,233,0)" stopOpacity="0" />
           </radialGradient>
 
-          {/* Blurred glow behind orb */}
-          <filter id="jv-orb-glow" x="-100%" y="-100%" width="300%" height="300%">
-            <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
+          {/* Orb bloom — separate from main filter to avoid double-blur */}
+          <filter id="jv-bloom" x="-80%" y="-80%" width="260%" height="260%">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="blur" />
+          </filter>
+
+          {/* Subtle inner shadow on orb */}
+          <filter id="jv-inner" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur in="SourceAlpha" stdDeviation="2" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
           </filter>
         </defs>
 
-        {/* ── Ambient glow ── */}
+        {/* 1 · Ambient field */}
         <motion.circle
-          cx="100" cy="100" r="96"
-          fill="url(#jv-glow-fill)"
-          animate={{ opacity: isActive ? 1 : 0.45 }}
-          transition={{ duration: 0.8 }}
+          cx={C} cy={C} r={96}
+          fill="url(#jv-field)"
+          animate={{ opacity: isActive ? 1 : 0.4, scale: isActive ? 1.05 : 1 }}
+          transition={{ duration: 1, ease: "easeInOut" }}
+          style={{ originX: `${C}px`, originY: `${C}px` }}
         />
 
-        {/* ── Arc 1 — outer, clockwise, 300° ── */}
-        <motion.g
-          style={{ originX: "100px", originY: "100px" }}
-          animate={{ rotate: 360 }}
-          transition={{ duration: 14 * speed, repeat: Infinity, ease: "linear" }}
-        >
-          <circle
-            cx="100" cy="100" r="80"
-            fill="none"
-            stroke={`rgba(14,165,233,${isActive ? 0.45 : 0.28})`}
-            strokeWidth="1.3"
-            strokeDasharray="419 84"
-            strokeLinecap="round"
-            style={{ transition: "stroke 0.6s" }}
-          />
-        </motion.g>
-
-        {/* ── Arc 2 — middle, counter-clockwise, 240° ── */}
-        <motion.g
-          style={{ originX: "100px", originY: "100px" }}
-          animate={{ rotate: -360 }}
-          transition={{ duration: 20 * speed, repeat: Infinity, ease: "linear" }}
-        >
-          <circle
-            cx="100" cy="100" r="62"
-            fill="none"
-            stroke={`rgba(56,189,248,${isActive ? 0.32 : 0.18})`}
-            strokeWidth="0.9"
-            strokeDasharray="259 130"
-            strokeLinecap="round"
-            style={{ transition: "stroke 0.6s" }}
-          />
-        </motion.g>
-
-        {/* ── Arc 3 — inner, clockwise, dotted, 200° ── */}
-        <motion.g
-          style={{ originX: "100px", originY: "100px" }}
-          animate={{ rotate: 360 }}
-          transition={{ duration: 28 * speed, repeat: Infinity, ease: "linear" }}
-        >
-          <circle
-            cx="100" cy="100" r="44"
-            fill="none"
-            stroke={`rgba(14,165,233,${isActive ? 0.28 : 0.14})`}
-            strokeWidth="0.7"
-            strokeDasharray="8 8"
-            strokeLinecap="round"
-            style={{ transition: "stroke 0.6s" }}
-          />
-        </motion.g>
-
-        {/* ── Radar sweep ── */}
-        <motion.g
-          style={{ originX: "100px", originY: "100px" }}
-          animate={{ rotate: 360 }}
-          transition={{ duration: (isActive ? 3 : 5.5), repeat: Infinity, ease: "linear" }}
-        >
-          {/* Wedge: 30° sweep */}
-          <path
-            d="M 100 100 L 100 18 A 82 82 0 0 1 141 29 Z"
-            fill={`rgba(56,189,248,${isActive ? 0.09 : 0.04})`}
-            style={{ transition: "fill 0.6s" }}
-          />
-        </motion.g>
-
-        {/* ── Pulse ring ── */}
-        <motion.circle
-          cx="100" cy="100" r="30"
-          fill="none"
-          stroke="rgba(56,189,248,0.5)"
-          strokeWidth="0.8"
-          animate={isActive
-            ? { r: [30, 70], opacity: [0.5, 0], strokeWidth: [1, 0.3] }
-            : { r: [30, 55], opacity: [0.25, 0], strokeWidth: [0.8, 0.2] }}
-          transition={{ duration: isActive ? 2 : 3.5, repeat: Infinity, ease: "easeOut", delay: 0 }}
-        />
-        <motion.circle
-          cx="100" cy="100" r="30"
-          fill="none"
-          stroke="rgba(14,165,233,0.4)"
-          strokeWidth="0.6"
-          animate={isActive
-            ? { r: [30, 70], opacity: [0.4, 0], strokeWidth: [0.8, 0.2] }
-            : { r: [30, 55], opacity: [0.2, 0], strokeWidth: [0.6, 0.1] }}
-          transition={{ duration: isActive ? 2 : 3.5, repeat: Infinity, ease: "easeOut", delay: isActive ? 1 : 1.75 }}
+        {/* 2 · Outer arc — r=80, 300° span, clockwise */}
+        <SpinningArc
+          r={80}
+          dasharray="419 84"
+          stroke={`rgba(14,165,233,${isActive ? 0.5 : 0.28})`}
+          strokeWidth={1.2}
+          duration={isActive ? 12 : 22}
         />
 
-        {/* ── Orb glow (blurred copy) ── */}
-        <circle cx="100" cy="100" r="22" fill="rgba(14,165,233,0.5)" filter="url(#jv-orb-glow)" />
+        {/* 3 · Middle arc — r=62, 240° span, counter-clockwise */}
+        <SpinningArc
+          r={62}
+          dasharray="260 130"
+          stroke={`rgba(56,189,248,${isActive ? 0.38 : 0.18})`}
+          strokeWidth={0.9}
+          duration={isActive ? 18 : 34}
+          reverse
+        />
 
-        {/* ── Centre orb ── */}
+        {/* 4 · Inner arc — r=44, dotted, clockwise */}
+        <SpinningArc
+          r={44}
+          dasharray="5 7"
+          stroke={`rgba(14,165,233,${isActive ? 0.32 : 0.14})`}
+          strokeWidth={0.75}
+          duration={isActive ? 26 : 50}
+          linecap="butt"
+        />
+
+        {/* 5 · Radar sweep */}
+        <RadarSweep active={isActive} />
+
+        {/* 6 · Pulse rings */}
+        <PulseRings active={isActive} />
+
+        {/* 7 · Orb bloom (blurred underlay for glow) */}
         <motion.circle
-          cx="100" cy="100"
-          fill="url(#jv-orb-grad)"
-          filter="url(#jv-orb-glow)"
-          className="jv-orb"
+          cx={C} cy={C}
+          fill={`rgba(14,165,233,${isActive ? 0.55 : 0.3})`}
+          filter="url(#jv-bloom)"
+          animate={{ r: isListening ? 28 : 24, opacity: isActive ? 1 : 0.5 }}
+          transition={{ type: "spring", stiffness: 180, damping: 18 }}
+        />
+
+        {/* 8 · Orb body */}
+        <motion.circle
+          cx={C} cy={C}
+          fill="url(#jv-orb)"
+          filter="url(#jv-inner)"
           animate={{
-            r: isListening ? 24 : isProcessing ? [22, 23.5, 22] : 22,
+            r: isListening ? 26 : isProcessing ? [22, 24, 22] : 22,
+            filter: isActive
+              ? ["drop-shadow(0 0 8px rgba(14,165,233,0.6)) drop-shadow(0 0 20px rgba(14,165,233,0.3))",
+                 "drop-shadow(0 0 14px rgba(56,189,248,0.8)) drop-shadow(0 0 36px rgba(56,189,248,0.4))",
+                 "drop-shadow(0 0 8px rgba(14,165,233,0.6)) drop-shadow(0 0 20px rgba(14,165,233,0.3))"]
+              : "drop-shadow(0 0 6px rgba(14,165,233,0.3))",
           }}
           transition={isProcessing
-            ? { duration: 0.45, repeat: Infinity, repeatType: "mirror" }
-            : { type: "spring", stiffness: 200, damping: 20 }}
+            ? { r: { duration: 0.5, repeat: Infinity, repeatType: "mirror", ease: "easeInOut" },
+                filter: { duration: 3, repeat: Infinity, ease: "easeInOut" } }
+            : { r: { type: "spring", stiffness: 200, damping: 22 },
+                filter: { duration: 3, repeat: Infinity, ease: "easeInOut" } }
+          }
         />
 
-        {/* Highlight */}
-        <circle cx="93" cy="91" r="7"  fill="rgba(255,255,255,0.5)"  />
-        <circle cx="91" cy="89" r="3"  fill="rgba(255,255,255,0.75)" />
+        {/* 9 · Specular highlights */}
+        <circle cx="92"  cy="90" r="7"  fill="rgba(255,255,255,0.45)" />
+        <circle cx="89"  cy="87" r="3"  fill="rgba(255,255,255,0.72)" />
 
-        {/* ── HUD corner brackets ── */}
-        <path d="M22 32 L22 22 L32 22" fill="none" stroke={bracket} strokeWidth="1.2" strokeLinecap="round" />
-        <path d="M178 32 L178 22 L168 22" fill="none" stroke={bracket} strokeWidth="1.2" strokeLinecap="round" />
-        <path d="M22 168 L22 178 L32 178" fill="none" stroke={bracket} strokeWidth="1.2" strokeLinecap="round" />
-        <path d="M178 168 L178 178 L168 178" fill="none" stroke={bracket} strokeWidth="1.2" strokeLinecap="round" />
+        {/* 10 · HUD brackets */}
+        <HUDBrackets active={isActive} />
       </svg>
 
-      {/* ── State overlay (HTML, below orb) ── */}
-      <div style={{ position: "absolute", bottom: "11%", width: "100%", display: "flex", justifyContent: "center" }}>
-        <AnimatePresence mode="wait">
-          {isSpeaking && (
-            <motion.div key="wave"
-              initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 5 }} transition={{ duration: 0.18 }}>
-              <Waveform active />
-            </motion.div>
-          )}
-          {isProcessing && (
-            <motion.div key="dots"
-              initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 5 }} transition={{ duration: 0.18 }}>
-              <ProcessingDots />
-            </motion.div>
-          )}
-          {isListening && !isSpeaking && (
-            <motion.div key="listen"
-              initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 5 }} transition={{ duration: 0.18 }}>
-              <div className="flex items-center gap-1.5">
-                <motion.div
-                  className="h-1.5 w-1.5 rounded-full"
-                  style={{ background: "#10B981" }}
-                  animate={{ opacity: [0.4, 1, 0.4] }}
-                  transition={{ duration: 1, repeat: Infinity }}
-                />
-                <span style={{ fontSize: 10, color: "rgba(56,189,248,0.65)", letterSpacing: "0.15em", fontFamily: "monospace" }}>
-                  LISTENING
-                </span>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+      {/* Status overlay — positioned at lower third of orb */}
+      <div
+        style={{
+          position: "absolute",
+          bottom: "12%",
+          width: "100%",
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          minHeight: 28,
+          pointerEvents: "none",
+        }}
+      >
+        <StatusLabel voiceState={voiceState} isAwake={isAwake} />
       </div>
     </div>
   );
