@@ -204,6 +204,7 @@ function startRecognition(mode: "passive" | "command" = "passive") {
         }
       } else if (currentMode === "command") {
         clearTimeout(commandTimeout);
+        clearSilenceTimer(); // FIX: Activity resets the silence timer so we don't cut off mid-speech
 
         const stripped = stripWakeWord(text);
 
