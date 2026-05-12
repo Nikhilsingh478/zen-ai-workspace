@@ -2,13 +2,14 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useRef, useState, useCallback } from "react";
 import {
-  Send, Trash2, Zap, CheckSquare,
+  Mic, MicOff, Send, Trash2, Zap, CheckSquare,
   Volume2, Clock, ChevronLeft, Radio,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useJarvis, jarvis } from "@/lib/jarvis";
 import { useHorizon } from "@/lib/horizon";
 import { AICore } from "@/components/jarvis/ai-core";
+import { isVoiceAssistantSupported } from "@/hooks/use-voice-assistant";
 
 export const Route = createFileRoute("/jarvis")({ component: JarvisPage });
 
@@ -517,7 +518,6 @@ function JarvisPage() {
         }}
       >
         <form onSubmit={handleSubmit} className="flex items-center gap-2">
-          {/* Mic button — commented out for now
           <motion.button
             type="button"
             onClick={handleVoice}
@@ -534,7 +534,6 @@ function JarvisPage() {
           >
             {isListening ? <MicOff size={14} /> : <Mic size={14} />}
           </motion.button>
-          */}
 
           <input
             ref={inputRef}

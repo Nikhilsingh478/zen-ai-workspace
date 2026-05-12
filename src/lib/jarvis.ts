@@ -258,12 +258,24 @@ function startRecognition(mode: "passive" | "command" = "passive") {
       // Nothing useful — fall through to restart passive
     }
 
-    if (_state.voiceState === "idle" && _state.enabled) {
-      restartTimer = setTimeout(() => startRecognition("passive"), 600);
+    // WAKE WORD FIX: ALWAYS restart passive if enabled.
+    // The old condition checked voiceState === "idle" which was wrong —
+    // when command/speaking states are active, voiceState is NOT idle,
+    // so the restart never fired and wake word stopped working.
+    if (_state.enabled) {
+      restartTimer = setTimeout(() => startRecognition("passive"), 500);
     }
   };
 
-  try { rec.start(); } catch { recRef = null; }
+  try {
+    rec.start();
+  } catch {
+    recRef = null;
+    // WAKE WORD FIX: retry on start() failure (e.g. mic still held by TTS)
+    if (_state.enabled) {
+      restartTimer = setTimeout(() => startRecognition(mode), 1000);
+    }
+  }
 }
 
 function stopRecognition() {
@@ -432,10 +444,15 @@ async function handleCommand(commandText: string) {
 
     patch({ messages: [..._state.messages, userMsg, jarvisMsg], voiceState: "speaking" });
 
-    // Speak response
+    // Speak response, then restart passive listening
+    // WAKE WORD FIX: 400ms delay lets Chrome/Android release mic from TTS
+    // before we try to start recognition again. Without this, rec.start()
+    // silently fails and the wake word loop dies permanently.
     speakResponse(clean, () => {
       patch({ voiceState: "idle", isAwake: false, transcript: "" });
-      if (_state.enabled) startRecognition("passive");
+      if (_state.enabled) {
+        setTimeout(() => startRecognition("passive"), 400);
+      }
     });
   } catch {
     const errMsg: JarvisMessage = {

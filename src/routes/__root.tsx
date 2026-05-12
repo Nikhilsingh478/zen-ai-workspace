@@ -155,7 +155,9 @@ function RootComponent() {
         </AnimatePresence>
       </AppShell>
 
+      {/* VoiceOverlay removed — Jarvis FloatingOrb handles this role
       <VoiceOverlay />
+      */}
       <JarvisFloatingOrb />
 
       {/* In-app notification banners (Instagram-style, top of screen) */}
