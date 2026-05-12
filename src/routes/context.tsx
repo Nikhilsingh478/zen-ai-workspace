@@ -36,7 +36,7 @@ function ContextPage() {
   return (
     <div className="min-h-[100dvh] flex flex-col px-4 md:px-8 pt-5 md:pt-8 pb-8 relative">
       {/* Background radial */}
-      <div className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_-20%,rgba(14,165,233,0.04),transparent)]" />
+      <div className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_-20%,rgba(125,211,252,0.04),transparent)]" />
       
       <div className="relative z-10 max-w-4xl mx-auto w-full flex-1 flex flex-col">
         

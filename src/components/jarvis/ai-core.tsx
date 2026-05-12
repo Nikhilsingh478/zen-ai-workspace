@@ -14,9 +14,9 @@ import type { JarvisVoiceState } from "@/lib/jarvis";
 // ─── Shared constants ─────────────────────────────────────────────────────────
 
 const C  = 100; // SVG centre x/y (viewBox 200×200)
-const C0 = "#DC4C64"; // sky-500
-const C1 = "#E05A6F"; // sky-400
-const C2 = "#F28D9E"; // sky-200
+const C0 = "#7DD3FC"; // sky-500
+const C1 = "#93C5FD"; // sky-400
+const C2 = "#BAE6FD"; // sky-200
 
 // ─── Waveform ─────────────────────────────────────────────────────────────────
 
@@ -161,14 +161,14 @@ function RadarSweep({ active }: { active: boolean }) {
           <path
             key={i}
             d={i === 0 ? d : trail}
-            fill={`rgba(56,189,248,${(active ? 0.13 : 0.05) * opacity})`}
+            fill={`rgba(147,197,253,${(active ? 0.13 : 0.05) * opacity})`}
           />
         );
       })}
       {/* Leading edge line */}
       <line
         x1={C} y1={C} x2={x2} y2={y2}
-        stroke={`rgba(56,189,248,${active ? 0.6 : 0.25})`}
+        stroke={`rgba(147,197,253,${active ? 0.6 : 0.25})`}
         strokeWidth="0.8"
       />
     </motion.g>
@@ -185,7 +185,7 @@ function PulseRings({ active }: { active: boolean }) {
           key={i}
           cx={C} cy={C}
           fill="none"
-          stroke={i === 0 ? `rgba(56,189,248,0.55)` : `rgba(14,165,233,0.4)`}
+          stroke={i === 0 ? `rgba(147,197,253,0.55)` : `rgba(125,211,252,0.4)`}
           strokeWidth="0.7"
           animate={{
             r:            [28, active ? 74 : 58],
@@ -221,7 +221,7 @@ function HUDBrackets({ active }: { active: boolean }) {
           key={i}
           d={d}
           fill="none"
-          stroke={`rgba(14,165,233,${active ? 0.55 : 0.22})`}
+          stroke={`rgba(125,211,252,${active ? 0.55 : 0.22})`}
           strokeWidth="1.3"
           strokeLinecap="round"
           animate={{ opacity: active ? 1 : 0.6, pathLength: [0, 1] }}
@@ -316,14 +316,14 @@ export function AICore({ voiceState, isAwake, size = 300 }: AICoreProps) {
           <radialGradient id="jv-orb" cx="36%" cy="30%" r="68%">
             <stop offset="0%"   stopColor={C2} />
             <stop offset="40%"  stopColor={C1} />
-            <stop offset="100%" stopColor="#0369A1" />
+            <stop offset="100%" stopColor="#0A0F1A" />
           </radialGradient>
 
           {/* Soft ambient field */}
           <radialGradient id="jv-field" cx="50%" cy="50%" r="50%">
-            <stop offset="0%"   stopColor="rgba(14,165,233,0.22)" />
-            <stop offset="55%"  stopColor="rgba(14,165,233,0.06)" />
-            <stop offset="100%" stopColor="rgba(14,165,233,0)" stopOpacity="0" />
+            <stop offset="0%"   stopColor="rgba(125,211,252,0.22)" />
+            <stop offset="55%"  stopColor="rgba(125,211,252,0.06)" />
+            <stop offset="100%" stopColor="rgba(125,211,252,0)" stopOpacity="0" />
           </radialGradient>
 
           {/* Orb bloom — separate from main filter to avoid double-blur */}
@@ -351,7 +351,7 @@ export function AICore({ voiceState, isAwake, size = 300 }: AICoreProps) {
         <SpinningArc
           r={80}
           dasharray="419 84"
-          stroke={`rgba(14,165,233,${isActive ? 0.5 : 0.28})`}
+          stroke={`rgba(125,211,252,${isActive ? 0.5 : 0.28})`}
           strokeWidth={1.2}
           duration={isActive ? 12 : 22}
         />
@@ -360,7 +360,7 @@ export function AICore({ voiceState, isAwake, size = 300 }: AICoreProps) {
         <SpinningArc
           r={62}
           dasharray="260 130"
-          stroke={`rgba(56,189,248,${isActive ? 0.38 : 0.18})`}
+          stroke={`rgba(147,197,253,${isActive ? 0.38 : 0.18})`}
           strokeWidth={0.9}
           duration={isActive ? 18 : 34}
           reverse
@@ -370,7 +370,7 @@ export function AICore({ voiceState, isAwake, size = 300 }: AICoreProps) {
         <SpinningArc
           r={44}
           dasharray="5 7"
-          stroke={`rgba(14,165,233,${isActive ? 0.32 : 0.14})`}
+          stroke={`rgba(125,211,252,${isActive ? 0.32 : 0.14})`}
           strokeWidth={0.75}
           duration={isActive ? 26 : 50}
           linecap="butt"
@@ -385,7 +385,7 @@ export function AICore({ voiceState, isAwake, size = 300 }: AICoreProps) {
         {/* 7 · Orb bloom (blurred underlay for glow) */}
         <motion.circle
           cx={C} cy={C}
-          fill={`rgba(14,165,233,${isActive ? 0.55 : 0.3})`}
+          fill={`rgba(125,211,252,${isActive ? 0.55 : 0.3})`}
           filter="url(#jv-bloom)"
           animate={{ r: isListening ? 28 : 24, opacity: isActive ? 1 : 0.5 }}
           transition={{ type: "spring", stiffness: 180, damping: 18 }}
@@ -399,10 +399,10 @@ export function AICore({ voiceState, isAwake, size = 300 }: AICoreProps) {
           animate={{
             r: isListening ? 26 : isProcessing ? [22, 24, 22] : 22,
             filter: isActive
-              ? ["drop-shadow(0 0 8px rgba(14,165,233,0.6)) drop-shadow(0 0 20px rgba(14,165,233,0.3))",
-                 "drop-shadow(0 0 14px rgba(56,189,248,0.8)) drop-shadow(0 0 36px rgba(56,189,248,0.4))",
-                 "drop-shadow(0 0 8px rgba(14,165,233,0.6)) drop-shadow(0 0 20px rgba(14,165,233,0.3))"]
-              : "drop-shadow(0 0 6px rgba(14,165,233,0.3))",
+              ? ["drop-shadow(0 0 8px rgba(125,211,252,0.6)) drop-shadow(0 0 20px rgba(125,211,252,0.3))",
+                 "drop-shadow(0 0 14px rgba(147,197,253,0.8)) drop-shadow(0 0 36px rgba(147,197,253,0.4))",
+                 "drop-shadow(0 0 8px rgba(125,211,252,0.6)) drop-shadow(0 0 20px rgba(125,211,252,0.3))"]
+              : "drop-shadow(0 0 6px rgba(125,211,252,0.3))",
           }}
           transition={isProcessing
             ? { r: { duration: 0.5, repeat: Infinity, repeatType: "mirror", ease: "easeInOut" },

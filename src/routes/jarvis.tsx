@@ -22,14 +22,14 @@ function JarvisAmbient() {
         className="pointer-events-none absolute inset-0 z-0"
         style={{
           background:
-            "radial-gradient(ellipse 70% 50% at 50% 0%, rgba(220,76,100,0.045) 0%, transparent 70%)",
+            "radial-gradient(ellipse 70% 50% at 50% 0%, rgba(125,211,252,0.045) 0%, transparent 70%)",
         }}
       />
       <div
         className="pointer-events-none absolute inset-0 z-0"
         style={{
           backgroundImage:
-            "radial-gradient(circle, rgba(220,76,100,0.07) 1px, transparent 1px)",
+            "radial-gradient(circle, rgba(125,211,252,0.07) 1px, transparent 1px)",
           backgroundSize: "30px 30px",
           opacity: 0.18,
         }}
@@ -44,9 +44,9 @@ function HudCard({ label, children, className }: { label: string; children: Reac
   return (
     <div
       className={cn("rounded-xl p-3", className)}
-      style={{ background: "rgba(220,76,100,0.03)", border: "1px solid rgba(220,76,100,0.08)" }}
+      style={{ background: "rgba(125,211,252,0.03)", border: "1px solid rgba(125,211,252,0.08)" }}
     >
-      <p className="text-[8px] tracking-[0.28em] font-medium mb-2 uppercase" style={{ color: "rgba(220,76,100,0.32)" }}>
+      <p className="text-[8px] tracking-[0.28em] font-medium mb-2 uppercase" style={{ color: "rgba(125,211,252,0.32)" }}>
         {label}
       </p>
       {children}
@@ -59,7 +59,7 @@ function HudCard({ label, children, className }: { label: string; children: Reac
 function StatRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) {
   return (
     <div className="flex items-center justify-between py-0.5">
-      <div className="flex items-center gap-2" style={{ color: "rgba(220,76,100,0.38)" }}>
+      <div className="flex items-center gap-2" style={{ color: "rgba(125,211,252,0.38)" }}>
         {icon}
         <span className="text-[10px] tracking-wide">{label}</span>
       </div>
@@ -69,7 +69,7 @@ function StatRow({ icon, label, value }: { icon: React.ReactNode; label: string;
         animate={{ opacity: 1, y: 0 }}
         transition={{ type: "spring", stiffness: 400, damping: 28 }}
         className="text-[12px] font-semibold tabular-nums"
-        style={{ color: "#DC4C64" }}
+        style={{ color: "#7DD3FC" }}
       >
         {value}
       </motion.span>
@@ -93,10 +93,10 @@ function StatusPanel({ voiceState, enabled }: { voiceState: string; enabled: boo
   }, []);
 
   const STATE_COLOR: Record<string, string> = {
-    idle:       "rgba(220,76,100,0.35)",
-    listening:  "#E05A6F",
-    processing: "#DC4C64",
-    speaking:   "#E05A6F",
+    idle:       "rgba(125,211,252,0.35)",
+    listening:  "#93C5FD",
+    processing: "#7DD3FC",
+    speaking:   "#93C5FD",
   };
   const STATE_LABEL: Record<string, string> = {
     idle: "STANDBY", listening: "LISTENING", processing: "PROCESSING", speaking: "RESPONDING",
@@ -110,11 +110,11 @@ function StatusPanel({ voiceState, enabled }: { voiceState: string; enabled: boo
         <div className="flex items-center gap-2">
           <motion.div
             className="h-1.5 w-1.5 rounded-full shrink-0"
-            style={{ background: enabled ? "#DC4C64" : "rgba(220,76,100,0.18)" }}
+            style={{ background: enabled ? "#7DD3FC" : "rgba(125,211,252,0.18)" }}
             animate={enabled ? { opacity: [0.4, 1, 0.4] } : {}}
             transition={{ duration: 1.8, repeat: Infinity }}
           />
-          <span className="text-[11px] font-semibold tracking-widest" style={{ color: enabled ? "#E05A6F" : "rgba(220,76,100,0.28)" }}>
+          <span className="text-[11px] font-semibold tracking-widest" style={{ color: enabled ? "#93C5FD" : "rgba(125,211,252,0.28)" }}>
             {enabled ? "ONLINE" : "OFFLINE"}
           </span>
         </div>
@@ -130,7 +130,7 @@ function StatusPanel({ voiceState, enabled }: { voiceState: string; enabled: boo
             exit={{ opacity: 0, y: -3 }}
             transition={{ duration: 0.18 }}
             className="text-[11px] font-semibold tracking-widest"
-            style={{ color: STATE_COLOR[voiceState] ?? "rgba(220,76,100,0.35)" }}
+            style={{ color: STATE_COLOR[voiceState] ?? "rgba(125,211,252,0.35)" }}
           >
             {STATE_LABEL[voiceState] ?? "STANDBY"}
           </motion.p>
@@ -139,10 +139,10 @@ function StatusPanel({ voiceState, enabled }: { voiceState: string; enabled: boo
 
       {/* Clock */}
       <HudCard label="SYSTEM TIME">
-        <p className="text-[17px] font-light tabular-nums leading-none" style={{ color: "#DC4C64" }}>
+        <p className="text-[17px] font-light tabular-nums leading-none" style={{ color: "#7DD3FC" }}>
           {time.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
         </p>
-        <p className="text-[9px] mt-1" style={{ color: "rgba(220,76,100,0.3)" }}>
+        <p className="text-[9px] mt-1" style={{ color: "rgba(125,211,252,0.3)" }}>
           {time.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
         </p>
       </HudCard>
@@ -159,7 +159,7 @@ function StatusPanel({ voiceState, enabled }: { voiceState: string; enabled: boo
       {/* Wake phrases */}
       <HudCard label="WAKE PHRASES">
         {["Jarvis", "Hey Jarvis", "Okay Jarvis"].map((w) => (
-          <p key={w} className="text-[10px] tracking-wide mb-0.5" style={{ color: "rgba(220,76,100,0.42)" }}>
+          <p key={w} className="text-[10px] tracking-wide mb-0.5" style={{ color: "rgba(125,211,252,0.42)" }}>
             "{w}"
           </p>
         ))}
@@ -174,14 +174,14 @@ function StatusPanel({ voiceState, enabled }: { voiceState: string; enabled: boo
             whileHover={{ x: 2 }}
             transition={{ type: "spring", stiffness: 400, damping: 25 }}
             className="text-left text-[10px] py-1 px-2 rounded-lg w-full mb-0.5 transition-colors duration-150"
-            style={{ color: "rgba(220,76,100,0.45)", border: "1px solid rgba(220,76,100,0.07)", background: "transparent" }}
+            style={{ color: "rgba(125,211,252,0.45)", border: "1px solid rgba(125,211,252,0.07)", background: "transparent" }}
             onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.background = "rgba(220,76,100,0.07)";
-              (e.currentTarget as HTMLElement).style.color = "#DC4C64";
+              (e.currentTarget as HTMLElement).style.background = "rgba(125,211,252,0.07)";
+              (e.currentTarget as HTMLElement).style.color = "#7DD3FC";
             }}
             onMouseLeave={(e) => {
               (e.currentTarget as HTMLElement).style.background = "transparent";
-              (e.currentTarget as HTMLElement).style.color = "rgba(220,76,100,0.45)";
+              (e.currentTarget as HTMLElement).style.color = "rgba(125,211,252,0.45)";
             }}
           >
             › {cmd}
@@ -207,12 +207,12 @@ function MessageBubble({ msg }: { msg: ReturnType<typeof useJarvis>["messages"][
         className="max-w-[88%] rounded-2xl px-3.5 py-2.5"
         style={
           isUser
-            ? { background: "rgba(220,76,100,0.09)", border: "1px solid rgba(220,76,100,0.22)", color: "rgba(255,180,200,0.9)" }
-            : { background: "rgba(255,255,255,0.03)", border: "1px solid rgba(220,76,100,0.09)", color: "rgba(255,220,230,0.82)" }
+            ? { background: "rgba(125,211,252,0.09)", border: "1px solid rgba(125,211,252,0.22)", color: "rgba(186,230,253,0.9)" }
+            : { background: "rgba(255,255,255,0.03)", border: "1px solid rgba(125,211,252,0.09)", color: "rgba(243,247,250,0.82)" }
         }
       >
         {!isUser && (
-          <p className="text-[8px] tracking-[0.22em] mb-1.5 font-medium" style={{ color: "rgba(220,76,100,0.45)" }}>
+          <p className="text-[8px] tracking-[0.22em] mb-1.5 font-medium" style={{ color: "rgba(125,211,252,0.45)" }}>
             J.A.R.V.I.S
           </p>
         )}
@@ -222,11 +222,11 @@ function MessageBubble({ msg }: { msg: ReturnType<typeof useJarvis>["messages"][
           <div className="mt-2 space-y-1">
             {msg.tasks.map((t, i) => (
               <div key={i} className="flex items-start gap-2 rounded-lg px-2 py-1.5"
-                style={{ background: "rgba(220,76,100,0.07)", border: "1px solid rgba(220,76,100,0.14)" }}>
-                <CheckSquare size={10} style={{ color: "#E05A6F", flexShrink: 0, marginTop: 2 }} />
+                style={{ background: "rgba(125,211,252,0.07)", border: "1px solid rgba(125,211,252,0.14)" }}>
+                <CheckSquare size={10} style={{ color: "#93C5FD", flexShrink: 0, marginTop: 2 }} />
                 <div>
-                  <p className="text-[11px] font-medium" style={{ color: "#E05A6F" }}>{t.title}</p>
-                  <p className="text-[9px] mt-0.5" style={{ color: "rgba(220,76,100,0.45)" }}>
+                  <p className="text-[11px] font-medium" style={{ color: "#93C5FD" }}>{t.title}</p>
+                  <p className="text-[9px] mt-0.5" style={{ color: "rgba(125,211,252,0.45)" }}>
                     {t.taskDate} at {t.taskTime}
                   </p>
                 </div>
@@ -235,7 +235,7 @@ function MessageBubble({ msg }: { msg: ReturnType<typeof useJarvis>["messages"][
           </div>
         )}
 
-        <p className="text-[9px] mt-1.5 text-right" style={{ color: "rgba(220,76,100,0.22)" }}>
+        <p className="text-[9px] mt-1.5 text-right" style={{ color: "rgba(125,211,252,0.22)" }}>
           {new Date(msg.timestamp).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
         </p>
       </div>
@@ -255,7 +255,7 @@ function ChatPanel({ messages }: { messages: ReturnType<typeof useJarvis>["messa
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden">
       <div className="flex items-center justify-between mb-3 shrink-0">
-        <p className="text-[8px] tracking-[0.28em] font-medium uppercase" style={{ color: "rgba(220,76,100,0.32)" }}>
+        <p className="text-[8px] tracking-[0.28em] font-medium uppercase" style={{ color: "rgba(125,211,252,0.32)" }}>
           Neural Link
         </p>
         {messages.length > 0 && (
@@ -264,9 +264,9 @@ function ChatPanel({ messages }: { messages: ReturnType<typeof useJarvis>["messa
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             className="flex items-center gap-1 text-[9px] tracking-wider px-2 py-1 rounded-lg transition-colors duration-150"
-            style={{ color: "rgba(220,76,100,0.3)", border: "1px solid rgba(220,76,100,0.08)" }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "rgba(220,76,100,0.65)"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "rgba(220,76,100,0.3)"; }}
+            style={{ color: "rgba(125,211,252,0.3)", border: "1px solid rgba(125,211,252,0.08)" }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "rgba(125,211,252,0.65)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "rgba(125,211,252,0.3)"; }}
           >
             <Trash2 size={9} /> CLEAR
           </motion.button>
@@ -282,13 +282,13 @@ function ChatPanel({ messages }: { messages: ReturnType<typeof useJarvis>["messa
               animate={{ opacity: 1 }}
               className="flex flex-col items-center justify-center h-full text-center gap-3 py-8"
             >
-              <div className="rounded-full p-3.5" style={{ border: "1px solid rgba(220,76,100,0.1)", background: "rgba(220,76,100,0.04)" }}>
-                <Volume2 size={18} style={{ color: "rgba(220,76,100,0.28)" }} />
+              <div className="rounded-full p-3.5" style={{ border: "1px solid rgba(125,211,252,0.1)", background: "rgba(125,211,252,0.04)" }}>
+                <Volume2 size={18} style={{ color: "rgba(125,211,252,0.28)" }} />
               </div>
-              <p className="text-[10px] tracking-[0.2em] uppercase" style={{ color: "rgba(220,76,100,0.28)" }}>
+              <p className="text-[10px] tracking-[0.2em] uppercase" style={{ color: "rgba(125,211,252,0.28)" }}>
                 Awaiting Command
               </p>
-              <p className="text-[10px]" style={{ color: "rgba(220,76,100,0.16)" }}>
+              <p className="text-[10px]" style={{ color: "rgba(125,211,252,0.16)" }}>
                 Say "Hey Jarvis" or type below
               </p>
             </motion.div>
@@ -358,19 +358,19 @@ function JarvisPage() {
       {/* ── Header ── */}
       <div
         className="relative z-10 shrink-0 flex items-center justify-between px-4 md:px-5 h-11"
-        style={{ borderBottom: "1px solid rgba(220,76,100,0.07)" }}
+        style={{ borderBottom: "1px solid rgba(125,211,252,0.07)" }}
       >
         <div className="flex items-center gap-2.5">
           <motion.div
             className="h-1.5 w-1.5 rounded-full"
-            style={{ background: enabled ? "#DC4C64" : "rgba(220,76,100,0.18)" }}
+            style={{ background: enabled ? "#7DD3FC" : "rgba(125,211,252,0.18)" }}
             animate={enabled ? { opacity: [0.4, 1, 0.4] } : {}}
             transition={{ duration: 2, repeat: Infinity }}
           />
-          <span className="text-[12px] font-bold tracking-[0.22em]" style={{ color: enabled ? "#DC4C64" : "rgba(220,76,100,0.32)" }}>
+          <span className="text-[12px] font-bold tracking-[0.22em]" style={{ color: enabled ? "#7DD3FC" : "rgba(125,211,252,0.32)" }}>
             J.A.R.V.I.S
           </span>
-          <span className="hidden md:block text-[9px] tracking-[0.14em] font-light" style={{ color: "rgba(220,76,100,0.22)" }}>
+          <span className="hidden md:block text-[9px] tracking-[0.14em] font-light" style={{ color: "rgba(125,211,252,0.22)" }}>
             PERSONAL AI OPERATING SYSTEM
           </span>
         </div>
@@ -381,9 +381,9 @@ function JarvisPage() {
             whileTap={{ scale: 0.95 }}
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] tracking-widest font-medium transition-all duration-200"
             style={{
-              background: enabled ? "rgba(220,76,100,0.09)" : "rgba(220,76,100,0.03)",
-              border: `1px solid ${enabled ? "rgba(220,76,100,0.28)" : "rgba(220,76,100,0.09)"}`,
-              color: enabled ? "#DC4C64" : "rgba(220,76,100,0.3)",
+              background: enabled ? "rgba(125,211,252,0.09)" : "rgba(125,211,252,0.03)",
+              border: `1px solid ${enabled ? "rgba(125,211,252,0.28)" : "rgba(125,211,252,0.09)"}`,
+              color: enabled ? "#7DD3FC" : "rgba(125,211,252,0.3)",
             }}
           >
             <Zap size={10} />
@@ -394,7 +394,7 @@ function JarvisPage() {
             onClick={() => setShowChat((v) => !v)}
             whileTap={{ scale: 0.95 }}
             className="md:hidden flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] transition-all duration-200"
-            style={{ background: "rgba(220,76,100,0.03)", border: "1px solid rgba(220,76,100,0.09)", color: "rgba(220,76,100,0.45)" }}
+            style={{ background: "rgba(125,211,252,0.03)", border: "1px solid rgba(125,211,252,0.09)", color: "rgba(125,211,252,0.45)" }}
           >
             <Clock size={10} /> LOG
           </motion.button>
@@ -403,7 +403,7 @@ function JarvisPage() {
             onClick={() => void navigate({ to: "/" })}
             whileTap={{ scale: 0.95 }}
             className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] tracking-wider transition-all duration-200"
-            style={{ background: "rgba(220,76,100,0.02)", border: "1px solid rgba(220,76,100,0.07)", color: "rgba(220,76,100,0.28)" }}
+            style={{ background: "rgba(125,211,252,0.02)", border: "1px solid rgba(125,211,252,0.07)", color: "rgba(125,211,252,0.28)" }}
           >
             <ChevronLeft size={10} />
             <span className="hidden md:inline">BACK</span>
@@ -420,7 +420,7 @@ function JarvisPage() {
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
           className="hidden md:flex flex-col w-44 shrink-0 px-3 py-3 overflow-hidden"
-          style={{ borderRight: "1px solid rgba(220,76,100,0.07)" }}
+          style={{ borderRight: "1px solid rgba(125,211,252,0.07)" }}
         >
           <StatusPanel voiceState={voiceState} enabled={enabled} />
         </motion.div>
@@ -439,10 +439,10 @@ function JarvisPage() {
                 className="absolute top-3 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full max-w-xs w-full text-center text-[11px] truncate"
                 style={{
                   background: "rgba(0,15,25,0.82)",
-                  border: "1px solid rgba(220,76,100,0.25)",
-                  color: "rgba(220,76,100,0.8)",
+                  border: "1px solid rgba(125,211,252,0.25)",
+                  color: "rgba(125,211,252,0.8)",
                   backdropFilter: "blur(12px)",
-                  boxShadow: "0 4px 20px rgba(220,76,100,0.08)",
+                  boxShadow: "0 4px 20px rgba(125,211,252,0.08)",
                 }}
               >
                 {transcript}
@@ -469,12 +469,12 @@ function JarvisPage() {
                 exit={{ opacity: 0, y: -4 }}
                 transition={{ duration: 0.2 }}
                 className="text-[13px] tracking-wider font-light"
-                style={{ color: isActive ? "#DC4C64" : "rgba(220,76,100,0.38)" }}
+                style={{ color: isActive ? "#7DD3FC" : "rgba(125,211,252,0.38)" }}
               >
                 {stateInfo.text}
               </motion.p>
             </AnimatePresence>
-            <p className="text-[9px] tracking-[0.1em] mt-1" style={{ color: "rgba(220,76,100,0.2)" }}>
+            <p className="text-[9px] tracking-[0.1em] mt-1" style={{ color: "rgba(125,211,252,0.2)" }}>
               {stateInfo.sub}
             </p>
           </div>
@@ -502,7 +502,7 @@ function JarvisPage() {
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
           className="hidden md:flex flex-col w-60 shrink-0 px-3 py-3 overflow-hidden"
-          style={{ borderLeft: "1px solid rgba(220,76,100,0.07)" }}
+          style={{ borderLeft: "1px solid rgba(125,211,252,0.07)" }}
         >
           <ChatPanel messages={messages} />
         </motion.div>
@@ -512,7 +512,7 @@ function JarvisPage() {
       <div
         className="relative z-10 shrink-0 px-3 py-2.5"
         style={{
-          borderTop: "1px solid rgba(220,76,100,0.07)",
+          borderTop: "1px solid rgba(125,211,252,0.07)",
           background: "rgba(11,11,12,0.65)",
           backdropFilter: "blur(14px)",
         }}
@@ -526,10 +526,10 @@ function JarvisPage() {
             disabled={!isVoiceAssistantSupported}
             className="h-9 w-9 rounded-xl flex items-center justify-center shrink-0 transition-all duration-200"
             style={{
-              background: isListening ? "rgba(220,76,100,0.15)" : "rgba(220,76,100,0.04)",
-              border: `1px solid ${isListening ? "rgba(220,76,100,0.48)" : "rgba(220,76,100,0.12)"}`,
-              boxShadow: isListening ? "0 0 16px rgba(220,76,100,0.22)" : "none",
-              color: isListening ? "#DC4C64" : "rgba(220,76,100,0.38)",
+              background: isListening ? "rgba(125,211,252,0.15)" : "rgba(125,211,252,0.04)",
+              border: `1px solid ${isListening ? "rgba(125,211,252,0.48)" : "rgba(125,211,252,0.12)"}`,
+              boxShadow: isListening ? "0 0 16px rgba(125,211,252,0.22)" : "none",
+              color: isListening ? "#7DD3FC" : "rgba(125,211,252,0.38)",
             }}
           >
             {isListening ? <MicOff size={14} /> : <Mic size={14} />}
@@ -542,18 +542,18 @@ function JarvisPage() {
             placeholder="Enter command, sir…"
             className="flex-1 h-9 rounded-xl px-4 text-[12px] outline-none transition-all duration-200"
             style={{
-              background: "rgba(220,76,100,0.04)",
-              border: "1px solid rgba(220,76,100,0.12)",
+              background: "rgba(125,211,252,0.04)",
+              border: "1px solid rgba(125,211,252,0.12)",
               color: "rgba(200,235,255,0.85)",
-              caretColor: "#DC4C64",
+              caretColor: "#7DD3FC",
             }}
             onFocus={(e) => {
-              e.target.style.borderColor = "rgba(220,76,100,0.35)";
-              e.target.style.background  = "rgba(220,76,100,0.06)";
+              e.target.style.borderColor = "rgba(125,211,252,0.35)";
+              e.target.style.background  = "rgba(125,211,252,0.06)";
             }}
             onBlur={(e) => {
-              e.target.style.borderColor = "rgba(220,76,100,0.12)";
-              e.target.style.background  = "rgba(220,76,100,0.04)";
+              e.target.style.borderColor = "rgba(125,211,252,0.12)";
+              e.target.style.background  = "rgba(125,211,252,0.04)";
             }}
             onKeyDown={(e) => { if (e.key === "Enter") void handleSubmit(); }}
           />
@@ -565,9 +565,9 @@ function JarvisPage() {
             whileTap={{ scale: input.trim() ? 0.92 : 1 }}
             className="h-9 w-9 rounded-xl flex items-center justify-center shrink-0 transition-all duration-200"
             style={{
-              background: input.trim() ? "rgba(220,76,100,0.12)" : "rgba(220,76,100,0.03)",
-              border: `1px solid ${input.trim() ? "rgba(220,76,100,0.35)" : "rgba(220,76,100,0.09)"}`,
-              color: input.trim() ? "#DC4C64" : "rgba(220,76,100,0.22)",
+              background: input.trim() ? "rgba(125,211,252,0.12)" : "rgba(125,211,252,0.03)",
+              border: `1px solid ${input.trim() ? "rgba(125,211,252,0.35)" : "rgba(125,211,252,0.09)"}`,
+              color: input.trim() ? "#7DD3FC" : "rgba(125,211,252,0.22)",
             }}
           >
             <Send size={13} />

@@ -64,9 +64,9 @@ function BrandMark() {
     <div
       className="h-7 w-7 rounded-lg grid place-items-center shrink-0"
       style={{
-        background: "linear-gradient(135deg, rgba(14,165,233,0.9) 0%, rgba(2,132,199,0.7) 100%)",
-        boxShadow: "0 0 12px rgba(14,165,233,0.3)",
-        border: "1px solid rgba(14,165,233,0.4)",
+        background: "linear-gradient(135deg, rgba(125,211,252,0.9) 0%, rgba(186,230,253,0.7) 100%)",
+        boxShadow: "0 0 12px rgba(125,211,252,0.3)",
+        border: "1px solid rgba(125,211,252,0.4)",
       }}
     >
       {/* Inner grid mark */}
@@ -94,7 +94,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         className="hidden md:flex flex-col w-56 shrink-0"
         style={{
           background: "var(--surface-1)",
-          borderRight: "1px solid rgba(14,165,233,0.08)",
+          borderRight: "1px solid rgba(125,211,252,0.08)",
         }}
       >
         {/* Brand */}
@@ -107,7 +107,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <span className="text-[14px] font-semibold tracking-tight" style={{ color: "rgba(255,255,255,0.9)" }}>
                 AI Metrics
               </span>
-              <div className="text-[8px] tracking-[0.18em] font-medium mt-0.5" style={{ color: "rgba(14,165,233,0.55)" }}>
+              <div className="text-[8px] tracking-[0.18em] font-medium mt-0.5" style={{ color: "rgba(125,211,252,0.55)" }}>
                 INTELLIGENCE SUITE
               </div>
             </div>
@@ -115,7 +115,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
 
         {/* Nav divider */}
-        <div className="mx-4 mb-3 h-px" style={{ background: "rgba(14,165,233,0.08)" }} />
+        <div className="mx-4 mb-3 h-px" style={{ background: "rgba(125,211,252,0.08)" }} />
 
         {/* Nav items */}
         <nav className="px-3 flex flex-col gap-0.5 flex-1">
@@ -138,7 +138,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                   <motion.span
                     layoutId="sidebar-active-bg"
                     className="absolute inset-0 rounded-lg"
-                    style={{ background: "rgba(14,165,233,0.08)" }}
+                    style={{ background: "rgba(125,211,252,0.08)" }}
                     transition={{ type: "spring", stiffness: 380, damping: 32 }}
                   />
                 )}
@@ -174,7 +174,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         {/* Bottom */}
         <div
           className="px-5 py-4"
-          style={{ borderTop: "1px solid rgba(14,165,233,0.06)" }}
+          style={{ borderTop: "1px solid rgba(125,211,252,0.06)" }}
         >
           <SyncIndicator />
         </div>
@@ -190,9 +190,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         className="md:hidden fixed bottom-3 left-3 right-3 z-50 rounded-2xl"
         style={{
           background: "rgba(17,17,20,0.92)",
-          border: "1px solid rgba(14,165,233,0.1)",
+          border: "1px solid rgba(125,211,252,0.1)",
           backdropFilter: "blur(20px)",
-          boxShadow: "0 8px 32px rgba(0,0,0,0.45), 0 0 0 1px rgba(14,165,233,0.05)",
+          boxShadow: "0 8px 32px rgba(0,0,0,0.45), 0 0 0 1px rgba(125,211,252,0.05)",
         }}
       >
         <div className="grid grid-cols-5">
@@ -251,15 +251,15 @@ export function AppShell({ children }: { children: ReactNode }) {
               className="w-[78vw] max-w-xs p-0"
               style={{
                 background: "var(--surface-1)",
-                borderLeft: "1px solid rgba(14,165,233,0.1)",
+                borderLeft: "1px solid rgba(125,211,252,0.1)",
               }}
             >
-              <SheetHeader className="px-5 pt-6 pb-4" style={{ borderBottom: "1px solid rgba(14,165,233,0.07)" }}>
+              <SheetHeader className="px-5 pt-6 pb-4" style={{ borderBottom: "1px solid rgba(125,211,252,0.07)" }}>
                 <SheetTitle className="flex items-center gap-2.5 text-left">
                   <BrandMark />
                   <div>
                     <span className="text-[14px] font-semibold tracking-tight">AI Metrics</span>
-                    <div className="text-[8px] tracking-[0.18em] mt-0.5" style={{ color: "rgba(14,165,233,0.5)" }}>
+                    <div className="text-[8px] tracking-[0.18em] mt-0.5" style={{ color: "rgba(125,211,252,0.5)" }}>
                       INTELLIGENCE SUITE
                     </div>
                   </div>
@@ -280,7 +280,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                           ? "text-foreground"
                           : "text-copy-secondary hover:text-foreground",
                       )}
-                      style={active ? { background: "rgba(14,165,233,0.07)" } : undefined}
+                      style={active ? { background: "rgba(125,211,252,0.07)" } : undefined}
                     >
                       <Icon
                         className="h-[18px] w-[18px]"
@@ -300,7 +300,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               </nav>
               <div
                 className="px-5 py-4 text-[11px]"
-                style={{ borderTop: "1px solid rgba(14,165,233,0.07)" }}
+                style={{ borderTop: "1px solid rgba(125,211,252,0.07)" }}
               >
                 <SyncIndicator />
               </div>
@@ -316,7 +316,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             className="rounded-full px-3 py-2 shadow-lg"
             style={{
               background: "var(--surface-2)",
-              border: "1px solid rgba(14,165,233,0.1)",
+              border: "1px solid rgba(125,211,252,0.1)",
               boxShadow: "0 8px 24px rgba(0,0,0,0.3)",
             }}
           >

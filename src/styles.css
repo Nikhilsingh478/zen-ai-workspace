@@ -9,9 +9,9 @@
 }
 
 /*
- * Futuristic Violet Neon Theme
- * Cinematic purple + black interface
- * Premium sci-fi aesthetic
+ * Arctic Glass Futuristic Theme
+ * Premium cinematic AI operating system aesthetic
+ * Soft futuristic blue without flashy neon
  */
 
 @theme inline {
@@ -73,51 +73,51 @@
 }
 
 :root {
-  --radius: 0.95rem;
+  --radius: 1rem;
 
   /* =========================================
-     CORE BACKGROUND
+     CORE BACKGROUND SYSTEM
   ========================================= */
 
-  --background: oklch(0.11 0.02 290);
-  --foreground: oklch(0.96 0.01 300);
+  --background: oklch(0.10 0.02 250);
+  --foreground: oklch(0.97 0.01 240);
 
   /* =========================================
      SURFACES
   ========================================= */
 
-  --card: oklch(0.16 0.025 290);
-  --card-foreground: oklch(0.95 0.01 300);
+  --card: oklch(0.15 0.025 245);
+  --card-foreground: oklch(0.96 0.01 240);
 
-  --popover: oklch(0.17 0.03 290);
-  --popover-foreground: oklch(0.95 0.01 300);
+  --popover: oklch(0.16 0.028 245);
+  --popover-foreground: oklch(0.96 0.01 240);
 
-  --surface-1: oklch(0.16 0.025 290);
-  --surface-2: oklch(0.19 0.03 290);
-  --surface-3: oklch(0.23 0.035 290);
+  --surface-1: oklch(0.15 0.025 245);
+  --surface-2: oklch(0.18 0.03 245);
+  --surface-3: oklch(0.22 0.035 245);
 
   /* =========================================
-     PRIMARY VIOLET SYSTEM
+     PRIMARY FUTURISTIC BLUE
   ========================================= */
 
-  --primary: oklch(0.72 0.22 305);
-  --primary-foreground: oklch(0.98 0 0);
+  --primary: oklch(0.76 0.12 235);
+  --primary-foreground: oklch(0.08 0.01 240);
 
-  --secondary: oklch(0.20 0.03 290);
-  --secondary-foreground: oklch(0.95 0.01 300);
+  --secondary: oklch(0.20 0.03 245);
+  --secondary-foreground: oklch(0.95 0.01 240);
 
-  --accent: oklch(0.27 0.05 295);
-  --accent-foreground: oklch(0.97 0 0);
+  --accent: oklch(0.26 0.05 240);
+  --accent-foreground: oklch(0.98 0 0);
 
   /* =========================================
      TEXT SYSTEM
   ========================================= */
 
-  --muted: oklch(0.18 0.025 290);
-  --muted-foreground: oklch(0.67 0.01 295);
+  --muted: oklch(0.18 0.025 245);
+  --muted-foreground: oklch(0.68 0.01 240);
 
-  --text-secondary: oklch(0.78 0.015 295);
-  --text-muted: oklch(0.58 0.01 295);
+  --text-secondary: oklch(0.80 0.015 240);
+  --text-muted: oklch(0.58 0.01 240);
 
   /* =========================================
      BORDERS + INPUTS
@@ -126,52 +126,57 @@
   --border: oklch(1 0 0 / 8%);
   --input: oklch(1 0 0 / 10%);
 
-  --ring: oklch(0.72 0.22 305 / 40%);
+  --ring: oklch(0.76 0.12 235 / 38%);
 
   /* =========================================
      DESTRUCTIVE
   ========================================= */
 
-  --destructive: oklch(0.62 0.23 25);
+  --destructive: oklch(0.65 0.22 25);
   --destructive-foreground: oklch(0.98 0 0);
 
   /* =========================================
      CHARTS
   ========================================= */
 
-  --chart-1: oklch(0.72 0.20 305);
-  --chart-2: oklch(0.68 0.18 280);
-  --chart-3: oklch(0.75 0.16 330);
-  --chart-4: oklch(0.64 0.14 260);
-  --chart-5: oklch(0.82 0.12 320);
+  --chart-1: oklch(0.76 0.12 235);
+  --chart-2: oklch(0.72 0.10 220);
+  --chart-3: oklch(0.82 0.08 210);
+  --chart-4: oklch(0.66 0.09 250);
+  --chart-5: oklch(0.88 0.06 200);
 
   /* =========================================
      SIDEBAR
   ========================================= */
 
-  --sidebar: oklch(0.13 0.025 290);
-  --sidebar-foreground: oklch(0.95 0.01 300);
+  --sidebar: oklch(0.12 0.022 245);
+  --sidebar-foreground: oklch(0.96 0.01 240);
 
-  --sidebar-primary: oklch(0.72 0.22 305);
-  --sidebar-primary-foreground: oklch(0.98 0 0);
+  --sidebar-primary: oklch(0.76 0.12 235);
+  --sidebar-primary-foreground: oklch(0.08 0.01 240);
 
-  --sidebar-accent: oklch(0.22 0.035 295);
-  --sidebar-accent-foreground: oklch(0.96 0 0);
+  --sidebar-accent: oklch(0.22 0.035 245);
+  --sidebar-accent-foreground: oklch(0.96 0.01 240);
 
   --sidebar-border: oklch(1 0 0 / 6%);
-  --sidebar-ring: oklch(0.72 0.22 305 / 35%);
+  --sidebar-ring: oklch(0.76 0.12 235 / 30%);
 
   /* =========================================
-     BRAND TOKENS
+     ARCTIC GLASS TOKENS
   ========================================= */
 
-  --violet-primary: #8B5CF6;
-  --violet-accent: #A855F7;
-  --violet-soft: #C084FC;
-  --violet-glow: rgba(139, 92, 246, 0.35);
+  --arctic-primary: #7DD3FC;
+  --arctic-soft: #93C5FD;
+  --ice-blue: #BAE6FD;
+  --frost-white: #F3F7FA;
 
-  --lavender-soft: rgba(216, 180, 254, 0.08);
+  --arctic-glow: rgba(125, 211, 252, 0.18);
+  --arctic-glow-soft: rgba(125, 211, 252, 0.08);
+
   --glass-highlight: rgba(255,255,255,0.05);
+  --glass-background: rgba(255,255,255,0.025);
+
+  --hud-line: rgba(125, 211, 252, 0.14);
 }
 
 .dark {
@@ -192,7 +197,9 @@ html {
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
+
     font-family: var(--font-sans);
+
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
@@ -204,13 +211,18 @@ html {
     background-image:
       radial-gradient(
         circle at top,
-        rgba(168, 85, 247, 0.12),
-        transparent 38%
+        rgba(125, 211, 252, 0.10),
+        transparent 35%
+      ),
+      radial-gradient(
+        circle at center,
+        rgba(59, 130, 246, 0.05),
+        transparent 45%
       ),
       radial-gradient(
         circle at bottom right,
-        rgba(139, 92, 246, 0.08),
-        transparent 35%
+        rgba(186, 230, 253, 0.05),
+        transparent 30%
       );
 
     background-attachment: fixed;
@@ -231,12 +243,12 @@ html {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(168, 85, 247, 0.20);
+  background: rgba(125, 211, 252, 0.16);
   border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(168, 85, 247, 0.35);
+  background: rgba(125, 211, 252, 0.30);
 }
 
 /* =========================================
@@ -260,17 +272,21 @@ html {
 ========================================= */
 
 @utility glass-panel {
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255,255,255,0.025);
+
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
-  border: 1px solid rgba(168, 85, 247, 0.10);
+
+  border: 1px solid rgba(125,211,252,0.10);
 }
 
 @utility glass-panel-strong {
-  background: rgba(255,255,255,0.04);
+  background: rgba(255,255,255,0.035);
+
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(168,85,247,0.16);
+
+  border: 1px solid rgba(125,211,252,0.16);
 }
 
 /* =========================================
@@ -279,21 +295,21 @@ html {
 
 @utility shadow-soft {
   box-shadow:
-    0 4px 24px rgba(0,0,0,0.45),
-    0 0 30px rgba(139,92,246,0.08);
+    0 4px 24px rgba(0,0,0,0.50),
+    0 0 30px rgba(125,211,252,0.05);
 }
 
 @utility shadow-elevated {
   box-shadow:
-    0 14px 48px rgba(0,0,0,0.55),
-    0 0 40px rgba(168,85,247,0.12);
+    0 14px 48px rgba(0,0,0,0.60),
+    0 0 40px rgba(125,211,252,0.08);
 }
 
-@utility neon-glow {
+@utility arctic-glow {
   box-shadow:
-    0 0 0 1px rgba(168,85,247,0.20),
-    0 0 20px rgba(168,85,247,0.20),
-    0 0 50px rgba(168,85,247,0.12);
+    0 0 0 1px rgba(125,211,252,0.18),
+    0 0 24px rgba(125,211,252,0.14),
+    0 0 50px rgba(125,211,252,0.06);
 }
 
 /* =========================================
@@ -301,15 +317,68 @@ html {
 ========================================= */
 
 @utility text-soft {
-  color: rgba(255,255,255,0.78);
+  color: rgba(255,255,255,0.80);
 }
 
 @utility text-muted-soft {
   color: rgba(255,255,255,0.52);
 }
 
-@utility text-violet-glow {
-  text-shadow: 0 0 18px rgba(168,85,247,0.45);
+@utility text-arctic {
+  color: var(--arctic-primary);
+}
+
+@utility text-arctic-glow {
+  text-shadow:
+    0 0 12px rgba(125,211,252,0.28);
+}
+
+/* =========================================
+   HUD / FUTURISTIC EFFECTS
+========================================= */
+
+@utility hud-border {
+  border: 1px solid rgba(125,211,252,0.12);
+}
+
+@utility hud-line {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(125,211,252,0.35),
+    transparent
+  );
+}
+
+@utility scanning-glow {
+  position: relative;
+  overflow: hidden;
+}
+
+@utility scanning-glow::before {
+  content: "";
+
+  position: absolute;
+  inset: 0;
+
+  background:
+    linear-gradient(
+      120deg,
+      transparent 0%,
+      rgba(125,211,252,0.08) 45%,
+      rgba(125,211,252,0.14) 50%,
+      rgba(125,211,252,0.08) 55%,
+      transparent 100%
+    );
+
+  transform: translateX(-100%);
+  animation: scanMove 5s linear infinite;
+}
+
+@keyframes scanMove {
+  to {
+    transform: translateX(100%);
+  }
 }
 
 /* =========================================
@@ -331,10 +400,10 @@ html {
   }
 }
 
-@utility hover-glow {
+@utility hover-arctic {
   &:hover {
     box-shadow:
-      0 0 0 1px rgba(168,85,247,0.25),
-      0 0 24px rgba(168,85,247,0.18);
+      0 0 0 1px rgba(125,211,252,0.18),
+      0 0 28px rgba(125,211,252,0.12);
   }
 }
