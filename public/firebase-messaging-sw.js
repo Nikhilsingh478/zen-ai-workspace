@@ -78,8 +78,6 @@ async function isMobileClient() {
  * - `actions`                — action buttons shown on Android lock screen / wearables
  */
 async function buildNotificationOptions(body, url, tag) {
-  const mobile = await isMobileClient();
-
   return {
     body,
     icon:               "/favicon.png",
@@ -87,7 +85,7 @@ async function buildNotificationOptions(body, url, tag) {
     tag:                tag ?? "horizon-reminder",
     silent:             false,          // OS sound ON
     vibrate:            [200, 50, 200], // Android haptics
-    requireInteraction: mobile,         // stay on screen on mobile
+    requireInteraction: true,           // ALWAYS stay on screen until user acts
     renotify:           true,           // re-play sound even for same tag
     data:               { url: url ?? "/horizon" },
     actions: [

@@ -204,7 +204,8 @@ function HorizonPage() {
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-background/60 to-transparent z-0" />
 
       {/* ── Calendar view ─────────────────────────────────────────────── */}
-      <div className="flex-1 min-h-0 overflow-y-auto md:overflow-hidden px-4 md:px-8 pt-5 md:pt-3 pb-6 md:pb-2 relative z-10 md:flex md:flex-col">
+      <div className="flex-1 min-h-0 overflow-y-auto md:overflow-hidden px-4 md:px-8 pt-5 md:pt-3 pb-6 md:pb-2 relative z-10 md:flex md:flex-col md:items-center md:justify-center">
+        <div className="w-full max-w-4xl mx-auto flex flex-col md:h-full md:max-h-[600px] 2xl:max-h-[750px]">
 
         {/* Page header */}
         <motion.div
@@ -434,6 +435,7 @@ function HorizonPage() {
             })}
           </motion.div>
         </AnimatePresence>
+        </div>
       </div>
 
       {/* ── Fullscreen task experience ──────────────────────────────────── */}

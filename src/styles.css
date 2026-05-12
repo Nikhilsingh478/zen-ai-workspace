@@ -9,9 +9,9 @@
 }
 
 /*
- * Futuristic Violet Neon Theme
- * Cinematic purple + black interface
- * Premium sci-fi aesthetic
+ * Luxury Amber / Gold Theme
+ * Futuristic cinematic premium UI
+ * Inspired by luxury automotive + elite AI systems
  */
 
 @theme inline {
@@ -79,45 +79,45 @@
      CORE BACKGROUND
   ========================================= */
 
-  --background: oklch(0.11 0.02 290);
-  --foreground: oklch(0.96 0.01 300);
+  --background: oklch(0.10 0.01 85);
+  --foreground: oklch(0.96 0.01 90);
 
   /* =========================================
      SURFACES
   ========================================= */
 
-  --card: oklch(0.16 0.025 290);
-  --card-foreground: oklch(0.95 0.01 300);
+  --card: oklch(0.15 0.015 85);
+  --card-foreground: oklch(0.95 0.01 90);
 
-  --popover: oklch(0.17 0.03 290);
-  --popover-foreground: oklch(0.95 0.01 300);
+  --popover: oklch(0.16 0.018 85);
+  --popover-foreground: oklch(0.95 0.01 90);
 
-  --surface-1: oklch(0.16 0.025 290);
-  --surface-2: oklch(0.19 0.03 290);
-  --surface-3: oklch(0.23 0.035 290);
+  --surface-1: oklch(0.15 0.015 85);
+  --surface-2: oklch(0.18 0.018 85);
+  --surface-3: oklch(0.22 0.02 85);
 
   /* =========================================
-     PRIMARY VIOLET SYSTEM
+     PRIMARY AMBER SYSTEM
   ========================================= */
 
-  --primary: oklch(0.72 0.22 305);
-  --primary-foreground: oklch(0.98 0 0);
+  --primary: oklch(0.78 0.16 78);
+  --primary-foreground: oklch(0.12 0.01 80);
 
-  --secondary: oklch(0.20 0.03 290);
-  --secondary-foreground: oklch(0.95 0.01 300);
+  --secondary: oklch(0.20 0.02 85);
+  --secondary-foreground: oklch(0.95 0.01 90);
 
-  --accent: oklch(0.27 0.05 295);
-  --accent-foreground: oklch(0.97 0 0);
+  --accent: oklch(0.28 0.04 80);
+  --accent-foreground: oklch(0.98 0 0);
 
   /* =========================================
      TEXT SYSTEM
   ========================================= */
 
-  --muted: oklch(0.18 0.025 290);
-  --muted-foreground: oklch(0.67 0.01 295);
+  --muted: oklch(0.18 0.015 85);
+  --muted-foreground: oklch(0.67 0.01 85);
 
-  --text-secondary: oklch(0.78 0.015 295);
-  --text-muted: oklch(0.58 0.01 295);
+  --text-secondary: oklch(0.80 0.015 85);
+  --text-muted: oklch(0.56 0.01 85);
 
   /* =========================================
      BORDERS + INPUTS
@@ -126,7 +126,7 @@
   --border: oklch(1 0 0 / 8%);
   --input: oklch(1 0 0 / 10%);
 
-  --ring: oklch(0.72 0.22 305 / 40%);
+  --ring: oklch(0.78 0.16 78 / 40%);
 
   /* =========================================
      DESTRUCTIVE
@@ -139,39 +139,42 @@
      CHARTS
   ========================================= */
 
-  --chart-1: oklch(0.72 0.20 305);
-  --chart-2: oklch(0.68 0.18 280);
-  --chart-3: oklch(0.75 0.16 330);
-  --chart-4: oklch(0.64 0.14 260);
-  --chart-5: oklch(0.82 0.12 320);
+  --chart-1: oklch(0.78 0.16 78);
+  --chart-2: oklch(0.72 0.14 65);
+  --chart-3: oklch(0.82 0.12 95);
+  --chart-4: oklch(0.66 0.10 55);
+  --chart-5: oklch(0.88 0.08 105);
 
   /* =========================================
      SIDEBAR
   ========================================= */
 
-  --sidebar: oklch(0.13 0.025 290);
-  --sidebar-foreground: oklch(0.95 0.01 300);
+  --sidebar: oklch(0.12 0.012 85);
+  --sidebar-foreground: oklch(0.95 0.01 90);
 
-  --sidebar-primary: oklch(0.72 0.22 305);
-  --sidebar-primary-foreground: oklch(0.98 0 0);
+  --sidebar-primary: oklch(0.78 0.16 78);
+  --sidebar-primary-foreground: oklch(0.12 0.01 80);
 
-  --sidebar-accent: oklch(0.22 0.035 295);
-  --sidebar-accent-foreground: oklch(0.96 0 0);
+  --sidebar-accent: oklch(0.22 0.025 85);
+  --sidebar-accent-foreground: oklch(0.96 0.01 90);
 
   --sidebar-border: oklch(1 0 0 / 6%);
-  --sidebar-ring: oklch(0.72 0.22 305 / 35%);
+  --sidebar-ring: oklch(0.78 0.16 78 / 30%);
 
   /* =========================================
-     BRAND TOKENS
+     LUXURY TOKENS
   ========================================= */
 
-  --violet-primary: #8B5CF6;
-  --violet-accent: #A855F7;
-  --violet-soft: #C084FC;
-  --violet-glow: rgba(139, 92, 246, 0.35);
+  --gold-primary: #F5C96A;
+  --gold-soft: #E8B95B;
+  --champagne: #F3D9A2;
+  --amber-deep: #D89A3D;
 
-  --lavender-soft: rgba(216, 180, 254, 0.08);
-  --glass-highlight: rgba(255,255,255,0.05);
+  --gold-glow: rgba(245, 201, 106, 0.28);
+  --gold-glow-soft: rgba(245, 201, 106, 0.10);
+
+  --metal-highlight: rgba(255,255,255,0.05);
+  --glass-warm: rgba(255,255,255,0.03);
 }
 
 .dark {
@@ -193,6 +196,7 @@ html {
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
+
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
@@ -204,13 +208,13 @@ html {
     background-image:
       radial-gradient(
         circle at top,
-        rgba(168, 85, 247, 0.12),
-        transparent 38%
+        rgba(245, 201, 106, 0.10),
+        transparent 35%
       ),
       radial-gradient(
         circle at bottom right,
-        rgba(139, 92, 246, 0.08),
-        transparent 35%
+        rgba(216, 154, 61, 0.06),
+        transparent 30%
       );
 
     background-attachment: fixed;
@@ -231,12 +235,12 @@ html {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(168, 85, 247, 0.20);
+  background: rgba(245, 201, 106, 0.18);
   border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(168, 85, 247, 0.35);
+  background: rgba(245, 201, 106, 0.32);
 }
 
 /* =========================================
@@ -260,17 +264,21 @@ html {
 ========================================= */
 
 @utility glass-panel {
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255,255,255,0.025);
+
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
-  border: 1px solid rgba(168, 85, 247, 0.10);
+
+  border: 1px solid rgba(245, 201, 106, 0.10);
 }
 
 @utility glass-panel-strong {
-  background: rgba(255,255,255,0.04);
+  background: rgba(255,255,255,0.035);
+
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(168,85,247,0.16);
+
+  border: 1px solid rgba(245,201,106,0.16);
 }
 
 /* =========================================
@@ -279,21 +287,21 @@ html {
 
 @utility shadow-soft {
   box-shadow:
-    0 4px 24px rgba(0,0,0,0.45),
-    0 0 30px rgba(139,92,246,0.08);
+    0 4px 24px rgba(0,0,0,0.50),
+    0 0 30px rgba(245,201,106,0.06);
 }
 
 @utility shadow-elevated {
   box-shadow:
-    0 14px 48px rgba(0,0,0,0.55),
-    0 0 40px rgba(168,85,247,0.12);
+    0 14px 48px rgba(0,0,0,0.60),
+    0 0 40px rgba(245,201,106,0.10);
 }
 
-@utility neon-glow {
+@utility gold-glow {
   box-shadow:
-    0 0 0 1px rgba(168,85,247,0.20),
-    0 0 20px rgba(168,85,247,0.20),
-    0 0 50px rgba(168,85,247,0.12);
+    0 0 0 1px rgba(245,201,106,0.18),
+    0 0 24px rgba(245,201,106,0.18),
+    0 0 50px rgba(245,201,106,0.08);
 }
 
 /* =========================================
@@ -305,11 +313,16 @@ html {
 }
 
 @utility text-muted-soft {
-  color: rgba(255,255,255,0.52);
+  color: rgba(255,255,255,0.50);
 }
 
-@utility text-violet-glow {
-  text-shadow: 0 0 18px rgba(168,85,247,0.45);
+@utility text-gold {
+  color: var(--gold-primary);
+}
+
+@utility text-gold-glow {
+  text-shadow:
+    0 0 12px rgba(245,201,106,0.35);
 }
 
 /* =========================================
@@ -331,10 +344,10 @@ html {
   }
 }
 
-@utility hover-glow {
+@utility hover-gold {
   &:hover {
     box-shadow:
-      0 0 0 1px rgba(168,85,247,0.25),
-      0 0 24px rgba(168,85,247,0.18);
+      0 0 0 1px rgba(245,201,106,0.22),
+      0 0 28px rgba(245,201,106,0.14);
   }
 }

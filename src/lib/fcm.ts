@@ -189,7 +189,7 @@ function attachForegroundListener(): void {
         tag:                uniqueTag,
         silent:             false,
         vibrate:            [200, 60, 200],
-        requireInteraction: isMobileUA(),
+        requireInteraction: true,
         renotify:           true,
         data:               { url },
         actions: [
@@ -304,7 +304,7 @@ export async function sendTestNotification(): Promise<void> {
       tag:                "horizon-test",
       silent:             false,
       vibrate:            [200, 50, 200],
-      requireInteraction: isMobileUA(),
+      requireInteraction: true,
       renotify:           true,
       data:               { url: "/horizon" },
       actions: [
