@@ -16,31 +16,27 @@ const config: CapacitorConfig = {
   // as on a real HTTPS origin inside the WebView (avoids mixed-content issues).
   server: {
     androidScheme: "https",
-    // hostname is "localhost" by default — leaves pushState routing intact.
     cleartext: false,
   },
 
   // ── Android-specific ──────────────────────────────────────────────────────
   android: {
     // Allow WebView to be inspectable from Chrome DevTools during development.
-    // This is automatically disabled in release builds by Capacitor.
+    // Automatically disabled in release builds by Capacitor.
     webContentsDebuggingEnabled: true,
-
-    // Keep the keyboard from resizing the WebView — our layouts handle
-    // keyboard avoidance in CSS (dvh units, pb-safe, etc.)
-    allowMixedContent: false,
 
     // Capture text input correctly inside WebView
     captureInput: true,
 
-    // Minimum SDK 26 (Android 8.0) for reliable WebRTC microphone access
-    // minSdkVersion is set in build.gradle, not here — this is metadata only.
+    allowMixedContent: false,
+
+    // minSdkVersion 26 (Android 8.0) — set in variables.gradle
   },
 
   // ── Plugin configuration ───────────────────────────────────────────────────
   plugins: {
-    // SplashScreen: We manage our own React splash animation, so we suppress
-    // the native splash as quickly as possible.
+    // SplashScreen: We manage our own React splash animation, so we hide the
+    // native splash as quickly as possible to avoid a double-splash.
     SplashScreen: {
       launchShowDuration: 0,
       launchAutoHide: true,
@@ -52,25 +48,18 @@ const config: CapacitorConfig = {
       splashImmersive: true,
     },
 
-    // StatusBar: Dark immersive mode — matches the app's dark design system.
+    // StatusBar: Overlays the WebView so the app goes truly edge-to-edge.
     StatusBar: {
       style: "Dark",
-      backgroundColor: "#0a0a0a",
+      backgroundColor: "#00000000",
       overlaysWebView: true,
     },
 
     // App: handle back-button and state-change events.
-    // Actual listener code lives in src/lib/platform/native-lifecycle.ts.
     App: {},
 
-    // Haptics: available for future Jarvis interaction feedback.
+    // Haptics: available for Jarvis interaction feedback.
     Haptics: {},
-
-    // PushNotifications placeholder — Phase 2 will migrate from Firebase web SDK
-    // to native push via @capacitor/push-notifications for Android foreground service.
-    // PushNotifications: {
-    //   presentationOptions: ["badge", "sound", "alert"],
-    // },
   },
 };
 

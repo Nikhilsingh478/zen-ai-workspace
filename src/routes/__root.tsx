@@ -8,6 +8,7 @@ import { VoiceOverlay } from "@/components/voice-overlay";
 import { InAppNotificationHost } from "@/components/in-app-notification";
 import { JarvisFloatingOrb } from "@/components/jarvis/floating-orb";
 import { jarvis } from "@/lib/jarvis";
+import { initNativeLifecycle, initStatusBar, hideSplashScreen } from "@/lib/platform/native-lifecycle";
 
 // ─── Route ────────────────────────────────────────────────────────────────────
 
@@ -132,12 +133,22 @@ function RootComponent() {
   useEffect(() => {
     initFCM().catch(() => {});
     jarvis.autoStartIfEnabled();
+    initStatusBar().catch(() => {});
+    initNativeLifecycle().catch(() => {});
   }, []);
 
   return (
     <>
       <AnimatePresence>
-        {!splashDone && <Splash key="splash" onDone={() => setSplashDone(true)} />}
+        {!splashDone && (
+          <Splash
+            key="splash"
+            onDone={() => {
+              setSplashDone(true);
+              hideSplashScreen().catch(() => {});
+            }}
+          />
+        )}
       </AnimatePresence>
 
       <AppShell>

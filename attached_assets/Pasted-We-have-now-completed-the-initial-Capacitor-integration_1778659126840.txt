@@ -1,0 +1,193 @@
+We have now completed the initial Capacitor integration for AI Matrix.
+
+Next, we need to properly prepare the Android-native build pipeline and optimize the app so it genuinely feels like a premium native AI assistant application instead of a simple wrapped website.
+
+IMPORTANT:
+We are still NOT implementing:
+
+* Porcupine
+* full background wake word
+* continuous microphone foreground service
+
+This phase is ONLY about:
+professional Android-native refinement and deployment readiness.
+
+────────────────────────────────────
+PRIMARY GOAL
+────────────────────────────────────
+
+AI Matrix should now begin behaving like:
+a real Android application.
+
+The app should:
+
+* launch smoothly
+* feel immersive
+* avoid browser-like behavior
+* preserve futuristic aesthetics
+* feel stable and polished
+
+We are now focusing on:
+native Android optimization.
+
+────────────────────────────────────
+ANDROID BUILD PIPELINE
+────────────────────────────────────
+
+Ensure the project is fully prepared for:
+
+* Android Studio builds
+* debug APK generation
+* release APK generation
+* future Play Store readiness
+
+Verify:
+
+* Gradle configuration
+* SDK compatibility
+* Capacitor sync flow
+* AndroidManifest correctness
+* proper app identifiers
+* proper signing preparation
+
+────────────────────────────────────
+IMPORTANT:
+DO NOT BREAK EXISTING FEATURES
+────────────────────────────────────
+
+The following MUST continue functioning:
+
+* Horizon
+* reminders
+* notifications
+* Jarvis systems
+* AI chat
+* Supabase
+* Firebase
+* routing
+* animations
+* glassmorphism
+* mobile layouts
+* PWA fallback behavior
+
+────────────────────────────────────
+NATIVE MOBILE UX REFINEMENT
+────────────────────────────────────
+
+The app should feel:
+
+* smooth
+* cinematic
+* futuristic
+* premium
+* immersive
+
+Refine:
+
+* startup transitions
+* splashscreen behavior
+* viewport sizing
+* keyboard handling
+* status bar integration
+* edge-to-edge rendering
+* safe area handling
+* gesture feel
+
+Avoid:
+
+* WebView flashing
+* white screens
+* keyboard overlap
+* layout jumps
+* laggy scrolling
+* awkward viewport resizing
+
+────────────────────────────────────
+ANDROID-SPECIFIC POLISH
+────────────────────────────────────
+
+Configure:
+
+1. Native splash screen
+2. App icons
+3. Adaptive icons
+4. Dark-mode consistency
+5. Smooth startup behavior
+6. Status bar styling
+7. Navigation bar styling
+8. Proper fullscreen feel
+
+The UI should feel cohesive with the futuristic AI Matrix identity.
+
+────────────────────────────────────
+MICROPHONE + NOTIFICATION PREPARATION
+────────────────────────────────────
+
+Prepare proper Android-native handling for:
+
+* microphone permissions
+* notification permissions
+* app lifecycle recovery
+* audio-session stability
+
+Again:
+DO NOT implement full background assistant behavior yet.
+
+ONLY prepare stable native infrastructure.
+
+────────────────────────────────────
+PERFORMANCE OPTIMIZATION
+────────────────────────────────────
+
+Optimize:
+
+* rendering performance
+* animation smoothness
+* startup time
+* memory usage
+* mobile responsiveness
+
+The app should feel lightweight and fluid on Android devices.
+
+────────────────────────────────────
+JARVIS MOBILE DIRECTION
+────────────────────────────────────
+
+The Jarvis assistant should begin feeling:
+less like a browser feature,
+more like a native AI layer.
+
+The floating orb, immersive Jarvis page, and transitions should all feel:
+integrated into the Android app experience.
+
+────────────────────────────────────
+VERY IMPORTANT
+────────────────────────────────────
+
+Do NOT add unnecessary gimmicks.
+
+Avoid:
+
+* excessive glow spam
+* overanimation
+* fake sci-fi clutter
+* unstable experimental hacks
+
+The experience should feel:
+restrained, intelligent, premium, believable.
+
+────────────────────────────────────
+FUTURE ARCHITECTURE PREPARATION
+────────────────────────────────────
+
+The Android architecture should now be cleanly prepared for future:
+
+* foreground services
+* Porcupine integration
+* persistent wake word
+* native audio pipelines
+* always-on Jarvis
+
+Do NOT fully implement these yet.
+
+ONLY ensure the app architecture is cleanly ready for the next phase.
