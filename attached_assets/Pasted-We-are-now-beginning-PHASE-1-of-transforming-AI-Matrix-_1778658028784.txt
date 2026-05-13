@@ -1,0 +1,316 @@
+We are now beginning PHASE 1 of transforming AI Matrix into a true native AI assistant platform.
+
+IMPORTANT:
+This is NOT a simple PWA packaging task.
+
+We are NOT using PWABuilder.
+We are NOT wrapping a website into a basic WebView APK.
+
+We are transitioning AI Matrix into a proper native Android application using Capacitor as the foundation for future persistent Jarvis assistant architecture.
+
+────────────────────────────────────
+PROJECT CONTEXT
+────────────────────────────────────
+
+AI Matrix already contains:
+
+* React + Vite architecture
+* Horizon task/reminder system
+* Supabase backend
+* Firebase FCM notifications
+* Jarvis assistant system
+* wake-word functionality
+* floating assistant orb
+* immersive /jarvis page
+* PWA functionality
+* animations + futuristic UI
+* service workers
+* mobile responsive UI
+* voice interaction systems
+
+Desktop experience is already reasonably stable.
+
+The major limitation now is:
+mobile browser architecture itself.
+
+Android Chrome/PWA environments aggressively:
+
+* suspend microphone access
+* throttle tabs
+* kill background execution
+* break continuous speech recognition
+* create restart loops
+* make wake-word systems unreliable
+
+Therefore:
+we are now moving away from “browser assistant architecture” and preparing the app for future native foreground-service assistant behavior.
+
+────────────────────────────────────
+PRIMARY GOAL OF THIS PHASE
+────────────────────────────────────
+
+PHASE 1 is ONLY about building the native Android foundation correctly.
+
+DO NOT attempt to fully implement:
+
+* always-on background Jarvis
+* Porcupine wake-word engine
+* foreground service persistence
+* continuous microphone capture
+
+Those come later.
+
+For now:
+focus ONLY on a professional Capacitor migration.
+
+────────────────────────────────────
+IMPORTANT ARCHITECTURAL GOALS
+────────────────────────────────────
+
+We want AI Matrix to evolve from:
+
+“advanced futuristic web app”
+
+into:
+
+“native AI operating assistant”.
+
+Capacitor is the bridge that allows this transition WITHOUT rewriting the entire application.
+
+We are preserving:
+
+* React frontend
+* Vite architecture
+* routing
+* Supabase integration
+* Jarvis systems
+* Horizon
+* animations
+* UI systems
+* existing product logic
+
+────────────────────────────────────
+PHASE 1 REQUIREMENTS
+────────────────────────────────────
+
+Implement a clean, production-ready Capacitor integration for Android.
+
+Requirements:
+
+1. Install and configure Capacitor properly
+2. Generate Android project correctly
+3. Ensure stable native app builds
+4. Ensure APK generation works
+5. Ensure routing works correctly
+6. Ensure service worker conflicts are handled properly
+7. Ensure notifications continue functioning
+8. Ensure microphone permissions are configured correctly
+9. Ensure app lifecycle behaves properly
+10. Ensure mobile performance remains smooth
+11. Ensure environment variables work correctly
+12. Ensure Supabase connectivity works correctly
+13. Ensure Firebase/FCM continues functioning correctly
+14. Ensure the app still feels premium and futuristic
+
+────────────────────────────────────
+VERY IMPORTANT:
+DO NOT BREAK EXISTING FEATURES
+────────────────────────────────────
+
+The following MUST continue working:
+
+* Horizon
+* task creation
+* reminders
+* push notifications
+* Jarvis orb
+* Jarvis page
+* animations
+* routing
+* auth/session persistence
+* AI chat
+* mobile layouts
+* responsive UI
+* glassmorphism effects
+
+Do NOT regress functionality.
+
+────────────────────────────────────
+CAPACITOR SETUP REQUIREMENTS
+────────────────────────────────────
+
+Implement proper Capacitor setup including:
+
+* @capacitor/core
+* @capacitor/android
+* capacitor.config.ts
+* Android project generation
+* build scripts
+* sync scripts
+* proper asset handling
+
+Ensure:
+Vite production build correctly feeds Capacitor.
+
+────────────────────────────────────
+ANDROID CONFIGURATION
+────────────────────────────────────
+
+Prepare Android app professionally.
+
+Requirements:
+
+* proper app name
+* proper package ID
+* splash screen support
+* adaptive icon support
+* edge-to-edge support
+* dark UI compatibility
+* smooth startup behavior
+
+The app should feel:
+premium, futuristic, polished.
+
+────────────────────────────────────
+PERMISSIONS
+────────────────────────────────────
+
+Prepare proper Android permissions for future assistant functionality.
+
+Current permissions:
+
+* microphone
+* notifications
+* internet
+* wake lock (if needed)
+
+DO NOT aggressively request all permissions at startup.
+
+Permission requests should feel professional and intentional.
+
+────────────────────────────────────
+IMPORTANT:
+PREPARE FOR FUTURE FOREGROUND SERVICE
+────────────────────────────────────
+
+We are NOT fully implementing background Jarvis yet.
+
+BUT:
+the architecture should be cleanly prepared for future:
+
+* Android foreground service
+* persistent assistant runtime
+* wake-word engine
+* continuous audio pipeline
+* Porcupine integration
+
+Do NOT hardcode browser-only assumptions anymore.
+
+────────────────────────────────────
+JARVIS MOBILE DIRECTION
+────────────────────────────────────
+
+Current mobile wake-word behavior inside browser is unreliable because of browser limitations.
+
+The long-term direction is:
+
+Capacitor Native App
+→ Foreground Android Service
+→ Porcupine Wake Word Engine
+→ Jarvis Assistant Runtime
+
+PHASE 1 should prepare the foundation for this future architecture.
+
+────────────────────────────────────
+SERVICE WORKER / PWA CONSIDERATIONS
+────────────────────────────────────
+
+The project currently contains:
+
+* PWA logic
+* service workers
+* Firebase messaging service workers
+
+Carefully ensure Capacitor does NOT conflict with:
+
+* existing service worker registration
+* FCM handling
+* notification logic
+
+Do NOT accidentally break notifications.
+
+────────────────────────────────────
+ROUTING + NAVIGATION
+────────────────────────────────────
+
+Ensure React Router works correctly inside Capacitor.
+
+Handle:
+
+* deep links
+* refresh behavior
+* navigation persistence
+* Android back button behavior
+
+The app should feel native and stable.
+
+────────────────────────────────────
+PERFORMANCE REQUIREMENTS
+────────────────────────────────────
+
+The app should:
+
+* launch quickly
+* feel smooth
+* avoid white flashes
+* preserve animations
+* maintain futuristic feel
+* keep transitions fluid
+
+Avoid:
+
+* WebView jank
+* laggy transitions
+* broken viewport behavior
+* keyboard overlap issues
+
+────────────────────────────────────
+IMPORTANT UX DIRECTION
+────────────────────────────────────
+
+AI Matrix should NOT feel like:
+“website inside phone”.
+
+It should begin feeling like:
+“real AI operating environment”.
+
+The UI should remain:
+
+* cinematic
+* futuristic
+* immersive
+* smooth
+* restrained
+* premium
+
+NOT:
+cheap WebView wrapper feeling.
+
+────────────────────────────────────
+EXPECTED OUTPUT
+────────────────────────────────────
+
+At the end of PHASE 1, we should have:
+
+* stable Capacitor Android app
+* successful APK builds
+* proper Android project
+* functional notifications
+* stable mobile runtime
+* preserved AI Matrix experience
+* architecture ready for future native assistant systems
+
+Again:
+DO NOT implement Porcupine or full background Jarvis yet.
+
+We are ONLY building the native Android foundation professionally and cleanly.
