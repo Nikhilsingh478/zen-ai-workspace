@@ -1,0 +1,226 @@
+We have successfully converted the AI Matrix web app into a Capacitor Android app and the Android project now builds successfully in Android Studio with no fatal Gradle/Kotlin issues anymore.
+
+HOWEVER:
+the app launches on the Android device and ONLY shows a dark fullscreen background (basically the loader/splash background color) and nothing else renders.
+
+IMPORTANT:
+The app DOES NOT crash.
+There is NO white screen.
+There is NO Android “app keeps stopping” error.
+Only a permanent dark blank screen.
+
+This means:
+- Android native layer is working
+- Capacitor activity launches properly
+- WebView opens
+- Splash/background theme loads
+- BUT the frontend itself is not rendering inside the WebView
+
+This is now MOST LIKELY:
+- Vite base path issue
+- Capacitor asset path issue
+- SPA routing issue
+- index.html asset resolution issue
+- WebView console/runtime error
+- wrong webDir
+- incorrect Capacitor config
+- frontend JS bundle failing silently
+
+YOUR TASK:
+Debug and FIX this ENTIRELY.
+
+====================================================
+CURRENT PROJECT CONTEXT
+====================================================
+
+Tech stack:
+- React
+- Vite
+- Capacitor
+- Android Studio
+- Capacitor Android
+
+The project already successfully runs in browser/PWA.
+The Android build now succeeds.
+
+We already executed:
+- npm install
+- npm run build
+- npx cap sync android
+
+The sync output confirmed:
+“Copying web assets from dist to android/app/src/main/assets/public”
+
+SO assets ARE being copied.
+
+====================================================
+CURRENT SYMPTOM
+====================================================
+
+On Android device:
+- App opens
+- Only dark fullscreen background visible
+- No UI
+- No text
+- No buttons
+- No React render
+- No routing visible
+- Nothing interactive
+
+The screenshot confirms this.
+
+====================================================
+YOUR JOB
+====================================================
+
+You must now systematically debug the Capacitor + Vite integration and FULLY FIX the Android rendering issue.
+
+DO NOT GUESS.
+
+I want proper root-cause analysis.
+
+====================================================
+THINGS TO CHECK
+====================================================
+
+1. capacitor.config.ts / capacitor.config.json
+- Verify webDir
+- Verify server config
+- Verify Android configuration
+- Verify no stale localhost/dev-server config exists
+
+2. Vite configuration
+Check:
+- base path
+- assets path
+- output config
+- relative asset handling
+
+VERY IMPORTANT:
+Capacitor Android WebView often breaks when Vite base is incorrect.
+
+Ensure:
+base: './'
+
+or correct equivalent if required.
+
+3. React Router compatibility
+If BrowserRouter is used:
+replace/fix for Capacitor compatibility.
+
+Potentially switch to:
+- HashRouter
+OR
+- proper history fallback
+
+because Android WebView may fail on SPA deep routes.
+
+4. index.html
+Verify:
+- JS bundle paths
+- asset references
+- CSS references
+- favicon references
+
+Ensure generated assets are relative and not absolute.
+
+5. dist folder
+Inspect final build output.
+Verify:
+- index.html exists
+- assets folder exists
+- JS bundles generated correctly
+- paths inside built HTML are correct
+
+6. Android WebView console errors
+Add debugging/logging.
+Use:
+- chrome://inspect
+OR
+- Android Studio Logcat
+
+Capture ANY runtime JS errors.
+
+I want:
+- exact error source
+- exact failing file
+- exact reason React never mounts
+
+7. Main React entry
+Verify:
+- ReactDOM.createRoot executes
+- App mounts properly
+- no immediate runtime crash
+
+8. Environment variables
+Check whether:
+- VITE env vars missing in production build
+- runtime crashes because env undefined
+- Supabase keys missing
+- Gemini keys missing
+- API config failing
+
+9. Service worker / PWA interference
+Temporarily disable:
+- service worker
+- PWA registration
+- offline caching
+
+to verify whether the PWA layer is breaking Android WebView rendering.
+
+10. Capacitor live reload leftovers
+Ensure:
+- no localhost dependency
+- no stale dev-server URL
+- app works completely offline from bundled assets
+
+====================================================
+IMPORTANT REQUIREMENTS
+====================================================
+
+- DO NOT break existing browser functionality
+- DO NOT break PWA
+- DO NOT downgrade architecture
+- Keep Capacitor setup production-grade
+- Keep Android compatibility
+- Maintain dark futuristic UI/theme
+
+====================================================
+EXPECTED OUTPUT
+====================================================
+
+I want you to:
+1. Identify the REAL root cause
+2. Fix the issue fully
+3. Explain EXACTLY what was wrong
+4. Explain EXACTLY why Android showed only blank dark screen
+5. Provide all modified files
+6. Ensure the app fully renders on Android
+7. Ensure future builds work reliably
+
+After fixes:
+tell me the EXACT commands I must run again:
+
+Example:
+- npm run build
+- npx cap sync android
+
+and whether I need:
+- Clean Project
+- Rebuild Project
+- reinstall APK
+
+====================================================
+VERY IMPORTANT
+====================================================
+
+DO NOT assume.
+Actually inspect:
+- configs
+- routes
+- Vite build output
+- Capacitor setup
+- generated assets
+- Android logs
+
+and fix this properly end-to-end.

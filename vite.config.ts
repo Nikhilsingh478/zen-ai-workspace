@@ -11,6 +11,13 @@ export default defineConfig({
       ignoreConfigErrors: true,
     }),
   ],
+  // CRITICAL for Capacitor Android:
+  // Capacitor serves assets from the local filesystem inside the WebView.
+  // With base '/' (default), Vite emits paths like /assets/index.js which
+  // the WebView cannot resolve — there is no server. Setting base './'
+  // makes Vite emit relative paths (./assets/index.js) which resolve
+  // correctly from any origin, including capacitor://localhost/.
+  base: "./",
   server: {
     host: "0.0.0.0",
     port: 5000,
