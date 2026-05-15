@@ -5,38 +5,32 @@ import type { CapacitorConfig } from "@capacitor/cli";
  *
  * Phase 1 — foundation only.
  * Phase 2+ will add: foreground service, Porcupine wake word, native push.
+ *
+ * IMPORTANT: No `server` block here. No androidScheme, no server.url, no
+ * cleartext, no live-reload config. Capacitor will load assets from:
+ *   android/app/src/main/assets/public
+ * using the default capacitor://localhost scheme. This is production-only
+ * bundled asset mode — the WebView never makes a network request to boot.
  */
 const config: CapacitorConfig = {
   appId: "com.aimatrix.app",
   appName: "AI Matrix",
   webDir: "dist",
 
-  // ── Server ────────────────────────────────────────────────────────────────
-  // androidScheme: "https" ensures cookies, localStorage, and IndexedDB behave
-  // as on a real HTTPS origin inside the WebView (avoids mixed-content issues).
-  server: {
-    androidScheme: "https",
-    cleartext: false,
-  },
-
   // ── Android-specific ──────────────────────────────────────────────────────
   android: {
     // Allow WebView to be inspectable from Chrome DevTools during development.
-    // Automatically disabled in release builds by Capacitor.
+    // Capacitor automatically disables this in release/production builds.
     webContentsDebuggingEnabled: true,
 
-    // Capture text input correctly inside WebView
+    // Correct text input capture inside WebView
     captureInput: true,
-
-    allowMixedContent: false,
-
-    // minSdkVersion 26 (Android 8.0) — set in variables.gradle
   },
 
   // ── Plugin configuration ───────────────────────────────────────────────────
   plugins: {
-    // SplashScreen: We manage our own React splash animation, so we hide the
-    // native splash as quickly as possible to avoid a double-splash.
+    // SplashScreen: React handles its own splash animation, so hide the
+    // native splash immediately to avoid a double-splash flash.
     SplashScreen: {
       launchShowDuration: 0,
       launchAutoHide: true,
@@ -48,14 +42,14 @@ const config: CapacitorConfig = {
       splashImmersive: true,
     },
 
-    // StatusBar: Overlays the WebView so the app goes truly edge-to-edge.
+    // StatusBar: overlay the WebView for true edge-to-edge.
     StatusBar: {
       style: "Dark",
       backgroundColor: "#00000000",
       overlaysWebView: true,
     },
 
-    // App: handle back-button and state-change events.
+    // App: back-button and app state-change events.
     App: {},
 
     // Haptics: available for Jarvis interaction feedback.
