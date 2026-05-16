@@ -181,14 +181,28 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       {/* ── Main content ── */}
-      <div className="flex-1 min-w-0 min-h-0 flex flex-col pb-20 md:pb-0">
+      {/*
+        Safe area top: on Android edge-to-edge the status bar overlays the WebView.
+        env(safe-area-inset-top) is the exact pixel height of the status bar / notch.
+        We apply it only to mobile (md:pt-0 resets it on desktop where no notch exists).
+      */}
+      <div
+        className="flex-1 min-w-0 min-h-0 flex flex-col pb-20 md:pb-0"
+        style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
+      >
         <main className="flex-1 min-h-0 overflow-y-auto">{children}</main>
       </div>
 
       {/* ── Mobile bottom nav ── */}
+      {/*
+        Safe area bottom: on gesture-navigation Android devices, the bottom system
+        gesture area is ~20-34px. We shift the nav up by that amount so it never
+        sits underneath the gesture strip, while keeping the 12px (bottom-3) visual gap.
+      */}
       <nav
-        className="md:hidden fixed bottom-3 left-3 right-3 z-50 rounded-2xl"
+        className="md:hidden fixed left-3 right-3 z-50 rounded-2xl"
         style={{
+          bottom: "calc(0.75rem + env(safe-area-inset-bottom, 0px))",
           background: "rgba(17,17,20,0.92)",
           border: "1px solid rgba(125,211,252,0.1)",
           backdropFilter: "blur(20px)",

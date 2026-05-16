@@ -1,0 +1,274 @@
+We are now entering the NEXT MAJOR PHASE of transforming AI Matrix / Jarvis from a converted web app into a proper Android-native always-on AI assistant.
+
+IMPORTANT:
+You must preserve ALL existing production functionality.
+DO NOT break:
+
+* web deployment
+* Vercel deployment
+* Supabase auth
+* Gemini integration
+* existing scheduling/task features
+* Horizon logic
+* existing routing
+* existing APIs
+* current APK build pipeline
+* Capacitor integration
+* current Android Studio setup
+
+The APK currently builds and launches successfully. React app renders properly. Supabase env issues and Capacitor asset loading issues are already solved. DO NOT regress any of that.
+
+====================================================
+PHASE 1 — FIX MOBILE UI / SAFE AREA / STATUS BAR
+================================================
+
+Problem:
+The UI was originally designed more like a web app. After converting to APK using Capacitor, multiple screens are getting cut from the TOP under the Android status bar / notch area.
+
+Examples:
+
+* Horizon tab → top section slightly cut
+* Jarvis tab → top section cut
+* potentially other screens too
+
+You must properly fix Android safe-area handling globally across the app.
+
+Requirements:
+
+1. Implement proper safe-area handling for Android devices.
+2. Respect:
+
+   * status bar height
+   * notch / cutout devices
+   * immersive Android layouts
+3. Use proper CSS env(safe-area-inset-top) handling where necessary.
+4. Ensure NO screen content goes behind the Android status bar.
+5. Preserve the existing UI design language.
+6. Do NOT randomly add excessive padding.
+7. Make sure all pages:
+
+   * scroll correctly
+   * render correctly
+   * do not clip headers
+   * do not overlap navigation
+8. Audit ALL major tabs/screens:
+
+   * Horizon
+   * Jarvis
+   * settings
+   * onboarding
+   * any dashboard-like layouts
+9. Verify on:
+
+   * tall Android screens
+   * punch-hole/notch devices
+   * gesture navigation devices
+
+Technical expectations:
+
+* Proper mobile-first responsive adjustments
+* Android WebView safe-area compatibility
+* Capacitor-safe layout handling
+* Consistent spacing system
+
+====================================================
+PHASE 2 — UNIFIED BRANDING / ICON SYSTEM
+========================================
+
+We already have a favicon / loader icon / branding icon used inside the website.
+
+I want ONE unified branding system everywhere.
+
+You must:
+
+1. Detect the existing favicon / loader logo currently used in AI Matrix.
+2. Reuse THAT SAME icon everywhere consistently.
+
+Apply it to:
+
+* Android APK app icon
+* adaptive launcher icon
+* splash screen branding
+* favicon
+* notification icon if appropriate
+* Android foreground service icon
+* Capacitor assets
+
+Requirements:
+
+* preserve existing branding
+* generate proper Android adaptive icons
+* support all Android densities
+* support dark backgrounds properly
+* avoid white squares around icons
+* preserve visual sharpness
+
+You must properly configure:
+
+* mipmap assets
+* adaptive foreground/background layers
+* monochrome compatibility if needed
+
+DO NOT replace the logo with placeholders.
+DO NOT invent a new design language.
+
+====================================================
+PHASE 3 — ALWAYS-ON JARVIS (ANDROID BACKGROUND ASSISTANT)
+=========================================================
+
+This is the BIGGEST requirement.
+
+We are transforming Jarvis into a persistent Android assistant.
+
+GOAL:
+Jarvis should remain active 24/7 in the background on Android devices.
+
+Current status:
+
+* APK exists
+* app launches
+* task scheduling logic already exists
+* Horizon/Jarvis systems already exist
+
+We now need persistent mobile assistant behavior.
+
+Requirements:
+
+1. Jarvis must continue running while app is backgrounded.
+2. It should survive:
+
+   * app minimization
+   * screen off
+   * multitasking
+3. Implement proper Android background architecture.
+4. Use:
+
+   * foreground services
+   * persistent notification
+   * wake locks ONLY if necessary
+   * battery optimization handling
+   * background microphone handling if technically feasible
+5. Add proper Android permission handling:
+
+   * microphone
+   * notifications
+   * foreground service
+   * battery optimization exemption guidance
+   * autostart guidance where relevant
+6. Jarvis should wake when the user says:
+   “Hey Jarvis”
+
+IMPORTANT:
+We are CURRENTLY TRYING TO DO THIS WITHOUT PORCUPINE.
+
+So:
+
+* first evaluate whether Android speech recognition APIs / continuous listening approaches can achieve acceptable wake-word detection
+* if feasible, implement best-effort continuous listening architecture WITHOUT Porcupine first
+* if limitations exist, clearly document them
+* do not fake functionality
+
+Requirements:
+
+* low-latency wake-up
+* persistent listener architecture
+* stable background execution
+* no aggressive crashing/restarting
+* reconnect logic if recognition stops
+* Android lifecycle-safe implementation
+
+IMPORTANT:
+DO NOT implement fake “always-on” logic that dies after 2 minutes.
+It must be architected correctly for real Android behavior.
+
+You must evaluate:
+
+* Capacitor plugins
+* native Android integration
+* SpeechRecognizer APIs
+* foreground service lifecycle
+* background execution limitations in modern Android
+
+====================================================
+PHASE 4 — ANDROID NOTIFICATION SYSTEM
+=====================================
+
+I will later add Firebase environment variables properly.
+
+But BEFORE that:
+prepare the APK notification architecture completely.
+
+Requirements:
+
+1. Implement proper Android notification channels.
+2. Add runtime notification permission handling.
+3. Support:
+
+   * foreground notifications
+   * persistent service notifications
+   * scheduled notifications
+   * reminder notifications
+   * future push notifications
+4. Configure Capacitor notification support properly.
+5. Ensure Android 13+ compatibility.
+6. Add notification channel categorization:
+
+   * reminders
+   * assistant
+   * system
+   * urgent
+7. Ensure notification icons render correctly.
+8. Prepare architecture for Firebase Cloud Messaging integration later.
+9. DO NOT break current builds if Firebase config is absent.
+
+====================================================
+PHASE 5 — STABILITY + PRODUCTION SAFETY
+=======================================
+
+CRITICAL:
+Do NOT damage the production web app.
+
+The web deployment MUST continue working exactly as before.
+
+Requirements:
+
+1. Any Android-specific logic must be platform-gated.
+2. Use proper:
+
+   * Capacitor platform detection
+   * conditional execution
+   * environment separation
+3. Preserve:
+
+   * Vite web builds
+   * Vercel deployment
+   * SSR-safe logic where applicable
+4. Do NOT introduce browser-breaking native calls.
+5. Ensure Android-only code paths remain isolated cleanly.
+
+====================================================
+PHASE 6 — REQUIRED OUTPUT
+=========================
+
+After implementation, provide:
+
+1. Full breakdown of changes
+2. Every modified file
+3. Any new native Android files
+4. Permission changes
+5. Manifest changes
+6. Background service architecture explanation
+7. Notification architecture explanation
+8. Any Android limitations discovered
+9. Exact commands required locally:
+
+   * build
+   * sync
+   * rebuild APK
+10. Any additional setup I must do manually in Android Studio
+
+IMPORTANT:
+Work carefully and incrementally.
+Do NOT recklessly refactor unrelated systems.
+Do NOT break the currently-working APK pipeline.
+Preserve stability while adding native assistant capabilities professionally.

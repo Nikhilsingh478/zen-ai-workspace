@@ -28,6 +28,17 @@
 
         </activity>
 
+        <!--
+            JarvisService: foreground service keeping the assistant alive in the
+            background. foregroundServiceType="microphone" is mandatory on
+            Android 14+ (API 34+) when accessing the mic from a foreground service.
+        -->
+        <service
+            android:name=".JarvisService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -39,26 +50,30 @@
         </provider>
     </application>
 
-    <!-- Core -->
+    <!-- ── Core ─────────────────────────────────────────────────────────── -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-    <!-- Notifications -->
+    <!-- ── Notifications ─────────────────────────────────────────────────── -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
-    <!-- Microphone — for Jarvis voice input -->
+    <!-- ── Microphone — Jarvis voice + wake-word ─────────────────────────── -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
-    <!-- Wake lock — for reliable reminder delivery -->
+    <!-- ── Foreground service ────────────────────────────────────────────── -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+
+    <!-- ── Wake lock — reliable reminder delivery ────────────────────────── -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
-    <!-- Storage — for image board uploads (Android 13+) -->
+    <!-- ── Storage — image board uploads (Android 13+) ──────────────────── -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
 
-    <!-- Hardware features (optional — won't block install if missing on device) -->
+    <!-- ── Hardware features (optional — devices without mic can still install) -->
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
 
 </manifest>
