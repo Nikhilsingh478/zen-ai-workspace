@@ -33,6 +33,14 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+    // Explicitly pin the Kotlin JVM target to 17.
+    // Without this, kotlin-android infers the target from the local JDK version.
+    // If the developer's JDK is 21, Kotlin 1.8.22 fails because it only supports
+    // JVM targets up to 19. Pinning to 17 matches the Java compileOptions above
+    // and is guaranteed to work with Kotlin 1.8.x.
+    kotlinOptions {
+        jvmTarget = '17'
+    }
     packagingOptions {
         resources {
             excludes += ['META-INF/AL2.0', 'META-INF/LGPL2.1']
