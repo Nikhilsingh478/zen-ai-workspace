@@ -1,0 +1,78 @@
+We have a clean reproducible Android build failure after the recent native Jarvis integration.
+
+DO NOT do random refactors.
+DO NOT break the currently stable Capacitor Android pipeline.
+ONLY fix the native plugin registration/build issue properly.
+
+Current exact error:
+
+MainActivity.java:10:
+cannot find symbol
+registerPlugin(JarvisPlugin.class);
+
+Meaning:
+MainActivity.java cannot resolve JarvisPlugin even though JarvisPlugin.kt exists.
+
+Context:
+
+* Capacitor Android app
+* Java MainActivity
+* Kotlin native plugin added:
+  android/app/src/main/java/com/aimatrix/app/JarvisPlugin.kt
+* Native foreground service exists:
+  JarvisService.kt
+* Build was previously stable before native Jarvis integration
+* APK pipeline must remain intact
+
+You must properly diagnose WHY MainActivity cannot resolve JarvisPlugin.
+
+Possible causes to investigate:
+
+1. Missing import statement
+2. Incorrect package declaration in JarvisPlugin.kt
+3. Kotlin plugin visibility/interoperability issue
+4. Wrong Capacitor plugin registration pattern
+5. MainActivity should not manually register plugin
+6. Capacitor auto-registration already handling plugin
+7. Java/Kotlin interop mismatch
+8. Incorrect annotation usage
+9. Plugin class not extending correct Capacitor Plugin base
+10. Gradle Kotlin configuration mismatch
+
+Requirements:
+
+1. Fix the build cleanly.
+2. Preserve:
+
+   * Android background service
+   * JarvisService.kt
+   * Capacitor bridge architecture
+   * existing APK functionality
+3. DO NOT break production web app.
+4. DO NOT remove the native assistant architecture unless absolutely necessary.
+5. Keep Android-specific logic isolated.
+
+Important:
+Capacitor v7/v8 plugin registration behavior differs from older versions.
+Investigate whether:
+registerPlugin(JarvisPlugin.class);
+
+is even necessary anymore.
+
+If Capacitor auto-registers plugins:
+
+* remove manual registration safely
+* document why
+
+After fixing:
+
+1. Run clean Android build
+2. Verify compile succeeds
+3. Verify app launches
+4. Verify Jarvis plugin initializes correctly
+5. Explain EXACT root cause
+6. Explain EXACT files changed
+7. Explain whether plugin is auto-registered or manually registered now
+
+Goal:
+Restore stable Android build WITHOUT losing the native Jarvis infrastructure.

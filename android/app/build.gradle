@@ -1,4 +1,9 @@
 apply plugin: 'com.android.application'
+// kotlin-android: enables Kotlin compilation for this module.
+// Required because JarvisService.kt and JarvisPlugin.kt are Kotlin source files.
+// Without this, the Kotlin compiler is never invoked and MainActivity.java
+// cannot resolve JarvisPlugin — producing "cannot find symbol" at build time.
+apply plugin: 'kotlin-android'
 
 android {
     namespace "com.aimatrix.app"
@@ -47,6 +52,8 @@ dependencies {
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation "androidx.webkit:webkit:$androidxWebkitVersion"
+    // Kotlin stdlib — required because kotlin-android plugin is now applied
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:1.8.22"
     // LocalBroadcastManager — used by JarvisService ↔ JarvisPlugin communication
     implementation "androidx.localbroadcastmanager:localbroadcastmanager:1.1.0"
     implementation project(':capacitor-android')
