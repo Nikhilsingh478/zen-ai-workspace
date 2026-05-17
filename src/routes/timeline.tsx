@@ -8,8 +8,7 @@ import {
   TrendingUp, Zap, Target, Clock, Calendar, ChevronDown,
   ChevronUp, RotateCcw, Pencil, Save, X
 } from "lucide-react";
-import { useTimeline, TIMELINE_MONTHS, DOMAINS, type TimelineTask, type DomainId } from "@/lib/timeline";
-import { geminiAPI } from "@/lib/gemini";
+import { useTimeline, TIMELINE_MONTHS, DOMAINS, encodeTimelineDesc, type TimelineTask, type DomainId } from "@/lib/timeline";
 import { addTasksBatch } from "@/lib/horizon";
 import type { HorizonTaskInput } from "@/lib/horizon";
 import { cn } from "@/lib/utils";
@@ -700,27 +699,14 @@ function TimelinePage() {
     try {
       const days = await generateScheduleWithGemini(localContext, selectedMonthKey);
 
-      // Flatten into timeline tasks
-      const timelineTasks = days.flatMap((day) =>
-        day.tasks.map((t) => ({
-          monthKey: selectedMonthKey,
-          date: day.date,
-          title: t.title,
-          domain: (DOMAINS.find((d) => d.id === t.domain)?.id ?? "development") as DomainId,
-          startTime: t.startTime,
-          endTime: t.endTime,
-          completed: false,
-          aiGenerated: true,
-        }))
-      );
-
-      // Also build Horizon task inputs so tasks appear in the Horizon calendar
+      // Build Horizon task inputs — tasks go directly into the existing horizon_tasks table.
+      // Domain + month info are encoded in description so Timeline can filter them back out.
       const horizonInputs: HorizonTaskInput[] = days.flatMap((day) =>
         day.tasks.map((t) => {
-          const dom = DOMAINS.find((d) => d.id === t.domain);
+          const domId = (DOMAINS.find((d) => d.id === t.domain)?.id ?? "development") as DomainId;
           return {
             title: t.title,
-            description: dom ? `${dom.icon} ${dom.label} — Timeline (${selectedMonthKey})` : `Timeline (${selectedMonthKey})`,
+            description: encodeTimelineDesc(selectedMonthKey, domId),
             taskDate: day.date,
             taskTime: t.startTime,
             priority: "medium" as const,
@@ -729,17 +715,12 @@ function TimelinePage() {
         })
       );
 
-      const scheduleStr = JSON.stringify(days, null, 2);
-      const [, horizonCount] = await Promise.all([
-        Promise.all([
-          saveGeneratedSchedule(selectedMonthKey, scheduleStr),
-          saveTasks(selectedMonthKey, timelineTasks),
-        ]),
-        addTasksBatch(horizonInputs),
-      ]);
+      // Persist schedule text to localStorage + batch-insert into Horizon
+      saveGeneratedSchedule(selectedMonthKey, JSON.stringify(days, null, 2));
+      const horizonCount = await addTasksBatch(horizonInputs);
 
       toast.success(
-        `Generated ${timelineTasks.length} tasks across ${days.length} days — ${horizonCount} added to Horizon`,
+        `${horizonCount} tasks generated across ${days.length} days — now visible in Horizon`,
         { duration: 4000 },
       );
       setActiveTab("schedule");
@@ -752,7 +733,7 @@ function TimelinePage() {
     } finally {
       setGenerating(false);
     }
-  }, [selectedMonthKey, localContext, saveGeneratedSchedule, saveTasks]);
+  }, [selectedMonthKey, localContext, saveGeneratedSchedule]);
 
   // Group tasks by date for schedule view
   const tasksByDate = useMemo(() => {
