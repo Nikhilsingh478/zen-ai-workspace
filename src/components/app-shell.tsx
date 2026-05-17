@@ -12,6 +12,7 @@ import {
   CalendarDays,
   Cpu,
   Brain,
+  GitBranch,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, type ReactNode, type ComponentType } from "react";
@@ -26,17 +27,18 @@ import {
 } from "@/components/ui/sheet";
 
 const NAV = [
-  { to: "/",        label: "Websites", icon: Globe        },
-  { to: "/desktop", label: "Desktop",  icon: LayoutGrid   },
-  { to: "/prompts", label: "Prompts",  icon: Sparkles     },
-  { to: "/links",   label: "Links",    icon: Link2        },
-  { to: "/images",  label: "Images",   icon: ImageIcon    },
-  { to: "/messages",label: "Messages", icon: Bell         },
-  { to: "/horizon", label: "Horizon",  icon: CalendarDays },
-  { to: "/insights",label: "Insights", icon: BarChart2    },
-  { to: "/ask",     label: "Ask",      icon: MessageSquare},
-  { to: "/jarvis",  label: "JARVIS",   icon: Cpu          },
-  { to: "/context", label: "Context",  icon: Brain        },
+  { to: "/",         label: "Websites",  icon: Globe        },
+  { to: "/desktop",  label: "Desktop",   icon: LayoutGrid   },
+  { to: "/prompts",  label: "Prompts",   icon: Sparkles     },
+  { to: "/links",    label: "Links",     icon: Link2        },
+  { to: "/images",   label: "Images",    icon: ImageIcon    },
+  { to: "/messages", label: "Messages",  icon: Bell         },
+  { to: "/horizon",  label: "Horizon",   icon: CalendarDays },
+  { to: "/timeline", label: "Timeline",  icon: GitBranch    },
+  { to: "/insights", label: "Insights",  icon: BarChart2    },
+  { to: "/ask",      label: "Ask",       icon: MessageSquare},
+  { to: "/jarvis",   label: "JARVIS",    icon: Cpu          },
+  { to: "/context",  label: "Context",   icon: Brain        },
 ] as const;
 
 type NavItem = { to: string; label: string; icon: ComponentType<{ className?: string; strokeWidth?: number }> };
@@ -53,6 +55,7 @@ const MOBILE_SECONDARY: readonly NavItem[] = [
   { to: "/links",    label: "Links",    icon: Link2     },
   { to: "/images",   label: "Images",   icon: ImageIcon },
   { to: "/messages", label: "Messages", icon: Bell      },
+  { to: "/timeline", label: "Timeline", icon: GitBranch },
   { to: "/insights", label: "Insights", icon: BarChart2 },
   { to: "/context",  label: "Context",  icon: Brain     },
 ];
@@ -297,9 +300,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                       style={active ? { background: "rgba(125,211,252,0.07)" } : undefined}
                     >
                       <Icon
-                        className="h-[18px] w-[18px]"
+                        className={cn("h-[18px] w-[18px]", active && "text-[var(--jarvis-primary,#0EA5E9)]")}
                         strokeWidth={1.75}
-                        style={{ color: active ? "var(--jarvis-primary, #0EA5E9)" : undefined }}
                       />
                       <span className="font-medium">{item.label}</span>
                       {active && (

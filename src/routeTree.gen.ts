@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TimelineRouteImport } from './routes/timeline'
 import { Route as PromptsRouteImport } from './routes/prompts'
 import { Route as MessagesRouteImport } from './routes/messages'
 import { Route as LinksRouteImport } from './routes/links'
@@ -21,6 +22,11 @@ import { Route as ContextRouteImport } from './routes/context'
 import { Route as AskRouteImport } from './routes/ask'
 import { Route as IndexRouteImport } from './routes/index'
 
+const TimelineRoute = TimelineRouteImport.update({
+  id: '/timeline',
+  path: '/timeline',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PromptsRoute = PromptsRouteImport.update({
   id: '/prompts',
   path: '/prompts',
@@ -89,6 +95,7 @@ export interface FileRoutesByFullPath {
   '/links': typeof LinksRoute
   '/messages': typeof MessagesRoute
   '/prompts': typeof PromptsRoute
+  '/timeline': typeof TimelineRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -102,6 +109,7 @@ export interface FileRoutesByTo {
   '/links': typeof LinksRoute
   '/messages': typeof MessagesRoute
   '/prompts': typeof PromptsRoute
+  '/timeline': typeof TimelineRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -116,6 +124,7 @@ export interface FileRoutesById {
   '/links': typeof LinksRoute
   '/messages': typeof MessagesRoute
   '/prompts': typeof PromptsRoute
+  '/timeline': typeof TimelineRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -131,6 +140,7 @@ export interface FileRouteTypes {
     | '/links'
     | '/messages'
     | '/prompts'
+    | '/timeline'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -144,6 +154,7 @@ export interface FileRouteTypes {
     | '/links'
     | '/messages'
     | '/prompts'
+    | '/timeline'
   id:
     | '__root__'
     | '/'
@@ -157,6 +168,7 @@ export interface FileRouteTypes {
     | '/links'
     | '/messages'
     | '/prompts'
+    | '/timeline'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -171,10 +183,18 @@ export interface RootRouteChildren {
   LinksRoute: typeof LinksRoute
   MessagesRoute: typeof MessagesRoute
   PromptsRoute: typeof PromptsRoute
+  TimelineRoute: typeof TimelineRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/timeline': {
+      id: '/timeline'
+      path: '/timeline'
+      fullPath: '/timeline'
+      preLoaderRoute: typeof TimelineRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/prompts': {
       id: '/prompts'
       path: '/prompts'
@@ -267,6 +287,7 @@ const rootRouteChildren: RootRouteChildren = {
   LinksRoute: LinksRoute,
   MessagesRoute: MessagesRoute,
   PromptsRoute: PromptsRoute,
+  TimelineRoute: TimelineRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

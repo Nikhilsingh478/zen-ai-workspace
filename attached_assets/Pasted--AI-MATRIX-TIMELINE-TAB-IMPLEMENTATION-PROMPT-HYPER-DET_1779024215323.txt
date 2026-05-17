@@ -1,0 +1,737 @@
+# AI MATRIX — TIMELINE TAB IMPLEMENTATION PROMPT
+
+# HYPER-DETAILED REPLIT IMPLEMENTATION INSTRUCTIONS
+
+You are working on an existing futuristic AI assistant project called AI Matrix.
+
+IMPORTANT:
+This is NOT a new project.
+This is a production-like existing codebase already working on:
+
+* Web (Vercel)
+* Android APK via Capacitor
+* React + TypeScript + Vite
+* TailwindCSS
+* Supabase
+* Gemini API
+* Kotlin native integrations
+
+You MUST preserve:
+
+* existing architecture
+* existing UI consistency
+* existing Android build pipeline
+* existing Capacitor functionality
+* existing Supabase functionality
+* existing Gemini integrations
+* existing routing/navigation
+* existing animations and theme
+
+DO NOT break:
+
+* Horizon tab
+* Jarvis systems
+* Android builds
+* environment variables
+* existing database structure unless necessary
+
+This implementation MUST be incremental and safe.
+
+---
+
+## FEATURE NAME
+
+Create a NEW futuristic dashboard tab called:
+
+TIMELINE
+
+This tab represents:
+
+* life progression
+* monthly evolution
+* goal systems
+* domain tracking
+* AI-generated structured schedules
+* progress visualization
+
+The inspiration style should feel like:
+
+* Avengers holographic dashboards
+* Jarvis operating systems
+* futuristic mission planning interfaces
+* cinematic cyberpunk planning systems
+
+BUT IMPORTANT:
+Do NOT make it visually messy.
+
+Target visual style:
+
+* modern
+* cinematic
+* futuristic
+* premium
+* clean
+* professional
+* smooth
+* highly responsive
+* mobile optimized
+* Android-safe
+* glassmorphism where appropriate
+* subtle glows
+* restrained neon usage
+* premium motion design
+
+Avoid:
+
+* clutter
+* excessive blur
+* excessive particle systems
+* laggy animations
+* cheap sci-fi effects
+
+---
+
+## CORE CONCEPT
+
+The Timeline tab represents:
+A structured month-by-month evolution system.
+
+Timeline Range:
+
+* Start Month: MAY
+* End Month: OCTOBER
+
+Future months will be added later.
+Architecture should be scalable.
+
+Each month contains:
+
+1. End Goal Context
+2. Domains
+3. AI Schedule Generation
+4. Progress Dashboard
+5. Daily Task Timeline
+
+---
+
+## IMPORTANT TERMINOLOGY
+
+Use the word:
+
+DOMAINS
+
+instead of:
+
+* matrix
+* categories
+* modules
+
+Domains represent areas of life like:
+
+* Development
+* Gym
+* Cricket
+* AI Exploration
+* Freelance
+* Travel
+* Content
+* Resume/Career
+* Jarvis/AI Matrix
+
+---
+
+## MAIN UI LAYOUT
+
+Create a new Timeline page/tab.
+
+ROUTE:
+Add properly to existing routing system.
+
+IMPORTANT:
+Maintain consistency with existing navigation architecture.
+
+---
+
+## TOP SECTION
+
+At the top:
+Large cinematic heading:
+
+TIMELINE
+
+Subheading:
+"Structured evolution across domains."
+
+Animated subtle futuristic divider beneath heading.
+
+Background:
+
+* subtle animated gradients
+* dark futuristic panels
+* soft blue/cyan glow accents
+* responsive layout
+
+---
+
+## MONTH TIMELINE SYSTEM
+
+Create a horizontal month progression system.
+
+Months:
+
+* May
+* June
+* July
+* August
+* September
+* October
+
+Each month should appear as:
+
+* futuristic card/node
+* connected timeline structure
+* clickable
+* animated hover state
+* active state
+* completion state
+* progress state
+
+Desktop:
+Horizontal connected timeline.
+
+Mobile:
+Scrollable horizontal timeline OR stacked adaptive cards.
+
+Each month card should show:
+
+* month name
+* progress %
+* active domains count
+* status glow
+* completion indicator
+
+Visual Feel:
+Like a futuristic mission-control roadmap.
+
+---
+
+## WHEN USER CLICKS A MONTH
+
+Open a large futuristic dashboard panel.
+
+This panel contains:
+
+1. MONTH HEADER
+2. END GOAL CONTEXT SECTION
+3. DOMAIN OVERVIEW
+4. AI SCHEDULE SYSTEM
+5. GENERATED SCHEDULE VIEW
+6. MONTH PROGRESS ANALYTICS
+
+---
+
+1. MONTH HEADER
+
+---
+
+Show:
+
+* month name
+* date range
+* timeline progress
+* visual progress ring/bar
+
+Example:
+MAY
+18 May → 31 May
+
+Include subtle animated holographic styling.
+
+---
+
+2. END GOAL CONTEXT SECTION
+
+---
+
+VERY IMPORTANT SECTION.
+
+This is the heart of the system.
+
+Create:
+Large editable futuristic text area.
+
+Title:
+END GOAL CONTEXT
+
+Purpose:
+User writes detailed monthly plans.
+
+The user may include:
+
+* goals
+* routines
+* schedules
+* domain objectives
+* priorities
+* constraints
+* daily hour allocations
+* gym goals
+* dev goals
+* cricket goals
+* AI exploration goals
+* travel plans
+* learning goals
+
+IMPORTANT:
+This field MUST support:
+
+* very long text
+* structured text
+* multiline formatting
+* large context input
+
+Features:
+
+* autosave
+* smooth typing
+* futuristic textarea styling
+* mobile friendly
+* no lag while typing
+
+Store context persistently.
+
+---
+
+3. DOMAIN OVERVIEW SECTION
+
+---
+
+Create visual domain cards.
+
+Example domains:
+
+* Development
+* Gym
+* Cricket
+* AI Exploration
+* Freelance
+* Jarvis
+* Travel
+* Resume
+* Content
+
+Each domain card should display:
+
+* domain icon
+* domain progress
+* completion %
+* task count
+* glow status
+
+Visual style:
+Futuristic mini dashboard cards.
+
+Use:
+
+* subtle hover animation
+* premium transitions
+* responsive grid layout
+
+---
+
+4. AI SCHEDULE SYSTEM
+
+---
+
+CRITICAL FEATURE.
+
+Create a futuristic button:
+
+[SCHEDULE MONTH]
+
+This is the CORE AI feature.
+
+---
+
+## WHAT HAPPENS WHEN BUTTON IS CLICKED
+
+FLOW:
+
+STEP 1:
+Read the END GOAL CONTEXT text.
+
+STEP 2:
+Send context to Gemini API.
+
+STEP 3:
+Gemini analyzes:
+
+* monthly goals
+* routines
+* daily schedules
+* domains
+* time allocations
+* priorities
+
+STEP 4:
+Gemini generates structured daily schedules.
+
+STEP 5:
+System automatically creates tasks/events for EVERY date in that month.
+
+---
+
+## IMPORTANT EXAMPLE
+
+If current month is MAY:
+And user starts from:
+18 May
+
+Then AI should generate tasks from:
+18 May → 31 May
+
+NOT before 18 May.
+
+If month is June:
+Generate full June schedule.
+
+---
+
+## EXAMPLE INPUT CONTEXT
+
+The context may contain things like:
+
+Wake up at 6 AM
+Gym 6:15 to 8
+Development 10 AM to 5 PM
+2 hours cricket
+1 hour AI exploration
+Sleep 8 hours
+
+Monthly goals:
+
+* Finish React
+* Build projects
+* Improve batting
+* Increase strength
+
+Gemini should intelligently transform this into:
+structured daily schedules.
+
+---
+
+## AI OUTPUT REQUIREMENTS
+
+Gemini should generate:
+
+For EACH DATE:
+
+* tasks
+* timing
+* categories/domains
+* estimated duration
+* structured timeline
+
+Example:
+May 19:
+
+* Gym → 6:15 AM
+* Development → 10 AM
+* Cricket Practice → 5 PM
+* AI Research → 8 PM
+
+---
+
+## IMPORTANT ENGINEERING REQUIREMENTS
+
+DO NOT hardcode schedules.
+
+Use dynamic AI generation.
+
+Use structured JSON responses from Gemini.
+
+Example response structure:
+{
+"days": [
+{
+"date": "2026-05-19",
+"tasks": [
+{
+"title": "Gym",
+"startTime": "06:15",
+"endTime": "08:00",
+"domain": "Gym"
+}
+]
+}
+]
+}
+
+IMPORTANT:
+Validate malformed AI responses safely.
+
+---
+
+5. GENERATED SCHEDULE VIEW
+
+---
+
+After generation:
+Render a futuristic schedule dashboard.
+
+Each day should display:
+
+* date
+* timeline
+* tasks
+* progress
+* domains
+* completion status
+
+Visual style:
+Futuristic operational dashboard.
+
+Use:
+
+* expandable day cards
+* animated timeline indicators
+* subtle neon accents
+* glass panels
+* responsive layouts
+
+Desktop:
+Grid/timeline hybrid.
+
+Mobile:
+Stacked optimized cards.
+
+---
+
+## TASK FEATURES
+
+Each task should support:
+
+* complete/incomplete
+* progress tracking
+* editing
+* status indicators
+* domain tagging
+
+Visual indicators:
+
+* completed glow
+* pending state
+* missed state
+
+---
+
+6. MONTH PROGRESS ANALYTICS
+
+---
+
+Create futuristic progress dashboard.
+
+Include:
+
+* completion %
+* domain consistency
+* streaks
+* productivity score
+* hours tracked
+* tasks completed
+* active days
+
+Visualize using:
+
+* futuristic progress bars
+* circular indicators
+* subtle charts
+* holographic UI styling
+
+IMPORTANT:
+Keep charts lightweight.
+
+DO NOT use extremely heavy chart systems.
+
+---
+
+## DATA STORAGE
+
+Use Supabase properly.
+
+Recommended tables:
+
+* timeline_months
+* timeline_tasks
+* timeline_domains
+* timeline_progress
+
+IMPORTANT:
+Do NOT break existing Supabase structure.
+
+Add safely.
+
+---
+
+## IMPORTANT DATABASE REQUIREMENTS
+
+Each month should store:
+
+* month
+* year
+* context
+* generated schedules
+* progress data
+
+Each task should store:
+
+* date
+* title
+* domain
+* status
+* timing
+* completion
+
+---
+
+## ANDROID + CAPACITOR REQUIREMENTS
+
+CRITICAL:
+This project is ALSO an Android APK.
+
+Therefore:
+
+* everything MUST be mobile responsive
+* avoid memory-heavy rendering
+* avoid infinite animation loops
+* avoid performance-heavy particles
+* avoid rendering hundreds of components simultaneously
+
+Use:
+
+* virtualization if needed
+* lazy rendering
+* optimized animations
+
+Preserve:
+
+* Capacitor compatibility
+* Android WebView performance
+* touch responsiveness
+
+---
+
+## IMPORTANT UI/UX REQUIREMENTS
+
+The UI should feel like:
+
+* Jarvis mission planner
+* futuristic life operating system
+* cinematic productivity dashboard
+
+But:
+NOT cluttered.
+
+Target:
+
+* clean
+* sharp
+* premium
+* futuristic minimalism
+
+---
+
+## ANIMATION REQUIREMENTS
+
+Use:
+
+* smooth transitions
+* subtle glows
+* premium hover effects
+* holographic motion
+* animated progress indicators
+
+Avoid:
+
+* excessive bouncing
+* flashy animations
+* cheap effects
+
+---
+
+## RESPONSIVENESS REQUIREMENTS
+
+Must work perfectly on:
+
+* desktop
+* tablet
+* Android phones
+* notch devices
+* gesture navigation phones
+
+Respect:
+safe-area-inset-top
+safe-area-inset-bottom
+
+---
+
+## IMPORTANT PERFORMANCE RULES
+
+DO NOT:
+
+* rerender everything unnecessarily
+* use massive state trees
+* spam Gemini requests
+* create animation overload
+
+DO:
+
+* memoize components
+* optimize rendering
+* lazy load large sections
+* debounce autosaves
+
+---
+
+## IMPORTANT SAFETY RULES
+
+DO NOT:
+
+* modify unrelated systems
+* refactor existing architecture recklessly
+* break Horizon tab
+* break Jarvis systems
+* break Android builds
+
+Implement incrementally.
+
+---
+
+## EXPECTED FINAL RESULT
+
+The Timeline tab should feel like:
+
+A futuristic AI-powered life operating system.
+
+The user should:
+
+* plan months
+* define end goals
+* generate structured schedules using AI
+* track progress across domains
+* visualize evolution over time
+* maintain discipline and direction
+
+The experience should feel:
+
+* cinematic
+* immersive
+* futuristic
+* structured
+* premium
+* motivating
+* operational
+
+Like a real-life Jarvis mission-planning dashboard.
+
+END OF IMPLEMENTATION PROMPT

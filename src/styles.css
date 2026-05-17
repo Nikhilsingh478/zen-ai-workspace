@@ -428,6 +428,12 @@ body {
   }
 }
 
+@utility scroll-hide {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar { display: none; }
+}
+
 @utility hover-arctic {
   &:hover {
     box-shadow:
