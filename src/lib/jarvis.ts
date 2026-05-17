@@ -12,7 +12,7 @@
 
 import { useSyncExternalStore } from "react";
 import { geminiAPI } from "@/lib/gemini";
-import { addTaskDirect } from "@/lib/horizon";
+import { addTaskDirect, getHorizonTasks } from "@/lib/horizon";
 import type { HorizonTask } from "@/lib/horizon";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -418,7 +418,7 @@ async function handleCommand(commandText: string) {
   patch({ messages: [..._state.messages, userMsg], transcript: commandText });
 
   try {
-    const systemPrompt = buildSystemPrompt([]);
+    const systemPrompt = buildSystemPrompt(getHorizonTasks());
     const fullHistory = conversationHistory.length === 0
       ? [
           { role: "user" as const, parts: [{ text: systemPrompt }] },

@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 import { useTimeline, TIMELINE_MONTHS, DOMAINS, type TimelineTask, type DomainId } from "@/lib/timeline";
 import { geminiAPI } from "@/lib/gemini";
+import { addTasksBatch } from "@/lib/horizon";
+import type { HorizonTaskInput } from "@/lib/horizon";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -56,6 +58,43 @@ function domainConfig(id: DomainId) {
 type RawTask = { title: string; startTime: string; endTime: string; domain: string };
 type RawDay  = { date: string; tasks: RawTask[] };
 
+/** Attempt to repair and parse potentially-malformed JSON from Gemini */
+function robustParseSchedule(raw: string): { days: RawDay[] } {
+  let s = raw.trim();
+
+  // Strip markdown code fences
+  const fenceMatch = s.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenceMatch) s = fenceMatch[1].trim();
+
+  // Extract just the outermost { … }
+  const braceStart = s.indexOf("{");
+  const braceEnd   = s.lastIndexOf("}");
+  if (braceStart !== -1 && braceEnd !== -1) s = s.slice(braceStart, braceEnd + 1);
+
+  // Try direct parse
+  try { return JSON.parse(s) as { days: RawDay[] }; } catch { /* fall through */ }
+
+  // Repair 1: remove trailing commas before ] or }
+  const repaired = s.replace(/,(\s*[}\]])/g, "$1");
+  try { return JSON.parse(repaired) as { days: RawDay[] }; } catch { /* fall through */ }
+
+  // Repair 2: extract individual day objects with a pattern match
+  const days: RawDay[] = [];
+  // Match each { "date": "...", "tasks": [...] } block
+  const dayRe = /\{\s*"date"\s*:\s*"(\d{4}-\d{2}-\d{2})"\s*,\s*"tasks"\s*:\s*(\[[\s\S]*?\])\s*\}/g;
+  let m: RegExpExecArray | null;
+  while ((m = dayRe.exec(repaired)) !== null) {
+    try {
+      const tasksJson = m[2].replace(/,(\s*[}\]])/g, "$1");
+      const tasks = JSON.parse(tasksJson) as RawTask[];
+      days.push({ date: m[1], tasks });
+    } catch { /* skip malformed day */ }
+  }
+  if (days.length > 0) return { days };
+
+  throw new Error("Could not parse AI schedule response — please try again");
+}
+
 async function generateScheduleWithGemini(
   context: string,
   monthKey: string,
@@ -63,58 +102,61 @@ async function generateScheduleWithGemini(
   const month = TIMELINE_MONTHS.find((m) => m.key === monthKey)!;
   const today = new Date().toISOString().slice(0, 10);
   const effectiveStart = month.start < today ? today : month.start;
-
   const validDomains = DOMAINS.map((d) => d.id).join(", ");
 
-  const prompt = `You are a personal life-scheduler AI. Generate a detailed structured daily schedule for the month of ${month.label} ${month.year}.
+  // How many days are we scheduling?
+  const start = new Date(effectiveStart);
+  const end   = new Date(month.end);
+  const dayCount = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
 
-SCHEDULING RANGE: ${effectiveStart} to ${month.end}
-IMPORTANT: Only generate schedules for dates from ${effectiveStart} to ${month.end}. Do NOT include dates before ${effectiveStart}.
+  const prompt = `You are a personal life-scheduler AI. Generate a structured daily schedule for ${month.label} ${month.year}.
 
-USER'S MONTHLY CONTEXT AND GOALS:
+SCHEDULING RANGE: ${effectiveStart} to ${month.end} (${dayCount} days total)
+Generate exactly one entry per day for every date from ${effectiveStart} to ${month.end}.
+
+USER'S MONTHLY GOALS AND ROUTINE:
 ${context}
 
-VALID DOMAIN IDs: ${validDomains}
+VALID DOMAIN IDs (use EXACTLY as written): ${validDomains}
 
-Respond ONLY with valid JSON in this exact format (no markdown, no explanation, just raw JSON):
-{
-  "days": [
+OUTPUT FORMAT — respond with ONLY the following JSON, no markdown, no explanation, no text before or after:
+{"days":[{"date":"YYYY-MM-DD","tasks":[{"title":"Task name","startTime":"HH:MM","endTime":"HH:MM","domain":"domain_id"}]}]}
+
+RULES:
+1. Every date from ${effectiveStart} to ${month.end} must appear exactly once
+2. 24-hour time format only (e.g. "06:30", "22:00")
+3. domain must be exactly one of: ${validDomains}
+4. 3-5 tasks per day based on the user's routine
+5. Base tasks on the user's actual stated goals and schedule
+6. No trailing commas, no comments — valid JSON only`;
+
+  // Use higher token limit for full-month schedules
+  const apiKey = (import.meta.env.VITE_GEMINI_API_KEY ?? import.meta.env.VITE_GEMINI_API_KEY_2 ?? "") as string;
+  if (!apiKey) throw new Error("Gemini API key not configured");
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`,
     {
-      "date": "YYYY-MM-DD",
-      "tasks": [
-        {
-          "title": "Task name",
-          "startTime": "HH:MM",
-          "endTime": "HH:MM",
-          "domain": "domain_id"
-        }
-      ]
-    }
-  ]
-}
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.4, maxOutputTokens: 8192, topK: 40, topP: 0.95 },
+      }),
+    },
+  );
 
-Rules:
-- Generate tasks for every date in the range ${effectiveStart} to ${month.end}
-- Use 24h time format (HH:MM)
-- domain must be exactly one of: ${validDomains}
-- Each day should have 2-6 tasks based on the user's context
-- Tasks should reflect the user's actual routines and goals
-- Be realistic with timing and scheduling`;
-
-  const raw = await geminiAPI.generateContent(prompt, [], undefined);
-
-  let jsonStr = raw.trim();
-  const fenceMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fenceMatch) jsonStr = fenceMatch[1].trim();
-
-  const braceStart = jsonStr.indexOf("{");
-  const braceEnd   = jsonStr.lastIndexOf("}");
-  if (braceStart !== -1 && braceEnd !== -1) {
-    jsonStr = jsonStr.slice(braceStart, braceEnd + 1);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { error?: { message?: string } };
+    throw new Error(err.error?.message ?? `Gemini API error ${res.status}`);
   }
 
-  const parsed = JSON.parse(jsonStr) as { days: RawDay[] };
-  if (!parsed?.days || !Array.isArray(parsed.days)) throw new Error("Invalid AI response structure");
+  const data = await res.json() as { candidates?: Array<{ content: { parts: { text: string }[] } }> };
+  const raw = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+  if (!raw) throw new Error("Empty response from Gemini");
+
+  const parsed = robustParseSchedule(raw);
+  if (!parsed?.days?.length) throw new Error("No days in AI response");
 
   return parsed.days.filter((d) => d.date >= effectiveStart && d.date <= month.end);
 }
@@ -233,6 +275,83 @@ const MonthNode = memo(function MonthNode({
           borderColor: isSelected ? "#0EA5E9" : "rgba(255,255,255,0.12)",
           boxShadow: isSelected ? "0 0 8px rgba(14,165,233,0.6)" : undefined,
         }}
+      />
+    </motion.button>
+  );
+});
+
+// Mobile month node — full-width horizontal row with progress ring on the left
+const MobileMonthNode = memo(function MobileMonthNode({
+  month, progress, isSelected, onClick,
+}: {
+  month: typeof TIMELINE_MONTHS[number];
+  progress: number;
+  isSelected: boolean;
+  onClick: () => void;
+}) {
+  const today = new Date();
+  const isPast    = new Date(month.end) < today;
+  const isCurrent = !isPast && new Date(month.start) <= today;
+
+  return (
+    <motion.button
+      onClick={onClick}
+      whileTap={{ scale: 0.97 }}
+      transition={{ type: "spring", stiffness: 400, damping: 22 }}
+      className="relative w-full flex items-center gap-4 rounded-2xl border px-4 py-3 text-left focus:outline-none transition-all duration-300"
+      style={{
+        borderColor: isSelected ? "rgba(14,165,233,0.55)" : "rgba(255,255,255,0.07)",
+        background:  isSelected ? "rgba(14,165,233,0.07)" : "rgba(255,255,255,0.02)",
+        boxShadow:   isSelected ? "0 0 18px rgba(14,165,233,0.12), 0 2px 12px rgba(0,0,0,0.35)" : undefined,
+      }}
+    >
+      {/* Progress ring */}
+      <div className="relative shrink-0 w-11 h-11">
+        <svg width="44" height="44" className="rotate-[-90deg]">
+          <circle cx="22" cy="22" r="17" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="2.5" />
+          <motion.circle
+            cx="22" cy="22" r="17" fill="none"
+            stroke={isSelected ? "#0EA5E9" : isCurrent ? "rgba(14,165,233,0.5)" : "rgba(255,255,255,0.15)"}
+            strokeWidth="2.5" strokeLinecap="round"
+            strokeDasharray={`${2 * Math.PI * 17}`}
+            initial={{ strokeDashoffset: 2 * Math.PI * 17 }}
+            animate={{ strokeDashoffset: 2 * Math.PI * 17 * (1 - progress / 100) }}
+            transition={{ duration: 0.9, ease: "easeOut" }}
+          />
+        </svg>
+        <span className={cn(
+          "absolute inset-0 flex items-center justify-center text-[9px] font-bold",
+          isSelected ? "text-[#7DD3FC]" : "text-[rgba(255,255,255,0.45)]",
+        )}>
+          {progress}%
+        </span>
+      </div>
+
+      {/* Label + status */}
+      <div className="flex-1 min-w-0">
+        <p className={cn(
+          "text-[15px] font-bold tracking-wide",
+          isSelected ? "text-[#7DD3FC]" : isCurrent ? "text-[rgba(255,255,255,0.8)]" : "text-[rgba(255,255,255,0.4)]",
+        )}>
+          {month.label} <span className="text-[12px] font-normal opacity-60">{month.year}</span>
+        </p>
+        <div className="flex items-center gap-1.5 mt-0.5">
+          <div
+            className="w-1.5 h-1.5 rounded-full"
+            style={{
+              background: isPast ? "rgba(255,255,255,0.2)" : isCurrent ? "#0EA5E9" : "rgba(255,255,255,0.12)",
+              boxShadow:  isCurrent ? "0 0 5px #0EA5E9" : undefined,
+            }}
+          />
+          <span className="text-[10px] text-[rgba(255,255,255,0.3)] uppercase tracking-wider">
+            {isPast ? "Past" : isCurrent ? "Current" : "Upcoming"}
+          </span>
+        </div>
+      </div>
+
+      {/* Chevron */}
+      <ChevronLeft
+        className={cn("h-4 w-4 shrink-0 rotate-180 transition-colors", isSelected ? "text-[#0EA5E9]" : "text-[rgba(255,255,255,0.2)]")}
       />
     </motion.button>
   );
@@ -581,8 +700,8 @@ function TimelinePage() {
     try {
       const days = await generateScheduleWithGemini(localContext, selectedMonthKey);
 
-      // Flatten into tasks
-      const tasks = days.flatMap((day) =>
+      // Flatten into timeline tasks
+      const timelineTasks = days.flatMap((day) =>
         day.tasks.map((t) => ({
           monthKey: selectedMonthKey,
           date: day.date,
@@ -595,17 +714,41 @@ function TimelinePage() {
         }))
       );
 
+      // Also build Horizon task inputs so tasks appear in the Horizon calendar
+      const horizonInputs: HorizonTaskInput[] = days.flatMap((day) =>
+        day.tasks.map((t) => {
+          const dom = DOMAINS.find((d) => d.id === t.domain);
+          return {
+            title: t.title,
+            description: dom ? `${dom.icon} ${dom.label} — Timeline (${selectedMonthKey})` : `Timeline (${selectedMonthKey})`,
+            taskDate: day.date,
+            taskTime: t.startTime,
+            priority: "medium" as const,
+            notificationEnabled: true,
+          };
+        })
+      );
+
       const scheduleStr = JSON.stringify(days, null, 2);
-      await Promise.all([
-        saveGeneratedSchedule(selectedMonthKey, scheduleStr),
-        saveTasks(selectedMonthKey, tasks),
+      const [, horizonCount] = await Promise.all([
+        Promise.all([
+          saveGeneratedSchedule(selectedMonthKey, scheduleStr),
+          saveTasks(selectedMonthKey, timelineTasks),
+        ]),
+        addTasksBatch(horizonInputs),
       ]);
 
-      toast.success(`Generated ${tasks.length} tasks across ${days.length} days`);
+      toast.success(
+        `Generated ${timelineTasks.length} tasks across ${days.length} days — ${horizonCount} added to Horizon`,
+        { duration: 4000 },
+      );
       setActiveTab("schedule");
     } catch (err) {
       console.error("[timeline] generation error", err);
-      toast.error("Generation failed. Check your context and try again.");
+      toast.error(
+        err instanceof Error ? err.message : "Generation failed. Check your context and try again.",
+        { duration: 5000 },
+      );
     } finally {
       setGenerating(false);
     }
@@ -714,27 +857,50 @@ function TimelinePage() {
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
           >
-            {/* Timeline rail */}
+            {/* Timeline rail — horizontal on desktop, vertical on mobile */}
             <div className="relative mb-10">
-              {/* Connecting rail */}
-              <div className="absolute left-0 right-0 flex items-center" style={{ top: "calc(50% - 24px)" }}>
+
+              {/* ── Desktop: horizontal connector line ── */}
+              <div
+                className="hidden md:flex absolute left-0 right-0 items-center pointer-events-none"
+                style={{ top: "calc(50% - 24px)" }}
+              >
                 <div
                   className="flex-1 h-px"
                   style={{ background: "linear-gradient(90deg, transparent 5%, rgba(125,211,252,0.18) 20%, rgba(125,211,252,0.18) 80%, transparent 95%)" }}
                 />
               </div>
 
-              {/* Month nodes */}
-              <div className="relative flex items-start justify-between gap-2 overflow-x-auto pb-2 scroll-hide">
+              {/* ── Mobile: vertical connector line ── */}
+              <div
+                className="md:hidden absolute top-0 bottom-0 w-px pointer-events-none"
+                style={{ left: "44px", background: "linear-gradient(180deg, transparent 2%, rgba(125,211,252,0.18) 15%, rgba(125,211,252,0.18) 85%, transparent 98%)" }}
+              />
+
+              {/* Month nodes — horizontal on desktop, vertical on mobile */}
+              <div className="relative flex md:flex-row flex-col md:items-start items-stretch md:justify-between md:gap-2 gap-4 md:overflow-x-auto md:pb-2 scroll-hide">
                 {TIMELINE_MONTHS.map((month) => (
-                  <MonthNode
-                    key={month.key}
-                    month={month}
-                    progress={getMonthProgress(month.key)}
-                    isActive={false}
-                    isSelected={selectedMonthKey === month.key}
-                    onClick={() => setSelectedMonthKey(month.key)}
-                  />
+                  <div key={month.key} className="md:contents flex items-center gap-4">
+                    {/* Mobile-only: row layout with horizontal card */}
+                    <div className="md:hidden">
+                      <MobileMonthNode
+                        month={month}
+                        progress={getMonthProgress(month.key)}
+                        isSelected={selectedMonthKey === month.key}
+                        onClick={() => setSelectedMonthKey(month.key)}
+                      />
+                    </div>
+                    {/* Desktop: original vertical card node */}
+                    <div className="hidden md:block">
+                      <MonthNode
+                        month={month}
+                        progress={getMonthProgress(month.key)}
+                        isActive={false}
+                        isSelected={selectedMonthKey === month.key}
+                        onClick={() => setSelectedMonthKey(month.key)}
+                      />
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>

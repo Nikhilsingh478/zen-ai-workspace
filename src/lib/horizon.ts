@@ -243,6 +243,40 @@ export function useHorizon() {
   };
 }
 
+// ─── Module-level accessor for non-React callers (e.g. JARVIS) ───────────────
+
+export function getHorizonTasks(): HorizonTask[] {
+  return state.tasks;
+}
+
+// ─── Batch insert tasks (callable outside React hooks, e.g. Timeline) ────────
+
+export async function addTasksBatch(inputs: HorizonTaskInput[]): Promise<number> {
+  if (inputs.length === 0) return 0;
+  try {
+    await ensureBooted();
+    const rows = inputs.map((input) => ({
+      title: input.title.trim(),
+      description: input.description?.trim() || null,
+      task_date: input.taskDate,
+      task_time: input.taskTime,
+      priority: input.priority,
+      notification_enabled: input.notificationEnabled,
+    }));
+    const { data, error } = await supabase
+      .from("horizon_tasks")
+      .insert(rows)
+      .select("*");
+    if (error) throw error;
+    const newTasks = (data as Row[]).map(rowToTask);
+    setState({ tasks: [...state.tasks, ...newTasks].sort(sortTasks) });
+    return newTasks.length;
+  } catch (err) {
+    console.error("[horizon] addTasksBatch error", err);
+    return 0;
+  }
+}
+
 // ─── Standalone addTaskDirect (callable outside React hooks) ─────────────────
 
 export async function addTaskDirect(input: HorizonTaskInput): Promise<HorizonTask | null> {
