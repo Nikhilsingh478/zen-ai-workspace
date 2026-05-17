@@ -12,7 +12,9 @@ CREATE TABLE IF NOT EXISTS timeline_months (
   updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Optional: allow all operations via the anon key (no auth in this app)
+-- Allow all operations via the anon key (no auth in this app)
 ALTER TABLE timeline_months ENABLE ROW LEVEL SECURITY;
-CREATE POLICY IF NOT EXISTS "allow_all_timeline_months"
+
+DROP POLICY IF EXISTS "allow_all_timeline_months" ON timeline_months;
+CREATE POLICY "allow_all_timeline_months"
   ON timeline_months FOR ALL USING (true) WITH CHECK (true);
