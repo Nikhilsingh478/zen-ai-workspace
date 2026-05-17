@@ -304,6 +304,34 @@ export async function addTaskDirect(input: HorizonTaskInput): Promise<HorizonTas
   }
 }
 
+// ─── Delete all Timeline-generated tasks for a month ─────────────────────────
+// Only deletes tasks whose description starts with [timeline:${monthKey}:
+// Never touches manual or JARVIS-created tasks.
+
+export async function deleteTasksByMonthKey(monthKey: string): Promise<number> {
+  const prefix = `[timeline:${monthKey}:`;
+  const toDelete = state.tasks.filter((t) => t.description?.startsWith(prefix));
+  if (!toDelete.length) return 0;
+
+  const ids = toDelete.map((t) => t.id);
+  const prevTasks = state.tasks;
+  setState({ tasks: state.tasks.filter((t) => !ids.includes(t.id)) });
+
+  try {
+    const { error } = await supabase
+      .from("horizon_tasks")
+      .delete()
+      .in("id", ids);
+    if (error) throw error;
+    return ids.length;
+  } catch (err) {
+    console.error("[horizon] deleteTasksByMonthKey error", err);
+    toast.error("Failed to delete timeline tasks");
+    setState({ tasks: prevTasks });
+    return 0;
+  }
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function sortTasks(a: HorizonTask, b: HorizonTask): number {

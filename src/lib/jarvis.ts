@@ -317,6 +317,23 @@ function stripWakeWord(text: string): string {
   return text;
 }
 
+// ─── Markdown stripper ────────────────────────────────────────────────────────
+// Gemini sometimes returns markdown despite "no markdown" instructions.
+// Strip it before storing or speaking so asterisks never appear in chat.
+
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/\*\*(.+?)\*\*/gs, "$1")
+    .replace(/\*(.+?)\*/gs, "$1")
+    .replace(/__(.+?)__/gs, "$1")
+    .replace(/_(.+?)_/gs, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/#{1,6}\s+/gm, "")
+    .replace(/^\s*[-*+]\s+/gm, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 // ─── Gemini JARVIS integration ────────────────────────────────────────────────
 
 function buildSystemPrompt(tasks: HorizonTask[]): string {
@@ -418,24 +435,29 @@ async function handleCommand(commandText: string) {
   patch({ messages: [..._state.messages, userMsg], transcript: commandText });
 
   try {
+    // Always inject a fresh system prompt so JARVIS sees the current task list on
+    // every turn. conversationHistory stores only actual exchange turns (no system
+    // prompt pair) so the fresh prompt is always prepended cleanly.
     const systemPrompt = buildSystemPrompt(getHorizonTasks());
-    const fullHistory = conversationHistory.length === 0
-      ? [
-          { role: "user" as const, parts: [{ text: systemPrompt }] },
-          { role: "model" as const, parts: [{ text: "Understood. J.A.R.V.I.S. online and ready, sir." }] },
-        ]
-      : conversationHistory;
+    const fullHistory = [
+      { role: "user" as const, parts: [{ text: systemPrompt }] },
+      { role: "model" as const, parts: [{ text: "Understood. J.A.R.V.I.S. online and ready, sir." }] },
+      ...conversationHistory,
+    ];
 
     const rawResponse = await geminiAPI.generateContent(commandText, fullHistory);
+
+    // Store only exchange turns — system pair is always rebuilt fresh next call
     conversationHistory = [
-      ...fullHistory,
+      ...conversationHistory,
       { role: "user", parts: [{ text: commandText }] },
       { role: "model", parts: [{ text: rawResponse }] },
     ];
-    if (conversationHistory.length > 20) conversationHistory = conversationHistory.slice(-20);
+    if (conversationHistory.length > 16) conversationHistory = conversationHistory.slice(-16);
 
     const { clean: afterNav, route } = parseNavigate(rawResponse);
-    const { clean, tasks } = parseTasks(afterNav);
+    const { clean: rawClean, tasks } = parseTasks(afterNav);
+    const clean = stripMarkdown(rawClean);
 
     // Navigate if requested
     if (route) {

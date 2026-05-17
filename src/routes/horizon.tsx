@@ -824,10 +824,12 @@ function TimelineTaskCard({
       )} />
 
       {/* ── Collapsed header ── */}
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => setExpanded((e) => !e)}
-        className="w-full flex items-start gap-3.5 px-4 md:px-5 py-[18px] text-left"
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setExpanded((v) => !v); }}
+        className="w-full flex items-start gap-3.5 px-4 md:px-5 py-[18px] text-left cursor-pointer"
       >
         {/* Checkbox */}
         <motion.button
@@ -883,17 +885,30 @@ function TimelineTaskCard({
           </div>
         </div>
 
-        {/* Expand chevron */}
-        <motion.span
-          animate={{ rotate: expanded ? 180 : 0 }}
-          transition={{ duration: 0.24, ease: EASE }}
-          className="shrink-0 mt-1.5 text-white/[0.13] group-hover:text-white/[0.24] transition-colors duration-200"
-        >
-          <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
-            <path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </motion.span>
-      </button>
+        {/* Right controls: quick-delete + expand chevron */}
+        <div className="flex items-center gap-0.5 shrink-0 mt-1">
+          <motion.button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            whileHover={{ scale: 1.12 }}
+            whileTap={{ scale: 0.88 }}
+            transition={{ type: "spring", stiffness: 500, damping: 24 }}
+            className="opacity-0 group-hover:opacity-100 h-6 w-6 rounded-lg flex items-center justify-center transition-all duration-150 hover:bg-red-500/[0.1] text-white/[0.2] hover:text-red-400/70"
+            aria-label="Delete task"
+          >
+            <Trash2 className="h-3 w-3" />
+          </motion.button>
+          <motion.span
+            animate={{ rotate: expanded ? 180 : 0 }}
+            transition={{ duration: 0.24, ease: EASE }}
+            className="shrink-0 text-white/[0.13] group-hover:text-white/[0.24] transition-colors duration-200 h-6 w-5 flex items-center justify-center"
+          >
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+              <path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </motion.span>
+        </div>
+      </div>
 
       {/* ── Expanded panel ── */}
       <AnimatePresence initial={false}>
