@@ -67,14 +67,15 @@ Set all of these in Replit Secrets (never commit them).
 
 ## Database Setup
 
-Four SQL files must be run in Supabase SQL Editor **in this exact order**:
+Five SQL files must be run in Supabase SQL Editor **in this exact order**:
 
 | File | Tables Created | Run Order |
 |---|---|---|
 | `SETUP.sql` | `items`, `desktop_layout`, `desktop_folders`, `usage_logs` | 1st |
 | `SETUP_NEW_TABS.sql` | `links`, `messages` | 2nd |
 | `HORIZON_SETUP.sql` | `horizon_tasks` | 3rd |
-| `NOTIFICATIONS_SETUP.sql` | `notification_tokens`, `reminder_sent_log` | 4th |
+| `TIMELINE_SETUP.sql` | `timeline_months` | 4th |
+| `NOTIFICATIONS_SETUP.sql` | `notification_tokens`, `reminder_sent_log` | 5th |
 
 **RLS is disabled** on all tables. Suitable for single-user personal use. Add RLS + Supabase Auth before going multi-user.
 
@@ -116,6 +117,13 @@ id uuid, title text, description text, task_date date (YYYY-MM-DD),
 task_time time (HH:MM), priority text ('low'|'medium'|'high'),
 completed boolean, notification_enabled boolean, created_at timestamptz
 ```
+
+**`timeline_months`** — Timeline monthly context + generated schedule
+```sql
+month_key text (PK, e.g. "2026-05"), context text, generated_schedule text (JSON),
+updated_at timestamptz
+```
+> Timeline tasks themselves live in `horizon_tasks` — identified by descriptions starting with `[timeline:<monthKey>:<domainId>]`
 
 **`notification_tokens`** — FCM device tokens
 ```sql

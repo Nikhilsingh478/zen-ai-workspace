@@ -1,4 +1,5 @@
-import { useMemo, useCallback } from "react";
+import { useEffect, useSyncExternalStore, useMemo, useCallback } from "react";
+import { supabase } from "@/lib/supabase";
 import { useHorizon } from "@/lib/horizon";
 import type { HorizonTask } from "@/lib/horizon";
 
@@ -64,10 +65,17 @@ export type TimelineMonth = {
   updatedAt: string;
 };
 
+type MonthRow = {
+  month_key: string;
+  context: string;
+  generated_schedule: string | null;
+  updated_at: string;
+};
+
 // ─── Description encoding ─────────────────────────────────────────────────────
-// Horizon tasks created by Timeline have this pattern in their description:
+// Every task added to horizon_tasks by Timeline has this in its description:
 //   [timeline:2026-05:gym] 🏋️ Gym
-// This lets Timeline filter and parse them without a separate table.
+// Timeline filters horizon_tasks by this prefix — no separate table needed.
 
 const TL_RE = /^\[timeline:([^:]+):([^\]]+)\]/;
 
@@ -101,49 +109,131 @@ function horizonToTimeline(task: HorizonTask): TimelineTask | null {
   };
 }
 
-// ─── localStorage helpers (context + schedule text) ───────────────────────────
+// ─── External store for timeline_months (context + schedule metadata) ─────────
 
-function lsGet(key: string): string {
-  try { return localStorage.getItem(key) ?? ""; } catch { return ""; }
+type MonthsState = {
+  months: Record<string, TimelineMonth>;
+  loaded: boolean;
+};
+
+const monthListeners = new Set<() => void>();
+let monthState: MonthsState = { months: {}, loaded: false };
+let monthBooted = false;
+
+function emitMonths() { monthListeners.forEach((fn) => fn()); }
+function setMonthState(next: Partial<MonthsState>) { monthState = { ...monthState, ...next }; emitMonths(); }
+function subscribeMonths(cb: () => void) { monthListeners.add(cb); return () => monthListeners.delete(cb); }
+function getMonthsSnapshot(): MonthsState { return monthState; }
+
+function rowToMonth(r: MonthRow): TimelineMonth {
+  return {
+    monthKey: r.month_key,
+    context: r.context,
+    generatedSchedule: r.generated_schedule,
+    updatedAt: r.updated_at,
+  };
 }
-function lsSet(key: string, val: string): void {
-  try { localStorage.setItem(key, val); } catch {}
+
+async function fetchMonths() {
+  const { data, error } = await supabase
+    .from("timeline_months")
+    .select("*");
+
+  if (error) {
+    // Table not yet created — swallow silently (user needs to run TIMELINE_SETUP.sql)
+    if (error.code === "PGRST205" || error.code === "42P01") {
+      console.debug("[timeline] Run TIMELINE_SETUP.sql in Supabase to enable context persistence.");
+    } else {
+      console.error("[timeline] fetchMonths error", error);
+    }
+    setMonthState({ loaded: true });
+    return;
+  }
+
+  const months: Record<string, TimelineMonth> = {};
+  (data as MonthRow[]).forEach((r) => { months[r.month_key] = rowToMonth(r); });
+  setMonthState({ months, loaded: true });
+}
+
+async function ensureMonthsBooted() {
+  if (monthBooted) return;
+  monthBooted = true;
+  await fetchMonths();
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useTimeline() {
-  const { tasks: horizonTasks, loaded, toggle } = useHorizon();
+  const { tasks: horizonTasks, loaded: horizonLoaded, toggle } = useHorizon();
+  const snap = useSyncExternalStore(subscribeMonths, getMonthsSnapshot, getMonthsSnapshot);
 
-  // Derive timeline tasks from the Horizon store
+  useEffect(() => { ensureMonthsBooted(); }, []);
+
+  // Derive timeline tasks from the Horizon store (no separate table)
   const tasks = useMemo(
     () => horizonTasks.map(horizonToTimeline).filter((t): t is TimelineTask => t !== null),
     [horizonTasks],
   );
 
-  const saveContext = useCallback((monthKey: string, context: string): void => {
-    lsSet(`timeline:ctx:${monthKey}`, context);
+  // Persist context to Supabase timeline_months
+  const saveContext = useCallback(async (monthKey: string, context: string): Promise<void> => {
+    // Optimistic local update
+    setMonthState({
+      months: {
+        ...monthState.months,
+        [monthKey]: {
+          ...(monthState.months[monthKey] ?? { monthKey, generatedSchedule: null }),
+          monthKey,
+          context,
+          updatedAt: new Date().toISOString(),
+        },
+      },
+    });
+
+    const { error } = await supabase
+      .from("timeline_months")
+      .upsert(
+        { month_key: monthKey, context, updated_at: new Date().toISOString() },
+        { onConflict: "month_key" },
+      );
+    if (error) console.error("[timeline] saveContext error", error);
   }, []);
 
-  const saveGeneratedSchedule = useCallback((monthKey: string, schedule: string): void => {
-    lsSet(`timeline:sched:${monthKey}`, schedule);
+  // Persist generated schedule text to Supabase timeline_months
+  const saveGeneratedSchedule = useCallback(async (monthKey: string, schedule: string): Promise<void> => {
+    setMonthState({
+      months: {
+        ...monthState.months,
+        [monthKey]: {
+          ...(monthState.months[monthKey] ?? { monthKey, context: "" }),
+          monthKey,
+          generatedSchedule: schedule,
+          updatedAt: new Date().toISOString(),
+        },
+      },
+    });
+
+    const { error } = await supabase
+      .from("timeline_months")
+      .upsert(
+        { month_key: monthKey, generated_schedule: schedule, updated_at: new Date().toISOString() },
+        { onConflict: "month_key" },
+      );
+    if (error) console.error("[timeline] saveGeneratedSchedule error", error);
   }, []);
 
-  // No-op — tasks are persisted to Horizon directly via addTasksBatch()
+  // No-op — tasks are persisted to horizon_tasks directly via addTasksBatch()
   const saveTasks = useCallback(async (_monthKey: string, _tasks: unknown[]): Promise<void> => {
-    // tasks go through horizon, not a separate table
+    // intentionally empty — see handleGenerate in timeline.tsx
   }, []);
 
   const toggleTask = useCallback((taskId: string): void => {
     toggle(taskId);
   }, [toggle]);
 
-  const getMonthData = useCallback((monthKey: string): TimelineMonth => ({
-    monthKey,
-    context: lsGet(`timeline:ctx:${monthKey}`),
-    generatedSchedule: lsGet(`timeline:sched:${monthKey}`) || null,
-    updatedAt: "",
-  }), []);
+  const getMonthData = useCallback((monthKey: string): TimelineMonth => {
+    return snap.months[monthKey] ?? { monthKey, context: "", generatedSchedule: null, updatedAt: "" };
+  }, [snap.months]);
 
   const getMonthTasks = useCallback(
     (monthKey: string): TimelineTask[] => tasks.filter((t) => t.monthKey === monthKey),
@@ -158,7 +248,7 @@ export function useTimeline() {
 
   return {
     tasks,
-    loaded,
+    loaded: horizonLoaded && snap.loaded,
     saveContext,
     saveGeneratedSchedule,
     saveTasks,
