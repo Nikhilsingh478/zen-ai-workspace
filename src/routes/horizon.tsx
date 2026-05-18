@@ -145,6 +145,7 @@ function HorizonPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<HorizonTask | null>(null);
   const [testingNotif, setTestingNotif] = useState(false);
+  const [confirmDeleteDay, setConfirmDeleteDay] = useState(false);
 
   const { tasks, tasksForDate, datesWithTasks, add, update, toggle, remove } = useHorizon();
   const notifStatus = useFCMStatus();
@@ -171,6 +172,18 @@ function HorizonPage() {
     setViewMonth(today.getMonth());
     setSelectedDate(formatDateKey(today));
   }, [today]);
+
+  const handleDeleteAllForDate = useCallback(async () => {
+    if (!selectedDate) return;
+    const snapshot = [...selectedTasks];
+    setConfirmDeleteDay(false);
+    try {
+      await Promise.all(snapshot.map((t) => remove(t.id)));
+      toast.success(`${snapshot.length} task${snapshot.length === 1 ? "" : "s"} cleared`, { duration: 2000 });
+    } catch {
+      toast.error("Failed to clear tasks");
+    }
+  }, [selectedDate, selectedTasks, remove]);
 
   const todayKey = formatDateKey(today);
 
@@ -505,15 +518,58 @@ function HorizonPage() {
                 </div>
               </div>
 
-              <motion.button
-                onClick={() => { setEditingTask(null); setModalOpen(true); }}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.97 }}
-                className="shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/[0.05] border border-white/[0.08] hover:bg-white/[0.08] hover:border-white/[0.13] text-[12px] font-medium text-white/55 hover:text-white/85 transition-all duration-200 shadow-[0_2px_12px_rgba(0,0,0,0.2)]"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                <span>Add Task</span>
-              </motion.button>
+              <div className="flex items-center gap-2 shrink-0">
+                {/* Delete-all confirmation / button */}
+                <AnimatePresence mode="wait">
+                  {selectedTasks.length > 0 && !confirmDeleteDay && (
+                    <motion.button
+                      key="delete-day-btn"
+                      initial={{ opacity: 0, scale: 0.92 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.92 }}
+                      onClick={() => setConfirmDeleteDay(true)}
+                      whileTap={{ scale: 0.95 }}
+                      className="flex items-center gap-1.5 px-2.5 py-2 rounded-xl border border-transparent hover:border-red-400/20 hover:bg-red-400/[0.06] text-[12px] text-red-400/40 hover:text-red-400/80 transition-all duration-200"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      <span className="hidden sm:inline">Clear day</span>
+                    </motion.button>
+                  )}
+                  {confirmDeleteDay && (
+                    <motion.div
+                      key="delete-day-confirm"
+                      initial={{ opacity: 0, scale: 0.92 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.92 }}
+                      className="flex items-center gap-2 rounded-xl border border-red-400/30 bg-red-400/[0.06] px-3 py-1.5"
+                    >
+                      <span className="text-[11px] text-white/45 hidden xs:inline">Delete {selectedTasks.length} task{selectedTasks.length === 1 ? "" : "s"}?</span>
+                      <button
+                        onClick={handleDeleteAllForDate}
+                        className="text-[11px] font-bold text-red-400 hover:text-red-300 transition-colors"
+                      >
+                        Yes
+                      </button>
+                      <button
+                        onClick={() => setConfirmDeleteDay(false)}
+                        className="text-[11px] text-white/30 hover:text-white/60 transition-colors"
+                      >
+                        No
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                <motion.button
+                  onClick={() => { setEditingTask(null); setModalOpen(true); }}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.97 }}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/[0.05] border border-white/[0.08] hover:bg-white/[0.08] hover:border-white/[0.13] text-[12px] font-medium text-white/55 hover:text-white/85 transition-all duration-200 shadow-[0_2px_12px_rgba(0,0,0,0.2)]"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>Add Task</span>
+                </motion.button>
+              </div>
             </motion.div>
 
             {/* Timeline scroll area */}

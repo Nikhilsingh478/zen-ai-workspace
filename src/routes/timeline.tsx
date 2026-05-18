@@ -229,12 +229,10 @@ const MonthNode = memo(function MonthNode({
           </span>
         </div>
 
-        {/* Task count */}
-        {taskCount > 0 && (
-          <span className="text-[10px] text-[rgba(255,255,255,0.28)] -mt-1">
-            {taskCount} tasks
-          </span>
-        )}
+        {/* Task count — always rendered for uniform card height */}
+        <span className="text-[10px] text-[rgba(255,255,255,0.28)] -mt-1 min-h-[14px]">
+          {taskCount > 0 ? `${taskCount} tasks` : "\u00a0"}
+        </span>
 
         {/* Status dot */}
         <div className="flex items-center gap-1.5 mt-0.5">
@@ -956,9 +954,9 @@ function TimelinePage() {
   );
 
   const TABS = [
-    { id: "context"   as const, label: "End Goal Context" },
-    { id: "schedule"  as const, label: "Schedule" },
-    { id: "analytics" as const, label: "Analytics" },
+    { id: "context"   as const, label: "End Goal Context", shortLabel: "Context"   },
+    { id: "schedule"  as const, label: "Schedule",         shortLabel: "Schedule"  },
+    { id: "analytics" as const, label: "Analytics",        shortLabel: "Analytics" },
   ];
 
   return (
@@ -1074,21 +1072,19 @@ function TimelinePage() {
                   transition={{ duration: 0.25 }}
                 >
                   <div className="relative mb-10">
-                    {/* Desktop connector line */}
+                    {/* Desktop connector line — sits at the connector-dot level (bottom: 4px = center of 8px dot) */}
                     <div
-                      className="hidden md:flex absolute left-0 right-0 items-center pointer-events-none"
-                      style={{ top: "calc(50% - 28px)" }}
-                    >
-                      <div
-                        className="flex-1 h-px"
-                        style={{ background: "linear-gradient(90deg, transparent 3%, rgba(125,211,252,0.2) 18%, rgba(125,211,252,0.2) 82%, transparent 97%)" }}
-                      />
-                    </div>
+                      className="hidden md:block absolute left-0 right-0 h-px pointer-events-none"
+                      style={{
+                        bottom: "4px",
+                        background: "linear-gradient(90deg, transparent 3%, rgba(125,211,252,0.22) 12%, rgba(125,211,252,0.22) 88%, transparent 97%)",
+                      }}
+                    />
 
-                    {/* Mobile vertical connector */}
+                    {/* Mobile vertical connector — aligns with ring centers */}
                     <div
                       className="md:hidden absolute top-0 bottom-0 w-px pointer-events-none"
-                      style={{ left: "48px", background: "linear-gradient(180deg, transparent 2%, rgba(125,211,252,0.18) 15%, rgba(125,211,252,0.18) 85%, transparent 98%)" }}
+                      style={{ left: "40px", background: "linear-gradient(180deg, transparent 2%, rgba(125,211,252,0.18) 12%, rgba(125,211,252,0.18) 88%, transparent 98%)" }}
                     />
 
                     {/* Month nodes */}
@@ -1188,11 +1184,40 @@ function TimelinePage() {
                 className="absolute inset-0 pointer-events-none"
                 style={{ background: "radial-gradient(ellipse 70% 80% at 0% 0%, rgba(14,165,233,0.1) 0%, transparent 60%)" }}
               />
-              <div className="relative z-10 flex items-start justify-between flex-wrap gap-4">
+              {/* ── Mobile compact header ── */}
+              <div className="relative z-10 md:hidden flex items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <h2
+                      className="text-[22px] font-bold tracking-[-0.02em] leading-none"
+                      style={{ background: "linear-gradient(135deg, #FFFFFF 30%, #7DD3FC 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}
+                    >
+                      {selectedMonth.label.toUpperCase()}
+                    </h2>
+                    <span className="text-[11px] font-semibold text-[rgba(125,211,252,0.55)] bg-[rgba(14,165,233,0.1)] border border-[rgba(14,165,233,0.18)] px-2 py-0.5 rounded-full">
+                      {selectedMonth.year}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-[rgba(255,255,255,0.35)]">
+                    {new Date(selectedMonth.start).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                    {" – "}
+                    {new Date(selectedMonth.end).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                  </p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className="text-[20px] font-bold text-[#7DD3FC] leading-none">{getMonthProgress(selectedMonthKey)}%</p>
+                  <p className="text-[10px] text-[rgba(255,255,255,0.3)] mt-0.5">
+                    {monthTasks.filter((t) => t.completed).length}/{monthTasks.length} done
+                  </p>
+                </div>
+              </div>
+
+              {/* ── Desktop full header ── */}
+              <div className="relative z-10 hidden md:flex items-start justify-between flex-wrap gap-4">
                 <div>
                   <div className="flex items-center gap-3 mb-1">
                     <h2
-                      className="text-[28px] md:text-[36px] font-bold tracking-[-0.02em] leading-none"
+                      className="text-[36px] font-bold tracking-[-0.02em] leading-none"
                       style={{ background: "linear-gradient(135deg, #FFFFFF 30%, #7DD3FC 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}
                     >
                       {selectedMonth.label.toUpperCase()}
@@ -1253,7 +1278,8 @@ function TimelinePage() {
                   )}
                   style={activeTab === tab.id ? { background: "rgba(14,165,233,0.1)", border: "1px solid rgba(14,165,233,0.25)" } : undefined}
                 >
-                  {tab.label}
+                  <span className="hidden sm:inline">{tab.label}</span>
+                  <span className="sm:hidden">{tab.shortLabel}</span>
                 </button>
               ))}
             </div>
@@ -1397,7 +1423,7 @@ function TimelinePage() {
                   {domainStats.filter((d) => d.total > 0).length > 0 && (
                     <div>
                       <p className="text-[11px] text-[rgba(255,255,255,0.3)] uppercase tracking-wider mb-3">Domain Overview</p>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mb-6">
                         {domainStats.filter((d) => d.total > 0).map((d) => (
                           <DomainCard key={d.id} domain={d} completedCount={d.completed} totalCount={d.total} />
                         ))}
