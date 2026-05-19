@@ -12,7 +12,7 @@
 
 import { useSyncExternalStore } from "react";
 import { geminiAPI } from "@/lib/gemini";
-import { addTaskDirect, getHorizonTasks } from "@/lib/horizon";
+import { addTaskDirect, getHorizonTasks, ensureBooted } from "@/lib/horizon";
 import type { HorizonTask } from "@/lib/horizon";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -336,24 +336,49 @@ function stripMarkdown(text: string): string {
 
 // ─── Gemini JARVIS integration ────────────────────────────────────────────────
 
+function formatTask(t: HorizonTask): string {
+  const status = t.completed ? "✓ DONE" : "PENDING";
+  const desc = t.description ? ` — ${t.description}` : "";
+  return `  [${status}] ${t.taskTime} | ${t.title}${desc} (${t.priority} priority)`;
+}
+
 function buildSystemPrompt(tasks: HorizonTask[]): string {
   const now = new Date();
   const dateStr = now.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
   const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
   const todayKey = now.toISOString().split("T")[0];
-  const pending = tasks.filter((t) => t.taskDate === todayKey && !t.completed);
 
-  const taskSummary = tasks.length
-    ? tasks.slice(0, 20).map(
-        (t) => `• [${t.completed ? "✓" : " "}] ${t.taskDate} ${t.taskTime} — ${t.title}${t.description ? ` (${t.description})` : ""} [${t.priority}]`
-      ).join("\n")
-    : "No tasks scheduled.";
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowKey = tomorrow.toISOString().split("T")[0];
+
+  // Split tasks into groups for clear context
+  const todayTasks = tasks.filter((t) => t.taskDate === todayKey).sort((a, b) => a.taskTime.localeCompare(b.taskTime));
+  const tomorrowTasks = tasks.filter((t) => t.taskDate === tomorrowKey).sort((a, b) => a.taskTime.localeCompare(b.taskTime));
+  const upcomingTasks = tasks
+    .filter((t) => t.taskDate > tomorrowKey)
+    .sort((a, b) => a.taskDate.localeCompare(b.taskDate) || a.taskTime.localeCompare(b.taskTime));
+
+  const todayPending = todayTasks.filter((t) => !t.completed);
+  const todayDone = todayTasks.filter((t) => t.completed);
+
+  const todaySection = todayTasks.length
+    ? `TODAY (${todayKey}) — ${todayPending.length} pending, ${todayDone.length} done:\n${todayTasks.map(formatTask).join("\n")}`
+    : `TODAY (${todayKey}) — No tasks scheduled.`;
+
+  const tomorrowSection = tomorrowTasks.length
+    ? `TOMORROW (${tomorrowKey}):\n${tomorrowTasks.map(formatTask).join("\n")}`
+    : `TOMORROW (${tomorrowKey}) — No tasks scheduled.`;
+
+  const upcomingSection = upcomingTasks.length
+    ? `UPCOMING (next 30 days):\n${upcomingTasks.map((t) => `  [${t.completed ? "✓" : " "}] ${t.taskDate} ${t.taskTime} | ${t.title} (${t.priority})`).join("\n")}`
+    : "UPCOMING — No future tasks scheduled.";
 
   let userContext = "";
   try {
     const saved = localStorage.getItem("jarvis:user-context");
     if (saved && saved.trim().length > 0) {
-      userContext = `\nUSER CONTEXT (Read carefully to understand the user's life and emotional state):\n${saved}\n`;
+      userContext = `\nUSER CONTEXT:\n${saved}\n`;
     }
   } catch {
     /* ignore */
@@ -362,24 +387,29 @@ function buildSystemPrompt(tasks: HorizonTask[]): string {
   return `You are J.A.R.V.I.S. — Just A Rather Very Intelligent System. A sophisticated AI assistant embedded in the AI Metrics personal operating system.
 ${userContext}
 Current time: ${timeStr} on ${dateStr}
-Pending tasks today: ${pending.length}
 
-USER'S TASKS:
-${taskSummary}
+=== HORIZON TASK SCHEDULE ===
+${todaySection}
+
+${tomorrowSection}
+
+${upcomingSection}
+=== END OF SCHEDULE ===
 
 PERSONALITY:
 - Precise, confident, intelligent
 - Occasionally address the user as "sir"
 - Never use filler phrases like "Great question!" or "Certainly!"
-- Voice responses: 1–3 short sentences only. No markdown.
-- Text responses: can be slightly longer but still concise.
+- When asked about today's tasks or schedule, list them clearly from the TODAY section above.
+- Voice responses: 2–4 short sentences. No markdown, no asterisks, no bullet symbols in spoken text.
+- Text responses: concise but complete — list all relevant tasks when asked.
 
 TASK CREATION:
 When the user asks you to create tasks or reminders, include this exact JSON block at the END of your response:
 <TASKS>${JSON.stringify([{ title: "example", taskDate: "YYYY-MM-DD", taskTime: "HH:MM", priority: "medium", description: "" }])}</TASKS>
 
 Use real values. taskDate in YYYY-MM-DD format. taskTime in 24h HH:MM format. priority: low/medium/high.
-For "tomorrow", calculate from today (${todayKey}).
+For "tomorrow", use date: ${tomorrowKey}. For "today", use date: ${todayKey}.
 You may create multiple tasks in one block if requested.
 Do NOT include the <TASKS> block if no tasks are being created.
 
@@ -435,9 +465,11 @@ async function handleCommand(commandText: string) {
   patch({ messages: [..._state.messages, userMsg], transcript: commandText });
 
   try {
-    // Always inject a fresh system prompt so JARVIS sees the current task list on
-    // every turn. conversationHistory stores only actual exchange turns (no system
-    // prompt pair) so the fresh prompt is always prepended cleanly.
+    // Ensure horizon tasks are loaded before building context.
+    // getHorizonTasks() returns [] if the store was never booted (e.g. user
+    // hasn't visited the Horizon page yet). Awaiting ensureBooted() guarantees
+    // fresh task data is always available to JARVIS.
+    await ensureBooted();
     const systemPrompt = buildSystemPrompt(getHorizonTasks());
     const fullHistory = [
       { role: "user" as const, parts: [{ text: systemPrompt }] },

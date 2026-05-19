@@ -105,7 +105,7 @@ function setupRealtime() {
     .subscribe();
 }
 
-async function ensureBooted() {
+export async function ensureBooted() {
   if (booted) return;
   booted = true;
   try {
