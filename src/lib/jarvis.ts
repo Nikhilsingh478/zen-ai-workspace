@@ -556,7 +556,11 @@ function speakResponse(text: string, onEnd?: () => void) {
   utt.volume = 1;
   utt.lang = "en-US";
   const voices = window.speechSynthesis.getVoices();
-  const pref = voices.find((v) => v.lang.startsWith("en") && (v.name.includes("Google") || v.name.includes("Daniel") || v.name.includes("Alex")));
+  
+  // Prioritize Microsoft/Edge Natural Neural Voices first, then Google/Daniel/Alex
+  const pref = voices.find((v) => v.lang.startsWith("en") && v.name.includes("Natural"))
+            || voices.find((v) => v.lang.startsWith("en") && (v.name.includes("Google") || v.name.includes("Daniel") || v.name.includes("Alex")));
+  
   if (pref) utt.voice = pref;
   utt.onend = () => onEnd?.();
   utt.onerror = () => onEnd?.();
