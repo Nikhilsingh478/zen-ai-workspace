@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useRef, useState, useCallback } from "react";
 import {
   Mic, MicOff, Send, Trash2, Zap, CheckSquare,
-  Volume2, Clock, ChevronLeft, Radio,
+  Volume2, ChevronLeft, Radio,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useJarvis, jarvis } from "@/lib/jarvis";
@@ -13,40 +13,122 @@ import { isVoiceAssistantSupported } from "@/hooks/use-voice-assistant";
 
 export const Route = createFileRoute("/jarvis")({ component: JarvisPage });
 
-// ─── Ambient background ───────────────────────────────────────────────────────
+// ─── Background layers ─────────────────────────────────────────────────────────
 
-function JarvisAmbient() {
+function JarvisBackground() {
   return (
     <>
+      {/* Deep ambient glow from top */}
       <div
         className="pointer-events-none absolute inset-0 z-0"
         style={{
           background:
-            "radial-gradient(ellipse 70% 50% at 50% 0%, rgba(125,211,252,0.045) 0%, transparent 70%)",
+            "radial-gradient(ellipse 80% 50% at 50% -5%, rgba(125,211,252,0.07) 0%, transparent 70%), " +
+            "radial-gradient(ellipse 40% 35% at 85% 85%, rgba(56,189,248,0.03) 0%, transparent 60%)",
         }}
       />
+      {/* Subtle grid */}
       <div
         className="pointer-events-none absolute inset-0 z-0"
         style={{
           backgroundImage:
-            "radial-gradient(circle, rgba(125,211,252,0.07) 1px, transparent 1px)",
-          backgroundSize: "30px 30px",
-          opacity: 0.18,
+            "linear-gradient(rgba(125,211,252,0.045) 1px, transparent 1px), " +
+            "linear-gradient(90deg, rgba(125,211,252,0.045) 1px, transparent 1px)",
+          backgroundSize: "40px 40px",
+        }}
+      />
+      {/* Vignette */}
+      <div
+        className="pointer-events-none absolute inset-0 z-0"
+        style={{
+          background:
+            "radial-gradient(ellipse 100% 100% at 50% 50%, transparent 35%, rgba(5,6,9,0.75) 100%)",
         }}
       />
     </>
   );
 }
 
-// ─── HUD card ─────────────────────────────────────────────────────────────────
+// ─── Header waveform EQ (animated bars) ───────────────────────────────────────
 
-function HudCard({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) {
+function HeaderEQ({ active }: { active: boolean }) {
+  const bases = [0.35, 0.7, 1, 0.8, 0.55, 0.9, 0.45];
+  if (!active) return null;
+  return (
+    <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 14 }}>
+      {bases.map((b, i) => (
+        <div
+          key={i}
+          className="jarvis-eq-bar"
+          style={{
+            height: 14,
+            "--b": `${b * 0.5}s`,
+            "--d": `${i * 0.07}s`,
+          } as React.CSSProperties}
+        />
+      ))}
+    </div>
+  );
+}
+
+// ─── Signal bars ───────────────────────────────────────────────────────────────
+
+function SignalBars() {
+  return (
+    <div style={{ display: "flex", alignItems: "flex-end", gap: 2 }}>
+      {[5, 8, 11, 14].map((h, i) => (
+        <div
+          key={i}
+          style={{
+            width: 3,
+            height: h,
+            borderRadius: 1,
+            background: i < 3 ? "#7DD3FC" : "rgba(125,211,252,0.2)",
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+// ─── HUD panel ────────────────────────────────────────────────────────────────
+
+function HudPanel({
+  label,
+  children,
+  className,
+}: {
+  label: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
     <div
-      className={cn("rounded-xl p-3", className)}
-      style={{ background: "rgba(125,211,252,0.03)", border: "1px solid rgba(125,211,252,0.08)" }}
+      className={cn("rounded-xl p-3 transition-all duration-200", className)}
+      style={{
+        background: "rgba(125,211,252,0.025)",
+        border: "1px solid rgba(125,211,252,0.09)",
+      }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLElement).style.borderColor =
+          "rgba(125,211,252,0.18)";
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLElement).style.borderColor =
+          "rgba(125,211,252,0.09)";
+      }}
     >
-      <p className="text-[8px] tracking-[0.28em] font-medium mb-2 uppercase" style={{ color: "rgba(125,211,252,0.32)" }}>
+      <p
+        style={{
+          fontFamily: "'Space Mono', 'DM Mono', 'Courier New', monospace",
+          fontSize: 7,
+          letterSpacing: "0.32em",
+          color: "rgba(125,211,252,0.3)",
+          textTransform: "uppercase",
+          marginBottom: 8,
+          fontWeight: 700,
+        }}
+      >
         {label}
       </p>
       {children}
@@ -54,22 +136,106 @@ function HudCard({ label, children, className }: { label: string; children: Reac
   );
 }
 
+// ─── Live clock ───────────────────────────────────────────────────────────────
+
+function LiveClock() {
+  const [t, setT] = useState(new Date());
+  useEffect(() => {
+    const id = setInterval(() => setT(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const hh = t.getHours().toString().padStart(2, "0");
+  const mm = t.getMinutes().toString().padStart(2, "0");
+  const ss = t.getSeconds().toString().padStart(2, "0");
+  const date = t.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+        <span
+          style={{
+            fontFamily: "'Space Mono', monospace",
+            fontSize: 20,
+            fontWeight: 700,
+            color: "#7DD3FC",
+            letterSpacing: "0.04em",
+            lineHeight: 1,
+          }}
+        >
+          {hh}:{mm}
+        </span>
+        <span
+          style={{
+            fontFamily: "'Space Mono', monospace",
+            fontSize: 11,
+            color: "rgba(125,211,252,0.4)",
+            letterSpacing: "0.06em",
+          }}
+        >
+          {ss}
+        </span>
+      </div>
+      <p
+        style={{
+          fontSize: 9,
+          color: "rgba(125,211,252,0.28)",
+          letterSpacing: "0.1em",
+          marginTop: 3,
+        }}
+      >
+        {date}
+      </p>
+    </div>
+  );
+}
+
 // ─── Stat row ─────────────────────────────────────────────────────────────────
 
-function StatRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) {
+function StatRow({
+  icon,
+  label,
+  value,
+  color = "#7DD3FC",
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: number;
+  color?: string;
+}) {
   return (
-    <div className="flex items-center justify-between py-0.5">
-      <div className="flex items-center gap-2" style={{ color: "rgba(125,211,252,0.38)" }}>
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "3px 0",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          color: "rgba(125,211,252,0.38)",
+        }}
+      >
         {icon}
-        <span className="text-[10px] tracking-wide">{label}</span>
+        <span style={{ fontSize: 9, letterSpacing: "0.05em" }}>{label}</span>
       </div>
       <motion.span
         key={value}
-        initial={{ opacity: 0, y: -4 }}
+        initial={{ opacity: 0, y: -3 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ type: "spring", stiffness: 400, damping: 28 }}
-        className="text-[12px] font-semibold tabular-nums"
-        style={{ color: "#7DD3FC" }}
+        style={{
+          fontFamily: "'Space Mono', monospace",
+          fontSize: 13,
+          fontWeight: 700,
+          color,
+        }}
       >
         {value}
       </motion.span>
@@ -79,122 +245,252 @@ function StatRow({ icon, label, value }: { icon: React.ReactNode; label: string;
 
 // ─── Left status panel ────────────────────────────────────────────────────────
 
-function StatusPanel({ voiceState, enabled }: { voiceState: string; enabled: boolean }) {
-  const [time, setTime] = useState(() => new Date());
+function StatusPanel({
+  voiceState,
+  enabled,
+}: {
+  voiceState: string;
+  enabled: boolean;
+}) {
   const { tasks } = useHorizon();
   const todayStr = new Date().toISOString().split("T")[0];
-  const pendingToday   = tasks.filter((t) => t.taskDate === todayStr && !t.completed).length;
-  const completedToday = tasks.filter((t) => t.taskDate === todayStr &&  t.completed).length;
-  const totalActive    = tasks.filter((t) => !t.completed).length;
-
-  useEffect(() => {
-    const id = setInterval(() => setTime(new Date()), 1000);
-    return () => clearInterval(id);
-  }, []);
+  const pendingToday = tasks.filter(
+    (t) => t.taskDate === todayStr && !t.completed
+  ).length;
+  const completedToday = tasks.filter(
+    (t) => t.taskDate === todayStr && t.completed
+  ).length;
+  const totalActive = tasks.filter((t) => !t.completed).length;
+  const totalToday = pendingToday + completedToday;
+  const pct = totalToday > 0 ? Math.round((completedToday / totalToday) * 100) : 0;
 
   const STATE_COLOR: Record<string, string> = {
-    idle:       "rgba(125,211,252,0.35)",
-    listening:  "#93C5FD",
+    idle: "rgba(125,211,252,0.35)",
+    listening: "#93C5FD",
     processing: "#7DD3FC",
-    speaking:   "#93C5FD",
+    speaking: "#BAE6FD",
   };
   const STATE_LABEL: Record<string, string> = {
-    idle: "STANDBY", listening: "LISTENING", processing: "PROCESSING", speaking: "RESPONDING",
+    idle: "STANDBY",
+    listening: "LISTENING",
+    processing: "PROCESSING",
+    speaking: "RESPONDING",
   };
 
   return (
-    <div className="flex flex-col gap-2.5 h-full overflow-y-auto" style={{ scrollbarWidth: "none" }}>
-
+    <div
+      className="flex flex-col gap-2 h-full overflow-y-auto"
+      style={{ scrollbarWidth: "none" }}
+    >
       {/* AI Status */}
-      <HudCard label="AI STATUS">
-        <div className="flex items-center gap-2">
-          <motion.div
-            className="h-1.5 w-1.5 rounded-full shrink-0"
-            style={{ background: enabled ? "#7DD3FC" : "rgba(125,211,252,0.18)" }}
-            animate={enabled ? { opacity: [0.4, 1, 0.4] } : {}}
-            transition={{ duration: 1.8, repeat: Infinity }}
+      <HudPanel label="AI STATUS">
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div
+            className={enabled ? "jarvis-blink" : ""}
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: "50%",
+              background: enabled ? "#7DD3FC" : "rgba(125,211,252,0.18)",
+              boxShadow: enabled
+                ? "0 0 6px rgba(125,211,252,0.7)"
+                : "none",
+              flexShrink: 0,
+            }}
           />
-          <span className="text-[11px] font-semibold tracking-widest" style={{ color: enabled ? "#93C5FD" : "rgba(125,211,252,0.28)" }}>
+          <span
+            style={{
+              fontFamily: "'Space Mono', monospace",
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: "0.2em",
+              color: enabled ? "#93C5FD" : "rgba(125,211,252,0.28)",
+            }}
+          >
             {enabled ? "ONLINE" : "OFFLINE"}
           </span>
         </div>
-      </HudCard>
+      </HudPanel>
 
       {/* Voice mode */}
-      <HudCard label="VOICE MODE">
+      <HudPanel label="VOICE MODE">
         <AnimatePresence mode="wait">
-          <motion.p
+          <motion.div
             key={voiceState}
-            initial={{ opacity: 0, y: 3 }}
+            initial={{ opacity: 0, y: 2 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -3 }}
-            transition={{ duration: 0.18 }}
-            className="text-[11px] font-semibold tracking-widest"
-            style={{ color: STATE_COLOR[voiceState] ?? "rgba(125,211,252,0.35)" }}
+            exit={{ opacity: 0, y: -2 }}
+            transition={{ duration: 0.15 }}
+            style={{ display: "flex", alignItems: "center", gap: 7 }}
           >
-            {STATE_LABEL[voiceState] ?? "STANDBY"}
-          </motion.p>
+            <div
+              style={{
+                width: 5,
+                height: 5,
+                borderRadius: "50%",
+                background: STATE_COLOR[voiceState] ?? "rgba(125,211,252,0.3)",
+                flexShrink: 0,
+              }}
+            />
+            <span
+              style={{
+                fontFamily: "'Space Mono', monospace",
+                fontSize: 10,
+                fontWeight: 700,
+                letterSpacing: "0.18em",
+                color: STATE_COLOR[voiceState] ?? "rgba(125,211,252,0.35)",
+              }}
+            >
+              {STATE_LABEL[voiceState] ?? "STANDBY"}
+            </span>
+          </motion.div>
         </AnimatePresence>
-      </HudCard>
+      </HudPanel>
 
       {/* Clock */}
-      <HudCard label="SYSTEM TIME">
-        <p className="text-[17px] font-light tabular-nums leading-none" style={{ color: "#7DD3FC" }}>
-          {time.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-        </p>
-        <p className="text-[9px] mt-1" style={{ color: "rgba(125,211,252,0.3)" }}>
-          {time.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
-        </p>
-      </HudCard>
+      <HudPanel label="SYSTEM TIME">
+        <LiveClock />
+      </HudPanel>
 
       {/* Horizon tasks */}
-      <HudCard label="HORIZON TASKS">
-        <div className="space-y-0.5">
-          <StatRow icon={<CheckSquare size={9} />} label="Pending Today"   value={pendingToday}   />
-          <StatRow icon={<Zap         size={9} />} label="Completed Today" value={completedToday} />
-          <StatRow icon={<Radio       size={9} />} label="Total Active"    value={totalActive}    />
+      <HudPanel label="HORIZON TASKS">
+        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <StatRow
+            icon={<CheckSquare size={9} />}
+            label="Pending Today"
+            value={pendingToday}
+          />
+          <StatRow
+            icon={<Zap size={9} />}
+            label="Completed"
+            value={completedToday}
+            color="#34D399"
+          />
+          <StatRow
+            icon={<Radio size={9} />}
+            label="Total Active"
+            value={totalActive}
+            color="#93C5FD"
+          />
         </div>
-      </HudCard>
+        {/* Progress bar */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            marginTop: 8,
+          }}
+        >
+          <div
+            style={{
+              flex: 1,
+              height: 3,
+              borderRadius: 99,
+              background: "rgba(125,211,252,0.1)",
+              overflow: "hidden",
+            }}
+          >
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${pct}%` }}
+              transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+              style={{
+                height: "100%",
+                borderRadius: 99,
+                background:
+                  "linear-gradient(90deg, #0369A1, #7DD3FC)",
+              }}
+            />
+          </div>
+          <span
+            style={{
+              fontFamily: "'Space Mono', monospace",
+              fontSize: 9,
+              color: "rgba(125,211,252,0.45)",
+            }}
+          >
+            {pct}%
+          </span>
+        </div>
+      </HudPanel>
 
       {/* Wake phrases */}
-      <HudCard label="WAKE PHRASES">
+      <HudPanel label="WAKE PHRASES">
         {["Jarvis", "Hey Jarvis", "Okay Jarvis"].map((w) => (
-          <p key={w} className="text-[10px] tracking-wide mb-0.5" style={{ color: "rgba(125,211,252,0.42)" }}>
+          <p
+            key={w}
+            style={{
+              fontSize: 10,
+              color: "rgba(125,211,252,0.42)",
+              letterSpacing: "0.04em",
+              padding: "2px 0",
+            }}
+          >
             "{w}"
           </p>
         ))}
-      </HudCard>
+      </HudPanel>
 
       {/* Quick commands */}
-      <HudCard label="QUICK COMMANDS">
-        {["What's pending today?", "Open Horizon", "Schedule a meeting", "Open Ask"].map((cmd) => (
+      <HudPanel label="QUICK COMMANDS">
+        {[
+          "What's pending today?",
+          "Open Horizon",
+          "Schedule a meeting",
+          "Open Ask",
+        ].map((cmd) => (
           <motion.button
             key={cmd}
             onClick={() => jarvis.sendText(cmd)}
             whileHover={{ x: 2 }}
             transition={{ type: "spring", stiffness: 400, damping: 25 }}
-            className="text-left text-[10px] py-1 px-2 rounded-lg w-full mb-0.5 transition-colors duration-150"
-            style={{ color: "rgba(125,211,252,0.45)", border: "1px solid rgba(125,211,252,0.07)", background: "transparent" }}
+            style={{
+              display: "block",
+              width: "100%",
+              textAlign: "left",
+              padding: "5px 8px",
+              borderRadius: 7,
+              fontSize: 9,
+              color: "rgba(125,211,252,0.45)",
+              letterSpacing: "0.04em",
+              background: "transparent",
+              border: "1px solid rgba(125,211,252,0.07)",
+              cursor: "pointer",
+              marginBottom: 3,
+              transition: "all 0.15s ease",
+            }}
             onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.background = "rgba(125,211,252,0.07)";
-              (e.currentTarget as HTMLElement).style.color = "#7DD3FC";
+              const el = e.currentTarget as HTMLElement;
+              el.style.color = "#7DD3FC";
+              el.style.background = "rgba(125,211,252,0.08)";
+              el.style.borderColor = "rgba(125,211,252,0.2)";
             }}
             onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.background = "transparent";
-              (e.currentTarget as HTMLElement).style.color = "rgba(125,211,252,0.45)";
+              const el = e.currentTarget as HTMLElement;
+              el.style.color = "rgba(125,211,252,0.45)";
+              el.style.background = "transparent";
+              el.style.borderColor = "rgba(125,211,252,0.07)";
             }}
           >
-            › {cmd}
+            <span style={{ color: "rgba(125,211,252,0.4)", marginRight: 4 }}>
+              ›
+            </span>
+            {cmd}
           </motion.button>
         ))}
-      </HudCard>
+      </HudPanel>
     </div>
   );
 }
 
 // ─── Message bubble ───────────────────────────────────────────────────────────
 
-function MessageBubble({ msg }: { msg: ReturnType<typeof useJarvis>["messages"][number] }) {
+function MessageBubble({
+  msg,
+}: {
+  msg: ReturnType<typeof useJarvis>["messages"][number];
+}) {
   const isUser = msg.role === "user";
   return (
     <motion.div
@@ -203,30 +499,101 @@ function MessageBubble({ msg }: { msg: ReturnType<typeof useJarvis>["messages"][
       transition={{ type: "spring", stiffness: 380, damping: 30 }}
       className={cn("flex", isUser ? "justify-end" : "justify-start")}
     >
+      {!isUser && (
+        <div
+          style={{
+            width: 24,
+            height: 24,
+            borderRadius: 8,
+            flexShrink: 0,
+            background: "rgba(125,211,252,0.1)",
+            border: "1px solid rgba(125,211,252,0.2)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontFamily: "'Space Mono', monospace",
+            fontSize: 9,
+            color: "#7DD3FC",
+            fontWeight: 700,
+            marginRight: 7,
+            alignSelf: "flex-end",
+          }}
+        >
+          J
+        </div>
+      )}
       <div
-        className="max-w-[88%] rounded-2xl px-3.5 py-2.5"
-        style={
-          isUser
-            ? { background: "rgba(125,211,252,0.09)", border: "1px solid rgba(125,211,252,0.22)", color: "rgba(186,230,253,0.9)" }
-            : { background: "rgba(255,255,255,0.03)", border: "1px solid rgba(125,211,252,0.09)", color: "rgba(243,247,250,0.82)" }
-        }
+        style={{
+          maxWidth: "86%",
+          borderRadius: isUser ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
+          padding: "9px 12px",
+          ...(isUser
+            ? {
+                background: "rgba(125,211,252,0.09)",
+                border: "1px solid rgba(125,211,252,0.22)",
+              }
+            : {
+                background: "rgba(255,255,255,0.03)",
+                border: "1px solid rgba(125,211,252,0.1)",
+              }),
+        }}
       >
         {!isUser && (
-          <p className="text-[8px] tracking-[0.22em] mb-1.5 font-medium" style={{ color: "rgba(125,211,252,0.45)" }}>
+          <p
+            style={{
+              fontFamily: "'Space Mono', monospace",
+              fontSize: 7,
+              letterSpacing: "0.22em",
+              color: "rgba(125,211,252,0.5)",
+              marginBottom: 4,
+            }}
+          >
             J.A.R.V.I.S
           </p>
         )}
-        <p className="text-[12px] leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+        <p
+          style={{
+            fontSize: 12,
+            lineHeight: 1.55,
+            color: isUser ? "rgba(186,230,253,0.92)" : "rgba(243,247,250,0.82)",
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          {msg.content}
+        </p>
 
         {msg.tasks && msg.tasks.length > 0 && (
-          <div className="mt-2 space-y-1">
+          <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
             {msg.tasks.map((t, i) => (
-              <div key={i} className="flex items-start gap-2 rounded-lg px-2 py-1.5"
-                style={{ background: "rgba(125,211,252,0.07)", border: "1px solid rgba(125,211,252,0.14)" }}>
-                <CheckSquare size={10} style={{ color: "#93C5FD", flexShrink: 0, marginTop: 2 }} />
+              <div
+                key={i}
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 8,
+                  borderRadius: 8,
+                  padding: "6px 8px",
+                  background: "rgba(125,211,252,0.07)",
+                  border: "1px solid rgba(125,211,252,0.14)",
+                }}
+              >
+                <CheckSquare
+                  size={10}
+                  style={{ color: "#93C5FD", flexShrink: 0, marginTop: 2 }}
+                />
                 <div>
-                  <p className="text-[11px] font-medium" style={{ color: "#93C5FD" }}>{t.title}</p>
-                  <p className="text-[9px] mt-0.5" style={{ color: "rgba(125,211,252,0.45)" }}>
+                  <p
+                    style={{ fontSize: 11, fontWeight: 500, color: "#93C5FD" }}
+                  >
+                    {t.title}
+                  </p>
+                  <p
+                    style={{
+                      fontSize: 9,
+                      marginTop: 2,
+                      color: "rgba(125,211,252,0.45)",
+                    }}
+                  >
                     {t.taskDate} at {t.taskTime}
                   </p>
                 </div>
@@ -235,8 +602,19 @@ function MessageBubble({ msg }: { msg: ReturnType<typeof useJarvis>["messages"][
           </div>
         )}
 
-        <p className="text-[9px] mt-1.5 text-right" style={{ color: "rgba(125,211,252,0.22)" }}>
-          {new Date(msg.timestamp).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
+        <p
+          style={{
+            fontSize: 9,
+            marginTop: 4,
+            textAlign: "right",
+            color: "rgba(125,211,252,0.22)",
+            fontFamily: "'Space Mono', monospace",
+          }}
+        >
+          {new Date(msg.timestamp).toLocaleTimeString("en-US", {
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
         </p>
       </div>
     </motion.div>
@@ -245,50 +623,135 @@ function MessageBubble({ msg }: { msg: ReturnType<typeof useJarvis>["messages"][
 
 // ─── Right chat panel ─────────────────────────────────────────────────────────
 
-function ChatPanel({ messages }: { messages: ReturnType<typeof useJarvis>["messages"] }) {
+function ChatPanel({
+  messages,
+}: {
+  messages: ReturnType<typeof useJarvis>["messages"];
+}) {
   const endRef = useRef<HTMLDivElement>(null);
-
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   return (
-    <div className="flex flex-col h-full min-h-0 overflow-hidden">
-      <div className="flex items-center justify-between mb-3 shrink-0">
-        <p className="text-[8px] tracking-[0.28em] font-medium uppercase" style={{ color: "rgba(125,211,252,0.32)" }}>
-          Neural Link
-        </p>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        minHeight: 0,
+        overflow: "hidden",
+      }}
+    >
+      {/* Panel header */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "12px 12px 8px",
+          borderBottom: "1px solid rgba(125,211,252,0.07)",
+          flexShrink: 0,
+        }}
+      >
+        <span
+          style={{
+            fontFamily: "'Space Mono', monospace",
+            fontSize: 7,
+            letterSpacing: "0.32em",
+            color: "rgba(125,211,252,0.3)",
+          }}
+        >
+          NEURAL LINK
+        </span>
         {messages.length > 0 && (
           <motion.button
             onClick={() => jarvis.clearMessages()}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            className="flex items-center gap-1 text-[9px] tracking-wider px-2 py-1 rounded-lg transition-colors duration-150"
-            style={{ color: "rgba(125,211,252,0.3)", border: "1px solid rgba(125,211,252,0.08)" }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "rgba(125,211,252,0.65)"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "rgba(125,211,252,0.3)"; }}
+            whileHover={{ scale: 1.04 }}
+            whileTap={{ scale: 0.96 }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              fontFamily: "'Space Mono', monospace",
+              fontSize: 8,
+              letterSpacing: "0.16em",
+              color: "rgba(125,211,252,0.28)",
+              background: "none",
+              border: "1px solid rgba(125,211,252,0.08)",
+              padding: "3px 8px",
+              borderRadius: 5,
+              cursor: "pointer",
+              transition: "all 0.15s ease",
+            }}
+            onMouseEnter={(e) => {
+              const el = e.currentTarget as HTMLElement;
+              el.style.color = "rgba(125,211,252,0.7)";
+              el.style.borderColor = "rgba(125,211,252,0.25)";
+            }}
+            onMouseLeave={(e) => {
+              const el = e.currentTarget as HTMLElement;
+              el.style.color = "rgba(125,211,252,0.28)";
+              el.style.borderColor = "rgba(125,211,252,0.08)";
+            }}
           >
-            <Trash2 size={9} /> CLEAR
+            <Trash2 size={8} /> CLEAR
           </motion.button>
         )}
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto space-y-2.5 pr-1" style={{ scrollbarWidth: "none" }}>
+      {/* Messages */}
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflowY: "auto",
+          scrollbarWidth: "none",
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
+          padding: "10px 12px",
+        }}
+      >
         <AnimatePresence initial={false}>
           {messages.length === 0 ? (
             <motion.div
               key="empty"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="flex flex-col items-center justify-center h-full text-center gap-3 py-8"
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                height: "100%",
+                textAlign: "center",
+                gap: 10,
+                padding: "24px 0",
+              }}
             >
-              <div className="rounded-full p-3.5" style={{ border: "1px solid rgba(125,211,252,0.1)", background: "rgba(125,211,252,0.04)" }}>
+              <div
+                style={{
+                  borderRadius: "50%",
+                  padding: 14,
+                  border: "1px solid rgba(125,211,252,0.1)",
+                  background: "rgba(125,211,252,0.04)",
+                }}
+              >
                 <Volume2 size={18} style={{ color: "rgba(125,211,252,0.28)" }} />
               </div>
-              <p className="text-[10px] tracking-[0.2em] uppercase" style={{ color: "rgba(125,211,252,0.28)" }}>
+              <p
+                style={{
+                  fontFamily: "'Space Mono', monospace",
+                  fontSize: 9,
+                  letterSpacing: "0.2em",
+                  color: "rgba(125,211,252,0.28)",
+                  textTransform: "uppercase",
+                }}
+              >
                 Awaiting Command
               </p>
-              <p className="text-[10px]" style={{ color: "rgba(125,211,252,0.16)" }}>
+              <p style={{ fontSize: 10, color: "rgba(125,211,252,0.16)" }}>
                 Say "Hey Jarvis" or type below
               </p>
             </motion.div>
@@ -302,7 +765,40 @@ function ChatPanel({ messages }: { messages: ReturnType<typeof useJarvis>["messa
   );
 }
 
-// ─── State info ───────────────────────────────────────────────────────────────
+// ─── Frequency bars ───────────────────────────────────────────────────────────
+
+function FreqBars({ active }: { active: boolean }) {
+  const COUNT = 22;
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "flex-end",
+        gap: 3,
+        height: 32,
+        width: 220,
+      }}
+    >
+      {Array.from({ length: COUNT }, (_, i) => {
+        const h = (Math.sin(i * 0.7) * 0.35 + 0.55).toFixed(2);
+        return (
+          <div
+            key={i}
+            className="jarvis-freq-bar"
+            style={{
+              height: 32,
+              opacity: active ? 1 : 0.35,
+              "--i": i,
+              "--h": h,
+            } as React.CSSProperties}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── State display ────────────────────────────────────────────────────────────
 
 const STATE_DISPLAY: Record<string, { text: string; sub: string }> = {
   idle:       { text: "Standing by, sir.",  sub: 'Say "Hey Jarvis" to activate'  },
@@ -315,32 +811,37 @@ const STATE_DISPLAY: Record<string, { text: string; sub: string }> = {
 
 function JarvisPage() {
   const { voiceState, isAwake, messages, transcript, enabled } = useJarvis();
-  const navigate   = useNavigate();
-  const [input, setInput]       = useState("");
+  const navigate = useNavigate();
+  const [input, setInput] = useState("");
   const [showChat, setShowChat] = useState(false);
-  const inputRef  = useRef<HTMLInputElement>(null);
-  const coreRef   = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const coreRef = useRef<HTMLDivElement>(null);
   const [coreSize, setCoreSize] = useState(260);
 
   useEffect(() => {
     if (!coreRef.current) return;
     const obs = new ResizeObserver(([entry]) => {
       const { width, height } = entry.contentRect;
-      setCoreSize(Math.min(width * 0.82, height * 0.82, 320));
+      setCoreSize(Math.min(width * 0.78, height * 0.78, 300));
     });
     obs.observe(coreRef.current);
     return () => obs.disconnect();
   }, []);
 
-  useEffect(() => { jarvis.autoStartIfEnabled(); }, []);
+  useEffect(() => {
+    jarvis.autoStartIfEnabled();
+  }, []);
 
-  const handleSubmit = useCallback(async (e?: React.FormEvent) => {
-    e?.preventDefault();
-    const text = input.trim();
-    if (!text) return;
-    setInput("");
-    await jarvis.sendText(text);
-  }, [input]);
+  const handleSubmit = useCallback(
+    async (e?: React.FormEvent) => {
+      e?.preventDefault();
+      const text = input.trim();
+      if (!text) return;
+      setInput("");
+      await jarvis.sendText(text);
+    },
+    [input]
+  );
 
   const handleVoice = () => {
     if (!enabled) { jarvis.enable(); return; }
@@ -352,58 +853,157 @@ function JarvisPage() {
   const isActive    = isAwake || isListening;
 
   return (
-    <div className="relative h-full flex flex-col overflow-hidden" style={{ background: "var(--background)" }}>
-      <JarvisAmbient />
+    <div
+      className="relative h-full flex flex-col overflow-hidden"
+      style={{ background: "#050609" }}
+    >
+      <JarvisBackground />
 
       {/* ── Header ── */}
       <div
-        className="relative z-10 shrink-0 flex items-center justify-between px-4 md:px-5 h-11"
-        style={{ borderBottom: "1px solid rgba(125,211,252,0.07)" }}
+        className="relative z-10 shrink-0 flex items-center justify-between px-4 md:px-5"
+        style={{
+          height: 48,
+          borderBottom: "1px solid rgba(125,211,252,0.08)",
+          background: "rgba(5,6,9,0.7)",
+          backdropFilter: "blur(12px)",
+        }}
       >
-        <div className="flex items-center gap-2.5">
-          <motion.div
-            className="h-1.5 w-1.5 rounded-full"
-            style={{ background: enabled ? "#7DD3FC" : "rgba(125,211,252,0.18)" }}
-            animate={enabled ? { opacity: [0.4, 1, 0.4] } : {}}
-            transition={{ duration: 2, repeat: Infinity }}
+        {/* Left: brand */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div
+            className={enabled ? "jarvis-blink" : ""}
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: "50%",
+              background: enabled ? "#7DD3FC" : "rgba(125,211,252,0.18)",
+              boxShadow: enabled ? "0 0 8px rgba(125,211,252,0.8)" : "none",
+              flexShrink: 0,
+            }}
           />
-          <span className="text-[12px] font-bold tracking-[0.22em]" style={{ color: enabled ? "#7DD3FC" : "rgba(125,211,252,0.32)" }}>
+          <span
+            style={{
+              fontFamily: "'Space Mono', 'DM Mono', monospace",
+              fontSize: 13,
+              fontWeight: 700,
+              letterSpacing: "0.28em",
+              color: "#7DD3FC",
+            }}
+          >
             J.A.R.V.I.S
           </span>
-          <span className="hidden md:block text-[9px] tracking-[0.14em] font-light" style={{ color: "rgba(125,211,252,0.22)" }}>
+          <span
+            className="hidden md:block"
+            style={{
+              fontSize: 8,
+              letterSpacing: "0.18em",
+              color: "rgba(125,211,252,0.25)",
+              fontWeight: 400,
+            }}
+          >
             PERSONAL AI OPERATING SYSTEM
           </span>
+          <div
+            className="hidden md:flex"
+            style={{
+              fontSize: 8,
+              padding: "1px 6px",
+              borderRadius: 4,
+              background: "rgba(125,211,252,0.06)",
+              border: "1px solid rgba(125,211,252,0.18)",
+              color: "rgba(125,211,252,0.45)",
+              letterSpacing: "0.12em",
+              fontFamily: "'Space Mono', monospace",
+            }}
+          >
+            v2.0
+          </div>
         </div>
 
-        <div className="flex items-center gap-1.5">
+        {/* Right: EQ + signal + controls */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <HeaderEQ active={isActive} />
+          <div
+            className="hidden md:block"
+            style={{
+              width: 1,
+              height: 18,
+              background: "rgba(125,211,252,0.12)",
+            }}
+          />
+          <SignalBars />
+
+          {/* Enable / Disable */}
           <motion.button
             onClick={() => (enabled ? jarvis.disable() : jarvis.enable())}
             whileTap={{ scale: 0.95 }}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] tracking-widest font-medium transition-all duration-200"
             style={{
-              background: enabled ? "rgba(125,211,252,0.09)" : "rgba(125,211,252,0.03)",
-              border: `1px solid ${enabled ? "rgba(125,211,252,0.28)" : "rgba(125,211,252,0.09)"}`,
-              color: enabled ? "#7DD3FC" : "rgba(125,211,252,0.3)",
+              display: "flex",
+              alignItems: "center",
+              gap: 5,
+              padding: "4px 12px",
+              borderRadius: 8,
+              fontFamily: "'Space Mono', monospace",
+              fontSize: 9,
+              fontWeight: 700,
+              letterSpacing: "0.16em",
+              cursor: "pointer",
+              transition: "all 0.2s ease",
+              background: enabled
+                ? "rgba(125,211,252,0.1)"
+                : "rgba(125,211,252,0.03)",
+              border: `1px solid ${enabled ? "rgba(125,211,252,0.4)" : "rgba(125,211,252,0.12)"}`,
+              color: enabled ? "#7DD3FC" : "rgba(125,211,252,0.35)",
+              boxShadow: enabled
+                ? "0 0 16px rgba(125,211,252,0.15)"
+                : "none",
             }}
           >
-            <Zap size={10} />
+            <Zap size={9} />
             {enabled ? "ACTIVE" : "ENABLE"}
           </motion.button>
 
+          {/* Mobile chat toggle */}
           <motion.button
             onClick={() => setShowChat((v) => !v)}
             whileTap={{ scale: 0.95 }}
-            className="md:hidden flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] transition-all duration-200"
-            style={{ background: "rgba(125,211,252,0.03)", border: "1px solid rgba(125,211,252,0.09)", color: "rgba(125,211,252,0.45)" }}
+            className="md:hidden"
+            style={{
+              padding: "4px 10px",
+              borderRadius: 7,
+              fontFamily: "'Space Mono', monospace",
+              fontSize: 9,
+              letterSpacing: "0.12em",
+              background: showChat
+                ? "rgba(125,211,252,0.09)"
+                : "rgba(125,211,252,0.03)",
+              border: "1px solid rgba(125,211,252,0.12)",
+              color: "rgba(125,211,252,0.5)",
+              cursor: "pointer",
+            }}
           >
-            <Clock size={10} /> LOG
+            LOG
           </motion.button>
 
+          {/* Back */}
           <motion.button
             onClick={() => void navigate({ to: "/" })}
             whileTap={{ scale: 0.95 }}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] tracking-wider transition-all duration-200"
-            style={{ background: "rgba(125,211,252,0.02)", border: "1px solid rgba(125,211,252,0.07)", color: "rgba(125,211,252,0.28)" }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              padding: "4px 10px",
+              borderRadius: 7,
+              fontFamily: "'Space Mono', monospace",
+              fontSize: 9,
+              letterSpacing: "0.12em",
+              background: "rgba(125,211,252,0.02)",
+              border: "1px solid rgba(125,211,252,0.07)",
+              color: "rgba(125,211,252,0.28)",
+              cursor: "pointer",
+            }}
           >
             <ChevronLeft size={10} />
             <span className="hidden md:inline">BACK</span>
@@ -419,14 +1019,28 @@ function JarvisPage() {
           initial={{ opacity: 0, x: -12 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-          className="hidden md:flex flex-col w-44 shrink-0 px-3 py-3 overflow-hidden"
-          style={{ borderRight: "1px solid rgba(125,211,252,0.07)" }}
+          className="hidden md:flex flex-col"
+          style={{
+            width: 200,
+            flexShrink: 0,
+            padding: 12,
+            borderRight: "1px solid rgba(125,211,252,0.07)",
+            overflowY: "auto",
+            scrollbarWidth: "none",
+            gap: 6,
+          }}
         >
           <StatusPanel voiceState={voiceState} enabled={enabled} />
         </motion.div>
 
-        {/* Center: AICore + state label */}
-        <div className="flex-1 min-w-0 flex flex-col items-center justify-center gap-4 px-4 py-4 relative" ref={coreRef}>
+        {/* Center: orb + labels + freq bars */}
+        <div
+          className="flex-1 min-w-0 flex flex-col items-center justify-center relative"
+          style={{ padding: "20px 24px", overflow: "hidden" }}
+          ref={coreRef}
+        >
+          {/* Scan line */}
+          <div className="jarvis-scan-line" />
 
           {/* Transcript banner */}
           <AnimatePresence>
@@ -436,13 +1050,14 @@ function JarvisPage() {
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -6, scale: 0.97 }}
                 transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                className="absolute top-3 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full max-w-xs w-full text-center text-[11px] truncate"
+                className="absolute top-4 left-1/2 -translate-x-1/2 max-w-xs w-full text-center text-[11px] truncate px-4 py-1.5 rounded-full"
                 style={{
                   background: "rgba(0,15,25,0.82)",
                   border: "1px solid rgba(125,211,252,0.25)",
                   color: "rgba(125,211,252,0.8)",
                   backdropFilter: "blur(12px)",
                   boxShadow: "0 4px 20px rgba(125,211,252,0.08)",
+                  zIndex: 5,
                 }}
               >
                 {transcript}
@@ -450,17 +1065,18 @@ function JarvisPage() {
             )}
           </AnimatePresence>
 
-          {/* AI Core */}
+          {/* AI Core orb */}
           <motion.div
             initial={{ opacity: 0, scale: 0.88 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+            style={{ flexShrink: 0 }}
           >
             <AICore voiceState={voiceState} isAwake={isActive} size={coreSize} />
           </motion.div>
 
           {/* State label */}
-          <div className="text-center shrink-0">
+          <div style={{ textAlign: "center", flexShrink: 0, marginTop: 12 }}>
             <AnimatePresence mode="wait">
               <motion.p
                 key={voiceState}
@@ -468,15 +1084,34 @@ function JarvisPage() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -4 }}
                 transition={{ duration: 0.2 }}
-                className="text-[13px] tracking-wider font-light"
-                style={{ color: isActive ? "#7DD3FC" : "rgba(125,211,252,0.38)" }}
+                style={{
+                  fontSize: 14,
+                  letterSpacing: "0.12em",
+                  fontWeight: 300,
+                  color: isActive ? "#7DD3FC" : "rgba(125,211,252,0.38)",
+                }}
               >
                 {stateInfo.text}
               </motion.p>
             </AnimatePresence>
-            <p className="text-[9px] tracking-[0.1em] mt-1" style={{ color: "rgba(125,211,252,0.2)" }}>
+            <p
+              style={{
+                fontSize: 9,
+                letterSpacing: "0.12em",
+                color: "rgba(125,211,252,0.2)",
+                marginTop: 4,
+              }}
+            >
               {stateInfo.sub}
             </p>
+          </div>
+
+          {/* Frequency bars — anchored to bottom */}
+          <div
+            className="absolute bottom-4 left-1/2 -translate-x-1/2"
+            style={{ zIndex: 1 }}
+          >
+            <FreqBars active={isActive} />
           </div>
 
           {/* Mobile chat overlay */}
@@ -487,8 +1122,12 @@ function JarvisPage() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.18 }}
-                className="md:hidden absolute inset-0 px-4 py-4 flex flex-col overflow-hidden"
-                style={{ background: "rgba(11,11,12,0.97)", backdropFilter: "blur(16px)", zIndex: 20 }}
+                className="md:hidden absolute inset-0 flex flex-col overflow-hidden"
+                style={{
+                  background: "rgba(5,6,9,0.97)",
+                  backdropFilter: "blur(16px)",
+                  zIndex: 20,
+                }}
               >
                 <ChatPanel messages={messages} />
               </motion.div>
@@ -501,8 +1140,14 @@ function JarvisPage() {
           initial={{ opacity: 0, x: 12 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-          className="hidden md:flex flex-col w-60 shrink-0 px-3 py-3 overflow-hidden"
-          style={{ borderLeft: "1px solid rgba(125,211,252,0.07)" }}
+          className="hidden md:flex flex-col"
+          style={{
+            width: 262,
+            flexShrink: 0,
+            borderLeft: "1px solid rgba(125,211,252,0.07)",
+            minHeight: 0,
+            overflow: "hidden",
+          }}
         >
           <ChatPanel messages={messages} />
         </motion.div>
@@ -513,35 +1158,58 @@ function JarvisPage() {
         className="relative z-10 shrink-0 px-3 py-2.5"
         style={{
           borderTop: "1px solid rgba(125,211,252,0.07)",
-          background: "rgba(11,11,12,0.65)",
+          background: "rgba(5,6,9,0.7)",
           backdropFilter: "blur(14px)",
         }}
       >
-        <form onSubmit={handleSubmit} className="flex items-center gap-2">
+        <form
+          onSubmit={handleSubmit}
+          style={{ display: "flex", alignItems: "center", gap: 8 }}
+        >
+          {/* Mic button */}
           <motion.button
             type="button"
             onClick={handleVoice}
             whileHover={{ scale: 1.06 }}
             whileTap={{ scale: 0.92 }}
             disabled={!isVoiceAssistantSupported}
-            className="h-9 w-9 rounded-xl flex items-center justify-center shrink-0 transition-all duration-200"
             style={{
-              background: isListening ? "rgba(125,211,252,0.15)" : "rgba(125,211,252,0.04)",
+              height: 36,
+              width: 36,
+              borderRadius: 10,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+              transition: "all 0.2s ease",
+              background: isListening
+                ? "rgba(125,211,252,0.15)"
+                : "rgba(125,211,252,0.04)",
               border: `1px solid ${isListening ? "rgba(125,211,252,0.48)" : "rgba(125,211,252,0.12)"}`,
-              boxShadow: isListening ? "0 0 16px rgba(125,211,252,0.22)" : "none",
+              boxShadow: isListening
+                ? "0 0 16px rgba(125,211,252,0.22)"
+                : "none",
               color: isListening ? "#7DD3FC" : "rgba(125,211,252,0.38)",
+              cursor: isVoiceAssistantSupported ? "pointer" : "not-allowed",
             }}
           >
             {isListening ? <MicOff size={14} /> : <Mic size={14} />}
           </motion.button>
 
+          {/* Text input */}
           <input
             ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Enter command, sir…"
-            className="flex-1 h-9 rounded-xl px-4 text-[12px] outline-none transition-all duration-200"
             style={{
+              flex: 1,
+              height: 36,
+              borderRadius: 10,
+              padding: "0 14px",
+              fontSize: 12,
+              outline: "none",
+              transition: "all 0.2s ease",
               background: "rgba(125,211,252,0.04)",
               border: "1px solid rgba(125,211,252,0.12)",
               color: "rgba(200,235,255,0.85)",
@@ -555,24 +1223,73 @@ function JarvisPage() {
               e.target.style.borderColor = "rgba(125,211,252,0.12)";
               e.target.style.background  = "rgba(125,211,252,0.04)";
             }}
-            onKeyDown={(e) => { if (e.key === "Enter") void handleSubmit(); }}
           />
 
+          {/* Send button */}
           <motion.button
             type="submit"
             disabled={!input.trim()}
             whileHover={{ scale: input.trim() ? 1.06 : 1 }}
             whileTap={{ scale: input.trim() ? 0.92 : 1 }}
-            className="h-9 w-9 rounded-xl flex items-center justify-center shrink-0 transition-all duration-200"
             style={{
-              background: input.trim() ? "rgba(125,211,252,0.12)" : "rgba(125,211,252,0.03)",
+              height: 36,
+              width: 36,
+              borderRadius: 10,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+              transition: "all 0.2s ease",
+              background: input.trim()
+                ? "rgba(125,211,252,0.12)"
+                : "rgba(125,211,252,0.03)",
               border: `1px solid ${input.trim() ? "rgba(125,211,252,0.35)" : "rgba(125,211,252,0.09)"}`,
               color: input.trim() ? "#7DD3FC" : "rgba(125,211,252,0.22)",
+              boxShadow: input.trim()
+                ? "0 0 14px rgba(125,211,252,0.2)"
+                : "none",
+              cursor: input.trim() ? "pointer" : "not-allowed",
             }}
           >
             <Send size={13} />
           </motion.button>
         </form>
+      </div>
+
+      {/* ── Footer status strip ── */}
+      <div
+        className="relative z-10 shrink-0 hidden md:flex items-center justify-between px-4"
+        style={{
+          height: 24,
+          borderTop: "1px solid rgba(125,211,252,0.06)",
+          background: "rgba(5,6,9,0.6)",
+        }}
+      >
+        <span
+          style={{
+            fontFamily: "'Space Mono', monospace",
+            fontSize: 7,
+            letterSpacing: "0.2em",
+            color: "rgba(125,211,252,0.2)",
+          }}
+        >
+          SYSTEM SECURE · NEURAL LINK ACTIVE · ALL SENSORS NOMINAL
+        </span>
+        <div style={{ display: "flex", gap: 3, alignItems: "center" }}>
+          {[1, 1, 1, 0, 1, 0, 0, 1].map((v, i) => (
+            <div
+              key={i}
+              style={{
+                width: 4,
+                height: 4,
+                borderRadius: "50%",
+                background: v
+                  ? "rgba(125,211,252,0.5)"
+                  : "rgba(125,211,252,0.12)",
+              }}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );
