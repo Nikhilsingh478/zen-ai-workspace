@@ -325,21 +325,6 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </nav>
 
-      {/* Mobile sync indicator (floating) */}
-      <AnimatePresence>
-        <div className="fixed bottom-24 right-4 z-50 md:bottom-4">
-          <div
-            className="rounded-full px-3 py-2 shadow-lg"
-            style={{
-              background: "var(--surface-2)",
-              border: "1px solid rgba(125,211,252,0.1)",
-              boxShadow: "0 8px 24px rgba(0,0,0,0.3)",
-            }}
-          >
-            <SyncIndicator compact />
-          </div>
-        </div>
-      </AnimatePresence>
     </div>
   );
 }
