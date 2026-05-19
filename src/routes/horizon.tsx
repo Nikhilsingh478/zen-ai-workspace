@@ -213,7 +213,7 @@ function HorizonPage() {
     <div className="h-full flex flex-col overflow-hidden relative">
 
       {/* ── Ambient environmental depth ─────────────────────────────────── */}
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_90%_50%_at_50%_-10%,rgba(255,255,255,0.016),transparent)] z-0" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_90%_50%_at_50%_-10%,rgba(125,211,252,0.03),transparent)] z-0" />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-background/60 to-transparent z-0" />
 
       {/* ── Calendar view ─────────────────────────────────────────────── */}
@@ -232,7 +232,7 @@ function HorizonPage() {
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: 0.4, ease: EASE, delay: 0.05 }}
-            className="relative h-8 w-8 rounded-xl bg-white/[0.04] border border-white/[0.07] grid place-items-center shrink-0"
+            className="relative h-8 w-8 rounded-xl border grid place-items-center shrink-0" style={{ background: "rgba(125,211,252,0.05)", borderColor: "rgba(125,211,252,0.12)" }}
           >
             <motion.div
               className="absolute inset-0 rounded-xl"
@@ -342,7 +342,7 @@ function HorizonPage() {
               onClick={goToday}
               whileHover={{ scale: 1.03 }}
               whileTap={{ scale: 0.97 }}
-              className="hidden sm:flex items-center px-3 py-1.5 rounded-lg text-[11px] font-medium text-white/60 border border-white/[0.10] hover:border-white/[0.18] hover:text-white/85 transition-all duration-200"
+              className="hidden sm:flex items-center px-3 py-1.5 rounded-lg text-[11px] font-medium text-white/60 border hover:text-white/85 transition-all duration-200" style={{ borderColor: "rgba(125,211,252,0.12)" }} onMouseEnter={e => (e.currentTarget as HTMLElement).style.borderColor="rgba(125,211,252,0.28)"} onMouseLeave={e => (e.currentTarget as HTMLElement).style.borderColor="rgba(125,211,252,0.12)"}
             >
               Today
             </motion.button>
@@ -355,7 +355,7 @@ function HorizonPage() {
                 onClick={action}
                 whileHover={{ scale: 1.08 }}
                 whileTap={{ scale: 0.92 }}
-                className="h-8 w-8 rounded-lg border border-white/[0.10] hover:border-white/[0.18] grid place-items-center text-white/55 hover:text-white/85 transition-all duration-200"
+                className="h-8 w-8 rounded-lg border grid place-items-center text-white/55 hover:text-white/85 transition-all duration-200" style={{ borderColor: "rgba(125,211,252,0.12)" }} onMouseEnter={e => (e.currentTarget as HTMLElement).style.borderColor="rgba(125,211,252,0.28)"} onMouseLeave={e => (e.currentTarget as HTMLElement).style.borderColor="rgba(125,211,252,0.12)"}
                 aria-label={label}
               >
                 <Icon className="h-4 w-4" />
@@ -406,20 +406,20 @@ function HorizonPage() {
                   transition={{ duration: 0.22, delay: cellIndex * 0.006, ease: EASE }}
                   whileHover={{ scale: 1.06, y: -1 }}
                   whileTap={{ scale: 0.94 }}
-                  className={cn(
-                    "relative aspect-square md:aspect-auto md:h-full flex flex-col items-center justify-center rounded-xl text-sm transition-all duration-200",
+                  className="relative aspect-square md:aspect-auto md:h-full flex flex-col items-center justify-center rounded-xl text-sm transition-all duration-200"
+                  style={
                     isToday
-                      ? "bg-white/[0.1] border border-white/[0.18] font-semibold text-white/90 shadow-[0_0_0_1px_rgba(255,255,255,0.04),0_4px_16px_rgba(0,0,0,0.3)]"
+                      ? { background: "rgba(125,211,252,0.1)", border: "1px solid rgba(125,211,252,0.28)", fontWeight: 600, color: "rgba(255,255,255,0.92)", boxShadow: "0 0 0 1px rgba(125,211,252,0.06),0 4px 16px rgba(0,0,0,0.3)" }
                       : isSelected
-                        ? "bg-white/[0.07] border border-white/[0.1] text-white/80"
-                        : "hover:bg-white/[0.04] text-white/62 hover:text-white/85 border border-transparent hover:border-white/[0.08]",
-                  )}
+                        ? { background: "rgba(125,211,252,0.07)", border: "1px solid rgba(125,211,252,0.16)", color: "rgba(255,255,255,0.82)" }
+                        : { border: "1px solid transparent", color: "rgba(255,255,255,0.62)" }
+                  }
                 >
                   {/* Today ambient glow */}
                   {isToday && (
                     <motion.span
                       className="absolute inset-0 rounded-xl"
-                      animate={{ boxShadow: ["0 0 0px rgba(255,255,255,0)", "0 0 18px rgba(255,255,255,0.06)", "0 0 0px rgba(255,255,255,0)"] }}
+                      animate={{ boxShadow: ["0 0 0px rgba(125,211,252,0)", "0 0 18px rgba(125,211,252,0.18)", "0 0 0px rgba(125,211,252,0)"] }}
                       transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
                     />
                   )}
@@ -431,14 +431,14 @@ function HorizonPage() {
                       transition={{ type: "spring", stiffness: 500, damping: 22 }}
                       className={cn(
                         "mt-[3px] h-[3px] w-[3px] rounded-full relative z-10",
-                        isToday || isSelected ? "bg-white/50" : "bg-white/[0.18]",
+                        isToday || isSelected ? "bg-sky-300/60" : "bg-sky-400/[0.28]",
                       )}
                     />
                   )}
                   {taskCount > 1 && (
                     <span className={cn(
                       "absolute top-0.5 right-1 text-[8px] font-medium tabular-nums",
-                      isToday || isSelected ? "text-white/55" : "text-white/32",
+                      isToday || isSelected ? "text-sky-300/70" : "text-sky-400/[0.38]",
                     )}>
                       {taskCount}
                     </span>
@@ -463,7 +463,7 @@ function HorizonPage() {
             className="absolute inset-0 z-30 bg-background flex flex-col"
           >
             {/* Ambient depth */}
-            <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_40%_at_50%_0%,rgba(255,255,255,0.014),transparent)] pointer-events-none" />
+            <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_40%_at_50%_0%,rgba(125,211,252,0.025),transparent)] pointer-events-none" />
             <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-background/70 to-transparent pointer-events-none" />
 
             {/* Header */}
@@ -471,7 +471,7 @@ function HorizonPage() {
               initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.28, delay: 0.06, ease: EASE }}
-              className="relative z-10 shrink-0 flex items-center justify-between px-5 md:px-10 pt-5 md:pt-7 pb-4 border-b border-white/[0.04]"
+              className="relative z-10 shrink-0 flex items-center justify-between px-5 md:px-10 pt-5 md:pt-7 pb-4 border-b" style={{ borderColor: "rgba(125,211,252,0.07)" }}
             >
               <div className="flex items-center gap-3 min-w-0">
                 <motion.button
@@ -485,7 +485,7 @@ function HorizonPage() {
                   <span className="text-[12px] font-medium hidden sm:block tracking-wide">Calendar</span>
                 </motion.button>
 
-                <div className="h-3 w-px bg-white/[0.07] shrink-0 hidden sm:block" />
+                <div className="h-3 w-px shrink-0 hidden sm:block" style={{ background: "rgba(125,211,252,0.1)" }} />
 
                 <div className="min-w-0">
                   <AnimatePresence mode="wait">
@@ -627,22 +627,23 @@ function EmptyDay() {
       className="relative flex flex-col items-center justify-center py-24 md:py-32 text-center"
     >
       {/* Ambient radial */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,rgba(255,255,255,0.022),transparent_55%)] pointer-events-none" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,rgba(125,211,252,0.04),transparent_55%)] pointer-events-none" />
 
       <motion.div
         initial={{ scale: 0.72, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ duration: 0.5, delay: 0.06, ease: EASE }}
-        className="relative h-16 w-16 rounded-3xl bg-white/[0.03] border border-white/[0.06] grid place-items-center mb-6"
+        className="relative h-16 w-16 rounded-3xl grid place-items-center mb-6"
+        style={{ background: "rgba(125,211,252,0.04)", border: "1px solid rgba(125,211,252,0.1)" }}
       >
         {/* Breathing glow behind icon */}
         <motion.div
           className="absolute inset-0 rounded-3xl"
           animate={{ opacity: [0.4, 0.9, 0.4] }}
           transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
-          style={{ background: "radial-gradient(circle at 50% 35%, rgba(255,255,255,0.04), transparent 70%)" }}
+          style={{ background: "radial-gradient(circle at 50% 35%, rgba(125,211,252,0.08), transparent 70%)" }}
         />
-        <CalendarDays className="h-6 w-6 text-white/[0.13] relative z-10" strokeWidth={1.5} />
+        <CalendarDays className="h-6 w-6 relative z-10" style={{ color: "rgba(125,211,252,0.35)" }} strokeWidth={1.5} />
       </motion.div>
 
       <motion.p
@@ -689,7 +690,7 @@ function Timeline({
       <div
         className="absolute left-[27px] md:left-[35px] top-8 bottom-8 w-px pointer-events-none"
         style={{
-          background: "linear-gradient(to bottom, transparent, rgba(255,255,255,0.09) 8%, rgba(255,255,255,0.09) 92%, transparent)",
+          background: "linear-gradient(to bottom, transparent, rgba(125,211,252,0.12) 8%, rgba(125,211,252,0.12) 92%, transparent)",
         }}
       />
       {groups.map(({ label, tasks, hour }, gi) => (
@@ -855,22 +856,21 @@ function TimelineTaskCard({
       exit={{ opacity: 0, x: -6, scale: 0.97 }}
       transition={{ duration: 0.3, delay: index * 0.045, ease: EASE }}
       whileHover={task.completed ? {} : { y: -2, transition: { duration: 0.18, ease: EASE } }}
-      className={cn(
-        "group relative rounded-2xl overflow-hidden transition-all duration-300",
-        task.completed
-          ? "opacity-30 border border-white/[0.04]"
-          : cn(
-              "border border-white/[0.075]",
-              "bg-white/[0.028]",
-              "shadow-[0_2px_16px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.04)]",
-              "hover:bg-white/[0.048] hover:border-white/[0.11]",
-              "hover:shadow-[0_6px_32px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.07)]",
-            ),
-      )}
+      className="group relative rounded-2xl overflow-hidden transition-all duration-300"
+      style={task.completed ? {
+        opacity: 0.3,
+        border: "1px solid rgba(125,211,252,0.05)",
+      } : {
+        border: "1px solid rgba(125,211,252,0.08)",
+        background: "rgba(125,211,252,0.025)",
+        boxShadow: "0 2px 16px rgba(0,0,0,0.3),inset 0 1px 0 rgba(125,211,252,0.04)",
+      }}
+      onMouseEnter={e => { if (!task.completed) { const el = e.currentTarget as HTMLElement; el.style.background = "rgba(125,211,252,0.045)"; el.style.borderColor = "rgba(125,211,252,0.14)"; el.style.boxShadow = "0 6px 32px rgba(0,0,0,0.45),inset 0 1px 0 rgba(125,211,252,0.07)"; } }}
+      onMouseLeave={e => { if (!task.completed) { const el = e.currentTarget as HTMLElement; el.style.background = "rgba(125,211,252,0.025)"; el.style.borderColor = "rgba(125,211,252,0.08)"; el.style.boxShadow = "0 2px 16px rgba(0,0,0,0.3),inset 0 1px 0 rgba(125,211,252,0.04)"; } }}
     >
       {/* Top edge highlight */}
       {!task.completed && (
-        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/[0.1] to-transparent pointer-events-none z-10" />
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-sky-300/[0.18] to-transparent pointer-events-none z-10" />
       )}
 
       {/* Left priority stripe */}
@@ -898,8 +898,8 @@ function TimelineTaskCard({
           className={cn(
             "mt-[2px] h-[18px] w-[18px] shrink-0 rounded-[5px] border-[1.5px] grid place-items-center transition-all duration-200",
             task.completed
-              ? "bg-white/60 border-white/60"
-              : "border-white/[0.17] hover:border-white/[0.42] hover:bg-white/[0.04]",
+              ? "border-sky-300/60"
+              : "border-white/[0.17] hover:border-sky-300/50",
           )}
         >
           <AnimatePresence initial={false}>
@@ -911,7 +911,7 @@ function TimelineTaskCard({
                 exit={{ scale: 0 }}
                 transition={{ type: "spring", stiffness: 550, damping: 24 }}
               >
-                <Check className="h-2.5 w-2.5 text-background" strokeWidth={2.5} />
+                <Check className="h-2.5 w-2.5" style={{ color: "#050609" }} strokeWidth={2.5} />
               </motion.span>
             )}
           </AnimatePresence>
@@ -979,7 +979,7 @@ function TimelineTaskCard({
             className="overflow-hidden"
           >
             {/* Separator */}
-            <div className="mx-4 md:mx-5 h-px bg-gradient-to-r from-white/[0.03] via-white/[0.07] to-white/[0.03]" />
+            <div className="mx-4 md:mx-5 h-px bg-gradient-to-r from-transparent via-sky-300/[0.1] to-transparent" />
 
             <div className="px-4 md:px-5 pt-4 pb-5">
               {task.description && (
@@ -1007,12 +1007,12 @@ function TimelineTaskCard({
                   {p.label}
                 </span>
                 {task.notificationEnabled && (
-                  <span className="flex items-center gap-1 text-[10px] text-white/[0.55] px-2 py-[3px] rounded-lg border border-white/[0.08] bg-white/[0.03]">
+                  <span className="flex items-center gap-1 text-[10px] text-white/[0.55] px-2 py-[3px] rounded-lg" style={{ border: "1px solid rgba(125,211,252,0.1)", background: "rgba(125,211,252,0.04)" }}>
                     <Bell className="h-2.5 w-2.5" />
                     Reminder set
                   </span>
                 )}
-                <span className="flex items-center gap-1 text-[10px] text-white/[0.55] px-2 py-[3px] rounded-lg border border-white/[0.08] bg-white/[0.03]">
+                <span className="flex items-center gap-1 text-[10px] text-white/[0.55] px-2 py-[3px] rounded-lg" style={{ border: "1px solid rgba(125,211,252,0.1)", background: "rgba(125,211,252,0.04)" }}>
                   <Clock className="h-2.5 w-2.5" />
                   {format12Hour(task.taskTime)}
                 </span>
@@ -1027,7 +1027,7 @@ function TimelineTaskCard({
               >
                 <button
                   onClick={onEdit}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/[0.09] hover:bg-white/[0.08] hover:border-white/[0.16] text-[12px] text-white/[0.68] hover:text-white/[0.90] transition-all duration-150"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] text-white/[0.68] hover:text-white/[0.90] transition-all duration-150" style={{ background: "rgba(125,211,252,0.04)", border: "1px solid rgba(125,211,252,0.1)" }} onMouseEnter={e=>{const el=e.currentTarget as HTMLElement;el.style.background="rgba(125,211,252,0.09)";el.style.borderColor="rgba(125,211,252,0.2)";}} onMouseLeave={e=>{const el=e.currentTarget as HTMLElement;el.style.background="rgba(125,211,252,0.04)";el.style.borderColor="rgba(125,211,252,0.1)";}}
                 >
                   <Pencil className="h-3 w-3" />
                   Edit
@@ -1152,11 +1152,11 @@ function TaskModal({
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="sm:max-w-md bg-[var(--surface-1)] border border-white/[0.08] gap-0 p-0 overflow-hidden shadow-[0_24px_80px_rgba(0,0,0,0.7)]">
+      <DialogContent className="sm:max-w-md gap-0 p-0 overflow-hidden" style={{ background: "var(--surface-1)", border: "1px solid rgba(125,211,252,0.1)", boxShadow: "0 24px 80px rgba(0,0,0,0.7)" }}>
         {/* Top edge highlight */}
-        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/[0.1] to-transparent pointer-events-none z-10" />
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-sky-300/[0.18] to-transparent pointer-events-none z-10" />
 
-        <DialogHeader className="px-6 pt-6 pb-4 border-b border-white/[0.05]">
+        <DialogHeader className="px-6 pt-6 pb-4 border-b" style={{ borderColor: "rgba(125,211,252,0.07)" }}>
           <DialogTitle className="text-[14px] font-semibold tracking-tight text-white/85">
             {editingTask ? "Edit task" : "New task"}
           </DialogTitle>
@@ -1179,8 +1179,12 @@ function TaskModal({
                 "w-full rounded-xl border bg-white/[0.03] px-3.5 py-2.5 text-[14px] outline-none transition-all duration-150 placeholder:text-white/[0.15]",
                 errors.title
                   ? "border-red-400/30 focus:border-red-400/50"
-                  : "border-white/[0.07] focus:border-white/[0.15] focus:bg-white/[0.05]",
+                  : "focus:bg-white/[0.03]",
+                "border"
               )}
+              style={!errors.title ? { borderColor: "rgba(125,211,252,0.1)" } : undefined}
+              onFocus={e => { if (!errors.title) (e.target as HTMLElement).style.borderColor="rgba(125,211,252,0.25)"; }}
+              onBlur={e => { if (!errors.title) (e.target as HTMLElement).style.borderColor="rgba(125,211,252,0.1)"; }}
             />
             {errors.title && (
               <motion.p
@@ -1201,7 +1205,7 @@ function TaskModal({
             <div className="flex items-center gap-2">
               <Controller name="taskTimeHour" control={control} render={({ field }) => (
                 <Select value={field.value} onValueChange={field.onChange}>
-                  <SelectTrigger className="flex-1 bg-white/[0.03] border-white/[0.07] hover:border-white/[0.13] text-sm rounded-xl h-10">
+                  <SelectTrigger className="flex-1 bg-white/[0.03] text-sm rounded-xl h-10" style={{ borderColor: "rgba(125,211,252,0.1)" }}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-[var(--surface-2)] border-white/[0.08] max-h-52">
@@ -1212,7 +1216,7 @@ function TaskModal({
               <span className="text-white/[0.15] text-sm font-medium shrink-0">:</span>
               <Controller name="taskTimeMinute" control={control} render={({ field }) => (
                 <Select value={field.value} onValueChange={field.onChange}>
-                  <SelectTrigger className="flex-1 bg-white/[0.03] border-white/[0.07] hover:border-white/[0.13] text-sm rounded-xl h-10">
+                  <SelectTrigger className="flex-1 bg-white/[0.03] text-sm rounded-xl h-10" style={{ borderColor: "rgba(125,211,252,0.1)" }}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-[var(--surface-2)] border-white/[0.08] max-h-52">
@@ -1222,7 +1226,7 @@ function TaskModal({
               )} />
               <Controller name="taskTimeAmpm" control={control} render={({ field }) => (
                 <Select value={field.value} onValueChange={field.onChange}>
-                  <SelectTrigger className="w-20 bg-white/[0.03] border-white/[0.07] hover:border-white/[0.13] text-sm rounded-xl h-10">
+                  <SelectTrigger className="w-20 bg-white/[0.03] text-sm rounded-xl h-10" style={{ borderColor: "rgba(125,211,252,0.1)" }}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-[var(--surface-2)] border-white/[0.08]">
@@ -1243,7 +1247,10 @@ function TaskModal({
               {...register("description")}
               rows={2}
               placeholder="Add notes…"
-              className="w-full rounded-xl border border-white/[0.07] bg-white/[0.03] px-3.5 py-2.5 text-[14px] outline-none transition-all duration-150 placeholder:text-white/[0.15] focus:border-white/[0.15] focus:bg-white/[0.05] resize-none"
+              className="w-full rounded-xl bg-white/[0.03] px-3.5 py-2.5 text-[14px] outline-none transition-all duration-150 placeholder:text-white/[0.15] resize-none border"
+              style={{ borderColor: "rgba(125,211,252,0.1)" }}
+              onFocus={e => (e.target as HTMLElement).style.borderColor="rgba(125,211,252,0.25)"}
+              onBlur={e => (e.target as HTMLElement).style.borderColor="rgba(125,211,252,0.1)"}
             />
           </div>
 
@@ -1267,7 +1274,7 @@ function TaskModal({
                         "flex-1 py-2 rounded-xl border text-[12px] font-medium transition-all duration-150",
                         active
                           ? cn(cfg.bg, cfg.border, cfg.color)
-                          : "border-white/[0.06] text-white/[0.25] hover:text-white/[0.5] hover:border-white/[0.09]",
+                          : "text-white/[0.25] hover:text-white/[0.5]",
                       )}
                     >
                       {cfg.label}
@@ -1289,7 +1296,7 @@ function TaskModal({
                 background: "rgba(125,211,252,0.07)",
                 boxShadow: "0 0 18px rgba(125,211,252,0.12), inset 0 0 12px rgba(125,211,252,0.04)",
               } : {
-                border: "1px solid rgba(255,255,255,0.07)",
+                border: "1px solid rgba(125,211,252,0.1)",
                 background: "transparent",
                 boxShadow: "none",
               }}
@@ -1349,7 +1356,10 @@ function TaskModal({
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-2.5 rounded-xl border border-white/[0.07] text-[13px] font-medium text-white/[0.28] hover:text-white/[0.55] hover:border-white/[0.11] transition-all duration-150"
+              className="flex-1 py-2.5 rounded-xl text-[13px] font-medium text-white/[0.28] hover:text-white/[0.55] transition-all duration-150 border"
+              style={{ borderColor: "rgba(125,211,252,0.1)" }}
+              onMouseEnter={e => (e.currentTarget as HTMLElement).style.borderColor="rgba(125,211,252,0.2)"}
+              onMouseLeave={e => (e.currentTarget as HTMLElement).style.borderColor="rgba(125,211,252,0.1)"}
             >
               Cancel
             </button>
@@ -1358,7 +1368,8 @@ function TaskModal({
               disabled={submitting}
               whileHover={{ opacity: submitting ? 1 : 0.88 }}
               whileTap={{ scale: 0.98 }}
-              className="flex-1 py-2.5 rounded-xl bg-foreground text-background text-[13px] font-semibold disabled:opacity-25 transition-opacity shadow-[0_2px_12px_rgba(255,255,255,0.08)]"
+              className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold disabled:opacity-25 transition-opacity"
+              style={{ background: "linear-gradient(135deg,rgba(125,211,252,0.9),rgba(147,197,253,0.85))", color: "#050609", boxShadow: "0 2px 16px rgba(125,211,252,0.22)" }}
             >
               {submitting ? "Saving…" : editingTask ? "Save changes" : "Add task"}
             </motion.button>
