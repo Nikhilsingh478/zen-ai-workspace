@@ -44,18 +44,18 @@ const NAV = [
 type NavItem = { to: string; label: string; icon: ComponentType<{ className?: string; strokeWidth?: number }> };
 
 const MOBILE_PRIMARY: readonly NavItem[] = [
-  { to: "/",        label: "Websites", icon: Globe        },
-  { to: "/horizon", label: "Horizon",  icon: CalendarDays },
-  { to: "/jarvis",  label: "JARVIS",   icon: Cpu          },
-  { to: "/ask",     label: "Ask",      icon: MessageSquare},
+  { to: "/",         label: "Websites", icon: Globe        },
+  { to: "/horizon",  label: "Horizon",  icon: CalendarDays },
+  { to: "/jarvis",   label: "JARVIS",   icon: Cpu          },
+  { to: "/timeline", label: "Timeline", icon: GitBranch    },
 ];
 
 const MOBILE_SECONDARY: readonly NavItem[] = [
+  { to: "/ask",      label: "Ask",      icon: MessageSquare},
   { to: "/prompts",  label: "Prompts",  icon: Sparkles  },
   { to: "/links",    label: "Links",    icon: Link2     },
   { to: "/images",   label: "Images",   icon: ImageIcon },
   { to: "/messages", label: "Messages", icon: Bell      },
-  { to: "/timeline", label: "Timeline", icon: GitBranch },
   { to: "/insights", label: "Insights", icon: BarChart2 },
   { to: "/context",  label: "Context",  icon: Brain     },
 ];
