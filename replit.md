@@ -67,7 +67,7 @@ All variables must be prefixed `VITE_` — Vite injects them into the client bun
 | Drag & Drop | @dnd-kit/core + modifiers + sortable | 6/9/10 |
 | Database / Realtime | Supabase JS v2 | 2 |
 | Server-side query cache | TanStack Query | 5 |
-| AI — Ask page | Gemini REST API (`gemini-1.5-flash`) | — |
+| AI — Ask page | Gemini REST API (`gemini-flash-latest`) | — |
 | AI — JARVIS | Gemini REST API + function calling + Web Speech API + SpeechSynthesis | — |
 | AI — Timeline | Gemini REST API (structured JSON schedule generation) | — |
 | Voice | Web Speech API (Chrome/Edge only) | — |

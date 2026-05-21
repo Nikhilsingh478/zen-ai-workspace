@@ -327,7 +327,7 @@ class GeminiAPI {
   ): Promise<{ ok: boolean; text: string; status: number }> {
     try {
       const res = await fetch(
-        `${this.baseUrl}/gemini-1.5-flash:generateContent?key=${apiKey}`,
+        `${this.baseUrl}/gemini-flash-latest:generateContent?key=${apiKey}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -367,7 +367,7 @@ class GeminiAPI {
   ): Promise<{ ok: boolean; data: GeminiResponse | null; status: number }> {
     try {
       const res = await fetch(
-        `${this.baseUrl}/gemini-1.5-flash:generateContent?key=${apiKey}`,
+        `${this.baseUrl}/gemini-flash-latest:generateContent?key=${apiKey}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
