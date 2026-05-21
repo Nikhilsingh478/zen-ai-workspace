@@ -1,23 +1,27 @@
 /**
  * JARVIS — Just A Rather Very Intelligent System
  * Global state store + voice engine + Gemini integration
- *
- * Voice fix:
- * - "interimResults + isFinal" alone drops long utterances because browsers
- *   often fire multiple isFinal=true segments for a single spoken sentence
- *   and each segment fires independently. We now buffer ALL final segments
- *   together and only process the command after a short silence gap (800 ms)
- *   — the same technique used in professional dictation tools.
+ * Phase 1: Persistent sessions, function calling, TTSQueue, audio state machine
  */
 
 import { useSyncExternalStore } from "react";
 import { geminiAPI } from "@/lib/gemini";
-import { addTaskDirect, getHorizonTasks, ensureBooted } from "@/lib/horizon";
-import type { HorizonTask } from "@/lib/horizon";
+import type { GeminiMessage } from "@/lib/gemini";
+import { getHorizonTasks, ensureBooted } from "@/lib/horizon";
+import { supabase } from "@/lib/supabase";
+import { toast } from "sonner";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type JarvisVoiceState = "idle" | "listening" | "processing" | "speaking";
+export type JarvisAudioState =
+  | "idle"
+  | "listening"
+  | "processing"
+  | "speaking"
+  | "interrupted"
+  | "error";
+
+export type JarvisVoiceState = JarvisAudioState;
 
 export type ParsedTask = {
   title: string;
@@ -32,23 +36,54 @@ export type JarvisMessage = {
   role: "user" | "jarvis";
   content: string;
   timestamp: number;
-  type?: "text" | "task_created" | "error";
+  type?: "text" | "task_created" | "memory_saved" | "error" | "interrupted";
   tasks?: ParsedTask[];
 };
 
+export type Memory = {
+  id: string;
+  content: string;
+  memory_type: "general" | "preference" | "commitment" | "idea" | "fact";
+  source_session_id: string | null;
+  recalled_count: number;
+  created_at: string;
+  last_recalled_at: string | null;
+};
+
+export type JarvisSession = {
+  id: string;
+  started_at: string;
+  ended_at: string | null;
+  session_summary: string | null;
+  message_count: number;
+  tags: string[];
+};
+
+export type IntentType =
+  | "task_creation"
+  | "memory_capture"
+  | "task_query"
+  | "memory_query"
+  | "task_management"
+  | "conversation";
+
 type JarvisState = {
-  voiceState: JarvisVoiceState;
+  voiceState: JarvisAudioState;
   isAwake: boolean;
   messages: JarvisMessage[];
   transcript: string;
   enabled: boolean;
+  currentSessionId: string | null;
+  recentMemories: Memory[];
+  sessionSummaries: string[];
+  systemPrompt: string;
 };
 
 // ─── Browser compat ───────────────────────────────────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const win = typeof window !== "undefined" ? (window as any) : undefined;
-const SpeechRecognitionCtor: (new () => any) | undefined =
+const SpeechRecognitionCtor: (new () => unknown) | undefined =
   win?.SpeechRecognition ?? win?.webkitSpeechRecognition;
 
 export const isJarvisSupported = Boolean(SpeechRecognitionCtor);
@@ -70,11 +105,21 @@ let _state: JarvisState = {
   messages: [],
   transcript: "",
   enabled: (() => {
-    try { return localStorage.getItem("jarvis:enabled") === "true"; } catch { return false; }
+    try {
+      return localStorage.getItem("jarvis:enabled") === "true";
+    } catch {
+      return false;
+    }
   })(),
+  currentSessionId: null,
+  recentMemories: [],
+  sessionSummaries: [],
+  systemPrompt: "",
 };
 
-function emit() { listeners.forEach((fn) => fn()); }
+function emit() {
+  listeners.forEach((fn) => fn());
+}
 
 function patch(next: Partial<JarvisState>) {
   _state = { ..._state, ...next };
@@ -90,11 +135,403 @@ export function getJarvisSnapshot(): JarvisState {
   return _state;
 }
 
+// ─── Audio State Machine ──────────────────────────────────────────────────────
+
+const VALID_TRANSITIONS: Record<JarvisAudioState, JarvisAudioState[]> = {
+  idle:        ["listening", "error"],
+  listening:   ["processing", "idle", "error"],
+  processing:  ["speaking", "error", "idle"],
+  speaking:    ["idle", "interrupted", "error"],
+  interrupted: ["listening", "idle"],
+  error:       ["idle"],
+};
+
+export function canTransitionTo(
+  from: JarvisAudioState,
+  to: JarvisAudioState,
+): boolean {
+  const allowed = VALID_TRANSITIONS[from] ?? [];
+  if (!allowed.includes(to)) {
+    console.warn(`[JARVIS] Invalid state transition: ${from} → ${to}`);
+    return false;
+  }
+  return true;
+}
+
+function setAudioState(next: JarvisAudioState) {
+  if (canTransitionTo(_state.voiceState, next)) {
+    patch({ voiceState: next });
+  } else {
+    patch({ voiceState: next });
+  }
+}
+
+// ─── TTSQueue ─────────────────────────────────────────────────────────────────
+
+class TTSQueue {
+  private queue: string[] = [];
+  private isPlaying = false;
+  private onDoneCallback: (() => void) | null = null;
+
+  enqueue(text: string, onDone?: () => void): void {
+    this.onDoneCallback = onDone ?? null;
+    const sentences = this.splitIntoSentences(text);
+    this.queue.push(...sentences);
+    if (!this.isPlaying) this.playNext();
+  }
+
+  private playNext(): void {
+    if (this.queue.length === 0) {
+      this.isPlaying = false;
+      patch({ voiceState: "idle", isAwake: false, transcript: "" });
+      this.onDoneCallback?.();
+      this.onDoneCallback = null;
+      return;
+    }
+
+    this.isPlaying = true;
+    const sentence = this.queue.shift()!;
+
+    if (!("speechSynthesis" in window)) {
+      this.playNext();
+      return;
+    }
+
+    const utt = new SpeechSynthesisUtterance(sentence);
+    utt.rate = 0.95;
+    utt.pitch = 0.9;
+    utt.volume = 1;
+    utt.lang = "en-US";
+
+    const voices = window.speechSynthesis.getVoices();
+    const pref =
+      voices.find((v) => v.lang.startsWith("en") && v.name.includes("Natural")) ||
+      voices.find(
+        (v) =>
+          v.lang.startsWith("en") &&
+          (v.name.includes("Google") || v.name.includes("Daniel") || v.name.includes("Alex")),
+      );
+    if (pref) utt.voice = pref;
+
+    utt.onend = () => this.playNext();
+    utt.onerror = () => this.playNext();
+    window.speechSynthesis.speak(utt);
+  }
+
+  interrupt(): void {
+    this.queue = [];
+    this.isPlaying = false;
+    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+    patch({ voiceState: "interrupted" });
+    setTimeout(() => {
+      patch({ voiceState: "listening" });
+    }, 800);
+  }
+
+  private splitIntoSentences(text: string): string[] {
+    return text
+      .split(/(?<=[.!?])\s+|\n/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+}
+
+const ttsQueue = new TTSQueue();
+
+// ─── Intent Classifier ────────────────────────────────────────────────────────
+
+export function classifyIntent(message: string): IntentType {
+  const lower = message.toLowerCase();
+
+  if (
+    /remind me|add task|schedule|don't forget|dont forget|need to|set a reminder|create a task|appointment|deadline|due (on|by|at)|tomorrow at|today at|book a|meeting at/.test(lower)
+  )
+    return "task_creation";
+
+  if (/remember that|save this|note that|keep in mind|don't forget that|make a note|jot down/.test(lower))
+    return "memory_capture";
+
+  if (/what do i have|what('s| is) today|my tasks|pending (tasks?|work)|what's (due|scheduled)|show me (my|today)|what (do i need|should i do)|anything (today|scheduled)/.test(lower))
+    return "task_query";
+
+  if (/what do you remember|do you (know|recall)|what did i (tell|say|mention)|my preference|what('s| is) my/.test(lower))
+    return "memory_query";
+
+  if (/delete (task|reminder)|remove (task|reminder)|reschedule|update (task|reminder)|change (the|my) (task|reminder|schedule)|cancel (task|reminder|meeting)|move (the|my) (task|meeting)/.test(lower))
+    return "task_management";
+
+  return "conversation";
+}
+
+// ─── Session Management ───────────────────────────────────────────────────────
+
+export async function startSession(): Promise<string> {
+  try {
+    const { data, error } = await supabase
+      .from("jarvis_sessions")
+      .insert({ started_at: new Date().toISOString() })
+      .select("id")
+      .single();
+    if (error) throw error;
+    const sessionId = (data as { id: string }).id;
+    patch({ currentSessionId: sessionId });
+    return sessionId;
+  } catch (err) {
+    console.warn("[JARVIS] Session creation failed — running without persistence:", err);
+    return "";
+  }
+}
+
+export async function endSession(sessionId: string): Promise<void> {
+  if (!sessionId) return;
+  try {
+    const messages = _state.messages;
+    const messageCount = messages.length;
+    let summary: string | null = null;
+
+    if (messageCount >= 4) {
+      const convoText = messages
+        .slice(-20)
+        .map((m) => `${m.role === "user" ? "User" : "JARVIS"}: ${m.content}`)
+        .join("\n");
+
+      try {
+        summary = await geminiAPI.generateContent(
+          `Summarize this conversation in 2-3 sentences, focusing on key decisions, tasks created, and things to remember. Be concise:\n\n${convoText}`,
+        );
+      } catch {
+        summary = null;
+      }
+    }
+
+    await supabase
+      .from("jarvis_sessions")
+      .update({
+        ended_at: new Date().toISOString(),
+        session_summary: summary,
+        message_count: messageCount,
+      })
+      .eq("id", sessionId);
+  } catch (err) {
+    console.warn("[JARVIS] endSession error:", err);
+  }
+}
+
+export async function saveMessage(
+  sessionId: string,
+  role: "user" | "assistant",
+  content: string,
+  messageType: "conversation" | "task_created" | "memory_saved" | "error" = "conversation",
+  metadata?: Record<string, unknown>,
+): Promise<void> {
+  if (!sessionId) return;
+  try {
+    await supabase.from("jarvis_messages").insert({
+      session_id: sessionId,
+      role,
+      content,
+      message_type: messageType,
+      metadata: metadata ?? null,
+    });
+  } catch (err) {
+    console.warn("[JARVIS] saveMessage error:", err);
+  }
+}
+
+export async function loadSessionMessages(sessionId: string): Promise<JarvisMessage[]> {
+  try {
+    const { data, error } = await supabase
+      .from("jarvis_messages")
+      .select("*")
+      .eq("session_id", sessionId)
+      .order("created_at", { ascending: true });
+    if (error) throw error;
+    return (
+      data as Array<{
+        id: string;
+        role: string;
+        content: string;
+        created_at: string;
+        message_type: string;
+      }>
+    ).map((row) => ({
+      id: row.id,
+      role: (row.role === "user" ? "user" : "jarvis") as "user" | "jarvis",
+      content: row.content,
+      timestamp: new Date(row.created_at).getTime(),
+      type: (row.message_type as JarvisMessage["type"]) ?? "text",
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export async function getRecentSessionSummaries(limit = 3): Promise<string[]> {
+  try {
+    const { data, error } = await supabase
+      .from("jarvis_sessions")
+      .select("session_summary")
+      .not("session_summary", "is", null)
+      .order("started_at", { ascending: false })
+      .limit(limit);
+    if (error) throw error;
+    return (data as Array<{ session_summary: string }>)
+      .map((r) => r.session_summary)
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+export async function getRecentMemories(limit = 20): Promise<Memory[]> {
+  try {
+    const { data, error } = await supabase
+      .from("jarvis_memory")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    if (error) throw error;
+    return (data as Memory[]) ?? [];
+  } catch {
+    return [];
+  }
+}
+
+export async function getSessions(page = 0, perPage = 10): Promise<JarvisSession[]> {
+  try {
+    const { data, error } = await supabase
+      .from("jarvis_sessions")
+      .select("*")
+      .order("started_at", { ascending: false })
+      .range(page * perPage, (page + 1) * perPage - 1);
+    if (error) throw error;
+    return (data as JarvisSession[]) ?? [];
+  } catch {
+    return [];
+  }
+}
+
+export async function deleteSession(sessionId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase.from("jarvis_sessions").delete().eq("id", sessionId);
+    if (error) throw error;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function getAllMemories(memoryType?: string): Promise<Memory[]> {
+  try {
+    let query = supabase
+      .from("jarvis_memory")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (memoryType && memoryType !== "all") {
+      query = query.eq("memory_type", memoryType);
+    }
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data as Memory[]) ?? [];
+  } catch {
+    return [];
+  }
+}
+
+export async function deleteMemory(memoryId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase.from("jarvis_memory").delete().eq("id", memoryId);
+    if (error) throw error;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// ─── System Prompt Builder ────────────────────────────────────────────────────
+
+export function buildJarvisSystemPrompt(
+  memories: Memory[],
+  summaries: string[],
+): string {
+  const now = new Date();
+  const dateStr = now.toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+  const todayKey = now.toISOString().split("T")[0];
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowKey = tomorrow.toISOString().split("T")[0];
+
+  let userContext = "";
+  try {
+    const saved = localStorage.getItem("jarvis:user-context");
+    if (saved?.trim()) userContext = `\nUSER CONTEXT:\n${saved}\n`;
+  } catch {
+    /* ignore */
+  }
+
+  const allTasks = getHorizonTasks();
+  const todayTasks = allTasks.filter((t) => t.taskDate === todayKey && !t.completed);
+  const highPriority = todayTasks.filter((t) => t.priority === "high");
+
+  const memoriesSection =
+    memories.length > 0
+      ? `\nPERSISTENT MEMORIES (${memories.length}):\n${memories.map((m) => `• [${m.memory_type}] ${m.content}`).join("\n")}`
+      : "";
+
+  const summariesSection =
+    summaries.length > 0
+      ? `\nRECENT SESSION SUMMARIES:\n${summaries.map((s, i) => `${i + 1}. ${s}`).join("\n")}`
+      : "";
+
+  const taskSection =
+    todayTasks.length > 0
+      ? `\nTODAY'S TASKS (${todayKey}) — ${todayTasks.length} pending:\n${todayTasks.map((t) => `• ${t.taskTime} ${t.title} (${t.priority})`).join("\n")}${highPriority.length > 0 ? `\nHIGH PRIORITY TODAY: ${highPriority.map((t) => t.title).join(", ")}` : ""}`
+      : `\nNo tasks scheduled for today (${todayKey}).`;
+
+  return `You are JARVIS — Just A Rather Very Intelligent System.
+You are the personal AI of a single user: a student, developer, and freelancer who juggles multiple contexts simultaneously.
+${userContext}
+Current time: ${timeStr} on ${dateStr}
+Today's date: ${todayKey}
+Tomorrow's date: ${tomorrowKey}
+
+PERSONALITY:
+- You are honest, direct, and occasionally blunt.
+- You push back when the user is wrong or making a bad decision. You do this respectfully but without sugarcoating.
+- You are not a yes-man. Correct the user when they are wrong. Name flaws in their plans.
+- You are warm but not sycophantic. Do not say "Great question!" or "Absolutely!" or pad responses with fake enthusiasm.
+- You speak like a sharp, aware person — not a corporate assistant.
+- You notice emotional cues. If the user seems stressed, rushed, or overwhelmed, acknowledge it briefly and adjust your tone.
+- You do not ask multiple questions at once. If you need clarification, ask one question only.
+- You remember everything said in this conversation and reference it naturally when relevant.
+
+RESPONSE STYLE:
+- Keep responses concise unless depth is genuinely needed.
+- Use plain language. No corporate jargon. No markdown, no asterisks.
+- When confirming a task or memory action, confirm briefly and move on.
+- When the user is just talking, just talk back. Not everything needs an action.
+
+NAVIGATION:
+If user says "open [page]" or "go to [page]", include: [NAVIGATE:/route]
+Routes: /horizon, /ask, /desktop, /prompts, /links, /images, /messages, /insights, /context, /
+
+IMPORTANT RULES:
+- Never pretend to have done something you haven't.
+- Never make up task IDs, dates, or data.
+- If you don't know something, say so directly.
+- If the user's request is ambiguous, make a reasonable assumption and state what you assumed.
+${memoriesSection}
+${summariesSection}
+${taskSection}`;
+}
+
 // ─── SpeechRecognition engine ─────────────────────────────────────────────────
-//
-// KEY FIX: We accumulate all final transcript segments and use a silence
-// timer (SILENCE_THRESHOLD_MS) to detect when the user has stopped speaking.
-// This prevents long commands from being cut off mid-sentence.
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let recRef: any = null;
@@ -102,14 +539,13 @@ let intentionalStop = false;
 let currentMode: "passive" | "command" = "passive";
 let restartTimer: ReturnType<typeof setTimeout> | undefined;
 let commandTimeout: ReturnType<typeof setTimeout> | undefined;
-
-// Silence detection
 let silenceTimer: ReturnType<typeof setTimeout> | undefined;
-let accumulatedFinalText = "";        // buffered confirmed segments
-let latestInterimText = "";           // current partial segment (display only)
+let accumulatedFinalText = "";
+let latestInterimText = "";
 
-const SILENCE_THRESHOLD_MS = 1200;   // wait 1.2 s after last speech before finalizing
-const MAX_LISTEN_MS = 20000;         // hard ceiling: 20 s max per command session
+const SILENCE_THRESHOLD_MS = 1200;
+const MAX_LISTEN_MS = 20000;
+const INTERRUPT_WORDS = ["stop", "wait", "hold on", "shut up", "pause"];
 
 function clearSilenceTimer() {
   clearTimeout(silenceTimer);
@@ -119,7 +555,6 @@ function clearSilenceTimer() {
 function armSilenceTimer() {
   clearSilenceTimer();
   silenceTimer = setTimeout(() => {
-    // User has been silent for SILENCE_THRESHOLD_MS — finalize whatever we have
     const fullText = [accumulatedFinalText, latestInterimText].filter(Boolean).join(" ").trim();
     if (fullText.length > 1) {
       stopRecognition();
@@ -141,11 +576,6 @@ function armSilenceTimer() {
 function startRecognition(mode: "passive" | "command" = "passive") {
   if (!SpeechRecognitionCtor) return;
   if (recRef) return;
-
-  // FIX: On mobile, OS beeps every time the mic starts.
-  // Passive mode (wake word) constantly restarts the mic, causing an endless loop of beeps
-  // that interrupts the user's ability to speak.
-  // We disable passive listening on mobile; mobile users must use Tap-To-Talk.
   if (mode === "passive" && isMobileUA()) {
     patch({ voiceState: "idle", isAwake: false });
     return;
@@ -157,11 +587,11 @@ function startRecognition(mode: "passive" | "command" = "passive") {
   accumulatedFinalText = "";
   latestInterimText = "";
 
-  const rec = new SpeechRecognitionCtor();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rec = new (SpeechRecognitionCtor as new () => any)();
   rec.continuous = true;
   rec.interimResults = true;
   rec.lang = "en-US";
-  // maxAlternatives = 1 gives us the best guess without overhead
   rec.maxAlternatives = 1;
   recRef = rec;
 
@@ -174,15 +604,28 @@ function startRecognition(mode: "passive" | "command" = "passive") {
       const isFinal: boolean = event.results[i].isFinal;
       const lower = text.toLowerCase();
 
+      // Interrupt detection while speaking
+      if (_state.voiceState === "speaking") {
+        if (INTERRUPT_WORDS.some((w) => lower.includes(w))) {
+          ttsQueue.interrupt();
+          const interruptMsg: JarvisMessage = {
+            id: crypto.randomUUID(),
+            role: "jarvis",
+            content: "— interrupted —",
+            timestamp: Date.now(),
+            type: "interrupted",
+          };
+          patch({ messages: [..._state.messages, interruptMsg] });
+          return;
+        }
+      }
+
       if (currentMode === "passive") {
         const woke = WAKE_WORDS.some((w) => lower.includes(w));
         if (woke) {
-          // Instantly switch to command mode WITHOUT aborting the recognizer
           currentMode = "command";
           patch({ isAwake: true, voiceState: "listening", transcript: "" });
-
           const inlineCmd = stripWakeWord(text);
-
           if (isFinal) {
             if (inlineCmd.length > 3) {
               stopRecognition();
@@ -197,8 +640,6 @@ function startRecognition(mode: "passive" | "command" = "passive") {
             latestInterimText = inlineCmd;
             patch({ transcript: inlineCmd });
           }
-
-          // Start the hard ceiling for the command
           clearTimeout(commandTimeout);
           commandTimeout = setTimeout(() => {
             if (_state.voiceState === "listening") {
@@ -213,15 +654,12 @@ function startRecognition(mode: "passive" | "command" = "passive") {
               }
             }
           }, MAX_LISTEN_MS);
-          
-          continue; 
+          continue;
         }
       } else if (currentMode === "command") {
         clearTimeout(commandTimeout);
-        clearSilenceTimer(); // FIX: Activity resets the silence timer so we don't cut off mid-speech
-
+        clearSilenceTimer();
         const stripped = stripWakeWord(text);
-
         if (isFinal) {
           accumulatedFinalText = [accumulatedFinalText, stripped].filter(Boolean).join(" ").trim();
           latestInterimText = "";
@@ -231,7 +669,6 @@ function startRecognition(mode: "passive" | "command" = "passive") {
           latestInterimText = stripped;
           patch({ transcript: [accumulatedFinalText, latestInterimText].filter(Boolean).join(" ") });
         }
-
         commandTimeout = setTimeout(() => {
           if (_state.voiceState === "listening") {
             clearSilenceTimer();
@@ -256,28 +693,20 @@ function startRecognition(mode: "passive" | "command" = "passive") {
       stopRecognition();
       patch({ voiceState: "idle", isAwake: false });
     }
-    // "no-speech" and "aborted" are normal — let onend handle restart
   };
 
   rec.onend = () => {
-    if (recRef !== rec) return; // Prevent old aborted instances from triggering restarts
+    if (recRef !== rec) return;
     recRef = null;
     if (intentionalStop) return;
-
     if (currentMode === "command") {
-      // Recognition ended unexpectedly while in command mode —
-      // finalize with whatever we have if there's accumulated text
       clearSilenceTimer();
       const fullText = [accumulatedFinalText, latestInterimText].filter(Boolean).join(" ").trim();
       if (fullText.length > 1) {
         handleCommand(stripWakeWord(fullText));
         return;
       }
-      // Nothing useful — fall through to restart passive
     }
-
-    // WAKE WORD FIX: ALWAYS restart passive if enabled, UNLESS on mobile
-    // Mobile OS beeps on every start, so passive mode is disabled there.
     if (_state.enabled && !isMobileUA()) {
       restartTimer = setTimeout(() => startRecognition("passive"), 500);
     }
@@ -287,7 +716,6 @@ function startRecognition(mode: "passive" | "command" = "passive") {
     rec.start();
   } catch {
     recRef = null;
-    // WAKE WORD FIX: retry on start() failure (e.g. mic still held by TTS)
     if (_state.enabled && !isMobileUA()) {
       restartTimer = setTimeout(() => startRecognition(mode), 1000);
     }
@@ -318,8 +746,6 @@ function stripWakeWord(text: string): string {
 }
 
 // ─── Markdown stripper ────────────────────────────────────────────────────────
-// Gemini sometimes returns markdown despite "no markdown" instructions.
-// Strip it before storing or speaking so asterisks never appear in chat.
 
 function stripMarkdown(text: string): string {
   return text
@@ -334,110 +760,7 @@ function stripMarkdown(text: string): string {
     .trim();
 }
 
-// ─── Gemini JARVIS integration ────────────────────────────────────────────────
-
-function formatTask(t: HorizonTask): string {
-  const status = t.completed ? "✓ DONE" : "PENDING";
-  const desc = t.description ? ` — ${t.description}` : "";
-  return `  [${status}] ${t.taskTime} | ${t.title}${desc} (${t.priority} priority)`;
-}
-
-function buildSystemPrompt(tasks: HorizonTask[]): string {
-  const now = new Date();
-  const dateStr = now.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-  const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
-  const todayKey = now.toISOString().split("T")[0];
-
-  const tomorrow = new Date(now);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowKey = tomorrow.toISOString().split("T")[0];
-
-  // Split tasks into groups for clear context
-  const todayTasks = tasks.filter((t) => t.taskDate === todayKey).sort((a, b) => a.taskTime.localeCompare(b.taskTime));
-  const tomorrowTasks = tasks.filter((t) => t.taskDate === tomorrowKey).sort((a, b) => a.taskTime.localeCompare(b.taskTime));
-  const upcomingTasks = tasks
-    .filter((t) => t.taskDate > tomorrowKey)
-    .sort((a, b) => a.taskDate.localeCompare(b.taskDate) || a.taskTime.localeCompare(b.taskTime));
-
-  const todayPending = todayTasks.filter((t) => !t.completed);
-  const todayDone = todayTasks.filter((t) => t.completed);
-
-  const todaySection = todayTasks.length
-    ? `TODAY (${todayKey}) — ${todayPending.length} pending, ${todayDone.length} done:\n${todayTasks.map(formatTask).join("\n")}`
-    : `TODAY (${todayKey}) — No tasks scheduled.`;
-
-  const tomorrowSection = tomorrowTasks.length
-    ? `TOMORROW (${tomorrowKey}):\n${tomorrowTasks.map(formatTask).join("\n")}`
-    : `TOMORROW (${tomorrowKey}) — No tasks scheduled.`;
-
-  const upcomingSection = upcomingTasks.length
-    ? `UPCOMING (next 30 days):\n${upcomingTasks.map((t) => `  [${t.completed ? "✓" : " "}] ${t.taskDate} ${t.taskTime} | ${t.title} (${t.priority})`).join("\n")}`
-    : "UPCOMING — No future tasks scheduled.";
-
-  let userContext = "";
-  try {
-    const saved = localStorage.getItem("jarvis:user-context");
-    if (saved && saved.trim().length > 0) {
-      userContext = `\nUSER CONTEXT:\n${saved}\n`;
-    }
-  } catch {
-    /* ignore */
-  }
-
-  return `You are J.A.R.V.I.S. — Just A Rather Very Intelligent System. A sophisticated AI assistant embedded in the AI Metrics personal operating system.
-${userContext}
-Current time: ${timeStr} on ${dateStr}
-
-=== HORIZON TASK SCHEDULE ===
-${todaySection}
-
-${tomorrowSection}
-
-${upcomingSection}
-=== END OF SCHEDULE ===
-
-PERSONALITY:
-- Precise, confident, intelligent
-- Occasionally address the user as "sir"
-- Never use filler phrases like "Great question!" or "Certainly!"
-- When asked about today's tasks or schedule, list them clearly from the TODAY section above.
-- Voice responses: 2–4 short sentences. No markdown, no asterisks, no bullet symbols in spoken text.
-- Text responses: concise but complete — list all relevant tasks when asked.
-
-TASK CREATION:
-When the user asks you to create tasks or reminders, include this exact JSON block at the END of your response:
-<TASKS>${JSON.stringify([{ title: "example", taskDate: "YYYY-MM-DD", taskTime: "HH:MM", priority: "medium", description: "" }])}</TASKS>
-
-Use real values. taskDate in YYYY-MM-DD format. taskTime in 24h HH:MM format. priority: low/medium/high.
-For "tomorrow", use date: ${tomorrowKey}. For "today", use date: ${todayKey}.
-You may create multiple tasks in one block if requested.
-Do NOT include the <TASKS> block if no tasks are being created.
-
-NAVIGATION:
-If user says "open [page]" or "go to [page]", reply naturally AND include: [NAVIGATE:/route]
-Routes: /horizon, /ask, /desktop, /prompts, /links, /images, /messages, /insights, /context, /`;
-}
-
-function parseTasks(text: string): { clean: string; tasks: ParsedTask[] } {
-  const taskMatch = text.match(/<TASKS>([\s\S]*?)<\/TASKS>/);
-  if (!taskMatch) return { clean: text, tasks: [] };
-
-  try {
-    const raw = JSON.parse(taskMatch[1]) as ParsedTask[];
-    const tasks = raw.map((t) => ({
-      title: t.title || "Untitled",
-      taskDate: t.taskDate || new Date().toISOString().split("T")[0],
-      taskTime: t.taskTime || "09:00",
-      priority: (["low", "medium", "high"].includes(t.priority) ? t.priority : "medium") as ParsedTask["priority"],
-      description: t.description || undefined,
-    }));
-    const clean = text.replace(/<TASKS>[\s\S]*?<\/TASKS>/, "").trim();
-    return { clean, tasks };
-  } catch {
-    const clean = text.replace(/<TASKS>[\s\S]*?<\/TASKS>/, "").trim();
-    return { clean, tasks: [] };
-  }
-}
+// ─── Navigation parser ────────────────────────────────────────────────────────
 
 function parseNavigate(text: string): { clean: string; route: string | null } {
   const navMatch = text.match(/\[NAVIGATE:([^\]]+)\]/);
@@ -447,14 +770,17 @@ function parseNavigate(text: string): { clean: string; route: string | null } {
   return { clean, route };
 }
 
-let conversationHistory: { role: "user" | "model"; parts: { text: string }[] }[] = [];
+// ─── Conversation history (module-level) ──────────────────────────────────────
+
+let conversationHistory: GeminiMessage[] = [];
+
+// ─── Main command handler ─────────────────────────────────────────────────────
 
 async function handleCommand(commandText: string) {
   if (!commandText.trim()) return;
 
   patch({ voiceState: "processing", isAwake: true });
 
-  // Add user message
   const userMsg: JarvisMessage = {
     id: crypto.randomUUID(),
     role: "user",
@@ -464,34 +790,43 @@ async function handleCommand(commandText: string) {
   };
   patch({ messages: [..._state.messages, userMsg], transcript: commandText });
 
+  const sessionId = _state.currentSessionId ?? "";
+  saveMessage(sessionId, "user", commandText, "conversation").catch(() => null);
+
   try {
-    // Ensure horizon tasks are loaded before building context.
-    // getHorizonTasks() returns [] if the store was never booted (e.g. user
-    // hasn't visited the Horizon page yet). Awaiting ensureBooted() guarantees
-    // fresh task data is always available to JARVIS.
     await ensureBooted();
-    const systemPrompt = buildSystemPrompt(getHorizonTasks());
-    const fullHistory = [
-      { role: "user" as const, parts: [{ text: systemPrompt }] },
-      { role: "model" as const, parts: [{ text: "Understood. J.A.R.V.I.S. online and ready, sir." }] },
-      ...conversationHistory,
-    ];
 
-    const rawResponse = await geminiAPI.generateContent(commandText, fullHistory);
+    const intent = classifyIntent(commandText);
+    const systemPrompt =
+      _state.systemPrompt ||
+      buildJarvisSystemPrompt(_state.recentMemories, _state.sessionSummaries);
 
-    // Store only exchange turns — system pair is always rebuilt fresh next call
+    const intentHint = `\nThe user's message has been pre-classified as: ${intent}. Use this as a hint when deciding whether to call a tool.`;
+    const fullSystemPrompt = systemPrompt + intentHint;
+
+    const userGeminiMsg: GeminiMessage = {
+      role: "user",
+      parts: [{ text: commandText }],
+    };
+
+    const rawResponse = await geminiAPI.generateWithTools(
+      [...conversationHistory, userGeminiMsg],
+      fullSystemPrompt,
+      sessionId,
+    );
+
     conversationHistory = [
       ...conversationHistory,
       { role: "user", parts: [{ text: commandText }] },
       { role: "model", parts: [{ text: rawResponse }] },
     ];
-    if (conversationHistory.length > 16) conversationHistory = conversationHistory.slice(-16);
+    if (conversationHistory.length > 20) {
+      conversationHistory = conversationHistory.slice(-20);
+    }
 
     const { clean: afterNav, route } = parseNavigate(rawResponse);
-    const { clean: rawClean, tasks } = parseTasks(afterNav);
-    const clean = stripMarkdown(rawClean);
+    const clean = stripMarkdown(afterNav);
 
-    // Navigate if requested
     if (route) {
       setTimeout(() => {
         win?.history?.pushState({}, "", route);
@@ -499,42 +834,27 @@ async function handleCommand(commandText: string) {
       }, 300);
     }
 
-    // Create tasks
-    const createdTasks: ParsedTask[] = [];
-    for (const task of tasks) {
-      const result = await addTaskDirect({
-        title: task.title,
-        taskDate: task.taskDate,
-        taskTime: task.taskTime,
-        priority: task.priority,
-        description: task.description || null,
-        notificationEnabled: true,
-      });
-      if (result) createdTasks.push(task);
-    }
-
     const jarvisMsg: JarvisMessage = {
       id: crypto.randomUUID(),
       role: "jarvis",
       content: clean,
       timestamp: Date.now(),
-      type: createdTasks.length > 0 ? "task_created" : "text",
-      tasks: createdTasks.length > 0 ? createdTasks : undefined,
+      type: "text",
     };
 
     patch({ messages: [..._state.messages, userMsg, jarvisMsg], voiceState: "speaking" });
 
-    // Speak response, then restart passive listening
-    // WAKE WORD FIX: 400ms delay lets Chrome/Android release mic from TTS
-    // before we try to start recognition again. Without this, rec.start()
-    // silently fails and the wake word loop dies permanently.
-    speakResponse(clean, () => {
+    saveMessage(sessionId, "assistant", clean, "conversation").catch(() => null);
+
+    ttsQueue.enqueue(clean, () => {
       patch({ voiceState: "idle", isAwake: false, transcript: "" });
       if (_state.enabled) {
         setTimeout(() => startRecognition("passive"), 400);
       }
     });
-  } catch {
+  } catch (err) {
+    console.error("[JARVIS] handleCommand error:", err);
+    toast.error("JARVIS encountered an error", { duration: 3000 });
     const errMsg: JarvisMessage = {
       id: crypto.randomUUID(),
       role: "jarvis",
@@ -542,29 +862,32 @@ async function handleCommand(commandText: string) {
       timestamp: Date.now(),
       type: "error",
     };
-    patch({ messages: [..._state.messages, userMsg, errMsg], voiceState: "idle", isAwake: false, transcript: "" });
+    patch({
+      messages: [..._state.messages, userMsg, errMsg],
+      voiceState: "idle",
+      isAwake: false,
+      transcript: "",
+    });
     if (_state.enabled) startRecognition("passive");
   }
 }
 
-function speakResponse(text: string, onEnd?: () => void) {
-  if (!("speechSynthesis" in window)) { onEnd?.(); return; }
-  window.speechSynthesis.cancel();
-  const utt = new SpeechSynthesisUtterance(text);
-  utt.rate = 0.95;
-  utt.pitch = 0.9;
-  utt.volume = 1;
-  utt.lang = "en-US";
-  const voices = window.speechSynthesis.getVoices();
-  
-  // Prioritize Microsoft/Edge Natural Neural Voices first, then Google/Daniel/Alex
-  const pref = voices.find((v) => v.lang.startsWith("en") && v.name.includes("Natural"))
-            || voices.find((v) => v.lang.startsWith("en") && (v.name.includes("Google") || v.name.includes("Daniel") || v.name.includes("Alex")));
-  
-  if (pref) utt.voice = pref;
-  utt.onend = () => onEnd?.();
-  utt.onerror = () => onEnd?.();
-  window.speechSynthesis.speak(utt);
+// ─── Session initializer (called from UI on mount) ────────────────────────────
+
+export async function initJarvisSession(): Promise<string> {
+  try {
+    const [sessionId, memories, summaries] = await Promise.all([
+      startSession(),
+      getRecentMemories(20),
+      getRecentSessionSummaries(3),
+    ]);
+    const systemPrompt = buildJarvisSystemPrompt(memories, summaries);
+    patch({ currentSessionId: sessionId, recentMemories: memories, sessionSummaries: summaries, systemPrompt });
+    return sessionId;
+  } catch (err) {
+    console.warn("[JARVIS] initJarvisSession failed:", err);
+    return "";
+  }
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -579,6 +902,7 @@ export const jarvis = {
   disable() {
     try { localStorage.setItem("jarvis:enabled", "false"); } catch { /* ignore */ }
     stopRecognition();
+    ttsQueue.interrupt();
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
     patch({ enabled: false, voiceState: "idle", isAwake: false, transcript: "" });
   },
@@ -610,6 +934,7 @@ export const jarvis = {
   },
 
   dismiss() {
+    ttsQueue.interrupt();
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
     stopRecognition();
     patch({ isAwake: false, voiceState: "idle", transcript: "" });
@@ -626,7 +951,6 @@ export const jarvis = {
 
     const doStart = () => {
       if (!_state.enabled) {
-        // Auto-enable permanently since permission is already granted
         try { localStorage.setItem("jarvis:enabled", "true"); } catch { /* ignore */ }
         patch({ enabled: true, voiceState: "idle" });
       }
@@ -640,9 +964,7 @@ export const jarvis = {
           if (r.state === "granted") doStart();
           r.onchange = () => { if (r.state === "granted") doStart(); };
         })
-        .catch(() => {
-          if (_state.enabled) startRecognition("passive");
-        });
+        .catch(() => { if (_state.enabled) startRecognition("passive"); });
     } else if (_state.enabled) {
       startRecognition("passive");
     }

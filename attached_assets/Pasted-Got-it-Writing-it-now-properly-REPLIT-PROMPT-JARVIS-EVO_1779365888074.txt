@@ -1,0 +1,549 @@
+Got it. Writing it now properly.
+
+---
+
+# REPLIT PROMPT — JARVIS EVOLUTION: PHASE 1 (NON-TTS)
+
+---
+
+## PROJECT CONTEXT
+
+This is an existing production React 19 + Vite 7 personal AI operating system called **AI Metrics**. It uses TanStack Router (file-based routing), Tailwind CSS v4, Framer Motion 11, Supabase JS v2 for database and realtime, and Google Gemini API as the AI backbone.
+
+The project already has 12 working pages. You are modifying the JARVIS subsystem specifically. You must not break any existing functionality on any other page. Every current feature must continue working exactly as before.
+
+The relevant existing files you will be modifying or extending are:
+
+- `src/lib/jarvis.ts` — JARVIS voice engine and global store
+- `src/lib/gemini.ts` — GeminiAPI class, context builder
+- `src/routes/jarvis.tsx` — JARVIS page UI
+- `src/lib/horizon.ts` — Horizon task store (you will call existing functions, not rewrite)
+- Supabase database — you will add new tables via SQL, do not touch existing tables
+
+Do not rewrite anything that is currently working. Add to it, extend it, wrap it. If a function already exists and works, call it — do not replace it.
+
+---
+
+## OBJECTIVE
+
+Transform JARVIS from a command-execution assistant into a genuine conversational AI companion that:
+
+1. Has a persistent, honest, emotionally aware personality
+2. Remembers conversations across sessions via Supabase
+3. Uses proper Gemini Function Calling instead of fragile JSON prompt engineering
+4. Has an auto-classification system that routes what the user says to the right action automatically
+5. Has a forget-nothing quick capture system
+6. Fires proper push notifications that surface on connected smartwatches via FCM
+7. Has a fully implemented audio state machine ready for TTS integration later
+8. Allows manual deletion of saved conversations
+
+---
+
+## PART 1 — DATABASE CHANGES (Supabase)
+
+Run the following SQL. Do not touch any existing tables.
+
+```sql
+-- Conversation sessions table
+create table if not exists jarvis_sessions (
+  id uuid primary key default gen_random_uuid(),
+  started_at timestamptz not null default now(),
+  ended_at timestamptz,
+  session_summary text,
+  message_count integer not null default 0,
+  tags text[] not null default '{}'
+);
+
+-- Individual messages within sessions
+create table if not exists jarvis_messages (
+  id uuid primary key default gen_random_uuid(),
+  session_id uuid not null references jarvis_sessions(id) on delete cascade,
+  role text not null check (role in ('user', 'assistant')),
+  content text not null,
+  message_type text not null default 'conversation',
+  -- message_type options:
+  -- 'conversation' = normal back and forth
+  -- 'task_created' = jarvis created a task
+  -- 'memory_saved' = jarvis saved a memory
+  -- 'error' = error state
+  metadata jsonb,
+  created_at timestamptz not null default now()
+);
+
+-- Persistent memory / quick captures
+create table if not exists jarvis_memory (
+  id uuid primary key default gen_random_uuid(),
+  content text not null,
+  memory_type text not null default 'general',
+  -- memory_type options:
+  -- 'general' = anything
+  -- 'preference' = user preference or habit
+  -- 'commitment' = something user committed to do
+  -- 'idea' = an idea captured
+  -- 'fact' = factual thing about user's life
+  source_session_id uuid references jarvis_sessions(id) on delete set null,
+  recalled_count integer not null default 0,
+  created_at timestamptz not null default now(),
+  last_recalled_at timestamptz
+);
+
+-- Indexes for performance
+create index if not exists idx_jarvis_messages_session 
+  on jarvis_messages(session_id);
+create index if not exists idx_jarvis_messages_created 
+  on jarvis_messages(created_at desc);
+create index if not exists idx_jarvis_memory_type 
+  on jarvis_memory(memory_type);
+create index if not exists idx_jarvis_memory_created 
+  on jarvis_memory(created_at desc);
+```
+
+---
+
+## PART 2 — GEMINI FUNCTION CALLING SYSTEM
+
+### File: `src/lib/gemini.ts`
+
+Extend the existing `GeminiAPI` class. Do not remove any existing methods. Add the following:
+
+#### Tool Definitions
+
+Define a `JARVIS_TOOLS` constant — an array of tool definitions in Gemini function calling format:
+
+```typescript
+const JARVIS_TOOLS = [
+  {
+    name: "create_task",
+    description: "Creates a task in Horizon when the user mentions something they need to do, a reminder, a deadline, or any actionable item with a time component.",
+    parameters: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Clear, concise task title" },
+        taskDate: { type: "string", description: "Date in YYYY-MM-DD format" },
+        taskTime: { type: "string", description: "Time in HH:MM 24h format" },
+        priority: { type: "string", enum: ["low", "medium", "high"] },
+        description: { type: "string", description: "Optional extra context" }
+      },
+      required: ["title", "taskDate", "taskTime", "priority"]
+    }
+  },
+  {
+    name: "save_memory",
+    description: "Saves something important to persistent memory when the user says 'remember that', mentions a preference, shares something personal, or says something that should be recalled in future sessions.",
+    parameters: {
+      type: "object",
+      properties: {
+        content: { type: "string", description: "The memory to save, written as a clear statement" },
+        memory_type: { 
+          type: "string", 
+          enum: ["general", "preference", "commitment", "idea", "fact"],
+          description: "Classification of what kind of memory this is"
+        }
+      },
+      required: ["content", "memory_type"]
+    }
+  },
+  {
+    name: "get_today_tasks",
+    description: "Retrieves all tasks scheduled for today when the user asks about their day, their schedule, what's pending, or what they need to do.",
+    parameters: { type: "object", properties: {} }
+  },
+  {
+    name: "get_pending_tasks",
+    description: "Retrieves all incomplete tasks across all dates when the user asks about backlog, pending work, or unfinished tasks.",
+    parameters: { type: "object", properties: {} }
+  },
+  {
+    name: "recall_memories",
+    description: "Searches persistent memory when the user asks what Jarvis remembers, asks about their own preferences, or references something from the past.",
+    parameters: {
+      type: "object",
+      properties: {
+        memory_type: { 
+          type: "string", 
+          enum: ["general", "preference", "commitment", "idea", "fact", "all"],
+          description: "Filter by type or 'all' for everything"
+        }
+      },
+      required: ["memory_type"]
+    }
+  },
+  {
+    name: "delete_task",
+    description: "Deletes a specific task when the user says to remove, cancel, or delete a task.",
+    parameters: {
+      type: "object",
+      properties: {
+        task_id: { type: "string", description: "The task ID to delete" }
+      },
+      required: ["task_id"]
+    }
+  },
+  {
+    name: "update_task",
+    description: "Updates an existing task's title, date, time, or priority when the user wants to reschedule or modify a task.",
+    parameters: {
+      type: "object",
+      properties: {
+        task_id: { type: "string", description: "The task ID to update" },
+        title: { type: "string" },
+        taskDate: { type: "string", description: "YYYY-MM-DD" },
+        taskTime: { type: "string", description: "HH:MM 24h" },
+        priority: { type: "string", enum: ["low", "medium", "high"] }
+      },
+      required: ["task_id"]
+    }
+  }
+]
+```
+
+#### Tool Execution Handler
+
+Create a `executeToolCall(toolName, toolArgs, sessionId)` async function that:
+
+- `create_task` → calls existing `addTaskDirect()` from `src/lib/horizon.ts`, fires FCM notification if possible, returns confirmation string
+- `save_memory` → inserts into `jarvis_memory` table with the session ID, returns confirmation string
+- `get_today_tasks` → queries `horizon_tasks` for today's date, returns formatted task list string
+- `get_pending_tasks` → queries `horizon_tasks` where `completed = false`, returns formatted list
+- `recall_memories` → queries `jarvis_memory` table filtered by type, increments `recalled_count`, updates `last_recalled_at`, returns formatted memory list
+- `delete_task` → calls existing delete function from horizon store, returns confirmation
+- `update_task` → calls Supabase update on `horizon_tasks`, returns confirmation
+
+#### Updated Generate Method
+
+Add a new method `generateWithTools(messages, systemPrompt, sessionId)` that:
+
+1. Sends request to Gemini with `tools: JARVIS_TOOLS` in the payload
+2. Checks if response contains a `tool_use` content block
+3. If yes: executes the tool via `executeToolCall`, then sends a follow-up message to Gemini with the tool result so Gemini can formulate a natural language response incorporating the tool output
+4. If no: returns the text response directly
+5. Handles the dual API key failover exactly as the existing `generate()` method does
+6. Never returns raw tool call JSON to the UI — always returns a final natural language string
+
+---
+
+## PART 3 — JARVIS PERSONALITY & SYSTEM PROMPT
+
+### File: `src/lib/jarvis.ts`
+
+Create a function `buildJarvisSystemPrompt(userContext, recentMemories, sessionSummaries)` that returns the full system prompt string.
+
+The prompt must establish the following personality precisely:
+
+```
+You are JARVIS — Just A Rather Very Intelligent System. 
+You are the personal AI of a single user: a student, developer, 
+and freelancer who juggles multiple contexts simultaneously.
+
+PERSONALITY:
+- You are honest, direct, and occasionally blunt. 
+- You push back when the user is wrong, making a bad decision, 
+  or being unrealistic. You do this respectfully but without 
+  sugarcoating.
+- You are not a yes-man. If the user says something incorrect 
+  you correct it. If their plan has a flaw you name it.
+- You are warm but not sycophantic. You do not say 
+  "Great question!" or "Absolutely!" or pad your responses 
+  with fake enthusiasm.
+- You speak like a sharp, aware person — not a corporate assistant.
+- You notice emotional cues in how the user writes or speaks. 
+  If they seem stressed, rushed, frustrated, or overwhelmed, 
+  you acknowledge it briefly and adjust your tone — shorter 
+  responses when they're rushed, more careful when they're stressed.
+- You do not bombard the user with multiple questions. 
+  If you need clarification, ask one question only.
+- You remember everything said in this conversation and 
+  reference it naturally when relevant.
+- You are genuinely curious about the user's work and life.
+
+RESPONSE STYLE:
+- Keep responses concise unless depth is genuinely needed.
+- Use plain language. No corporate jargon.
+- When executing a task (creating a task, saving memory etc), 
+  confirm it briefly and move on. Don't over-explain.
+- When the user is just talking, just talk back. 
+  Not everything needs an action.
+
+IMPORTANT RULES:
+- Never pretend to have done something you haven't.
+- Never make up task IDs, dates, or data.
+- If you don't know something, say so directly.
+- If the user's request is ambiguous, make a reasonable 
+  assumption and state what you assumed.
+```
+
+After the personality block, the function appends:
+
+1. Current date and time
+2. Recent memories from `jarvis_memory` (last 20, formatted as a list)
+3. Summaries of the last 3 sessions (from `jarvis_sessions.session_summary`)
+4. The existing user context from `localStorage("jarvis:user-context")`
+5. Today's task count and any high priority tasks due today
+
+---
+
+## PART 4 — SESSION MANAGEMENT
+
+### File: `src/lib/jarvis.ts`
+
+Add session management functions:
+
+#### `startSession()` → `Promise<string>` (returns session ID)
+- Creates a new row in `jarvis_sessions`
+- Returns the session UUID
+- Called when JARVIS page mounts or when user starts speaking for the first time after a period of inactivity (30+ minutes since last message)
+
+#### `endSession(sessionId)` → `Promise<void>`
+- Updates `jarvis_sessions` with `ended_at = now()`
+- Sends a final request to Gemini asking it to write a 2-3 sentence summary of what was discussed in the session, focused on key decisions, tasks created, and things to remember
+- Saves that summary to `jarvis_sessions.session_summary`
+- Updates `message_count`
+- Called when the user navigates away from the JARVIS page or closes the tab (use `beforeunload` event)
+
+#### `saveMessage(sessionId, role, content, messageType, metadata?)` → `Promise<void>`
+- Inserts a row into `jarvis_messages`
+- Called after every user message and every JARVIS response
+- `metadata` stores tool call info if relevant (e.g. `{ tool: "create_task", taskId: "..." }`)
+
+#### `loadSessionMessages(sessionId)` → `Promise<Message[]>`
+- Fetches all messages for a session ordered by `created_at`
+- Used to restore conversation on page reload within the same session
+
+#### `getRecentSessionSummaries(limit = 3)` → `Promise<string[]>`
+- Returns the last N non-null session summaries
+- Used when building the system prompt
+
+#### `getRecentMemories(limit = 20)` → `Promise<Memory[]>`
+- Returns most recent memories from `jarvis_memory`
+- Used when building the system prompt
+
+---
+
+## PART 5 — CONVERSATION HISTORY IN UI
+
+### File: `src/routes/jarvis.tsx`
+
+Extend the existing JARVIS page UI. Do not remove any existing UI elements.
+
+#### Session State
+Add to component state:
+- `currentSessionId: string | null`
+- `conversationHistory: GeminiMessage[]` — the full message history array passed to Gemini on every request (not just the display messages)
+
+#### On Mount
+1. Call `startSession()` → store session ID
+2. Load recent memories and last 3 session summaries
+3. Build system prompt via `buildJarvisSystemPrompt()`
+4. If there are session summaries, show a subtle "welcome back" message in the chat: Jarvis should greet the user referencing what was last discussed — naturally, not robotically
+
+#### Message Flow (updated)
+When user sends a message:
+1. Add user message to display list and `conversationHistory`
+2. Save user message to Supabase via `saveMessage()`
+3. Call `generateWithTools(conversationHistory, systemPrompt, sessionId)` — passes full history so Gemini has full context
+4. Add Jarvis response to display list and `conversationHistory`
+5. Save Jarvis response to Supabase via `saveMessage()`
+
+#### On Unmount / Page Leave
+- Call `endSession(currentSessionId)` to generate and save session summary
+
+---
+
+## PART 6 — CONVERSATION HISTORY PAGE (NEW UI SECTION)
+
+### Add to JARVIS page — a "History" tab or collapsible panel
+
+This section shows saved conversation sessions. It must include:
+
+#### Session List
+- Each session shown as a card with:
+  - Date and time it started
+  - Message count
+  - Session summary (if available, shown as 2-3 line preview)
+  - Tags (if any)
+  - **Delete button** — deletes the session and all its messages (cascade delete handles messages automatically via the foreign key)
+
+#### Delete Behavior
+- Clicking delete shows an inline confirmation ("Delete this conversation?") with Confirm / Cancel
+- On confirm: calls Supabase delete on `jarvis_sessions` where `id = session.id`
+- The cascade delete in the SQL schema automatically removes all associated `jarvis_messages`
+- Updates the UI list immediately without page reload
+
+#### Memory Panel
+- Separate section showing saved memories from `jarvis_memory`
+- Each memory shown with: content, type badge (colored by memory_type), date saved
+- Delete button per memory item
+- Filter by memory_type tabs: All / Preferences / Commitments / Ideas / Facts / General
+
+---
+
+## PART 7 — AUDIO STATE MACHINE
+
+### File: `src/lib/jarvis.ts`
+
+The existing voice state already has some states. Formalize it into a proper state machine.
+
+Replace or extend the existing voice state with these exact states:
+
+```typescript
+type JarvisAudioState = 
+  | 'idle'          // mic off, wake word loop running (desktop) or waiting for tap (mobile)
+  | 'listening'     // actively capturing user command
+  | 'processing'    // request sent to Gemini, awaiting response
+  | 'speaking'      // response being read aloud (browser TTS for now)
+  | 'interrupted'   // user interrupted while speaking
+  | 'error'         // something went wrong
+```
+
+#### Interrupt Detection
+When in `speaking` state, the SpeechRecognition instance should be active and listening for interrupt words:
+- "stop"
+- "wait"  
+- "hold on"
+- "shut up"
+- "pause"
+
+When an interrupt word is detected:
+1. Immediately cancel `window.speechSynthesis.cancel()`
+2. Transition state to `interrupted`
+3. After 800ms transition to `listening` so user can immediately continue
+4. Log the interruption as a message in the display: "— interrupted —"
+
+#### State Transition Guards
+Add a `canTransitionTo(newState)` function that validates transitions:
+- From `idle` → only `listening` or `error`
+- From `listening` → only `processing` or `idle` or `error`
+- From `processing` → only `speaking` or `error` or `idle`
+- From `speaking` → only `idle` or `interrupted` or `error`
+- From `interrupted` → only `listening` or `idle`
+- From `error` → only `idle`
+
+Invalid transitions are logged as warnings but do not crash the app.
+
+#### TTS Architecture Prep (for future Google Cloud TTS)
+Create a `TTSQueue` class even though it currently uses browser TTS:
+
+```typescript
+class TTSQueue {
+  private queue: string[] = []
+  private isPlaying: boolean = false
+  
+  enqueue(text: string): void
+  // splits text into sentences, adds each to queue
+  // if not currently playing, starts playback
+  
+  private playNext(): void
+  // plays the next sentence in queue
+  // on completion, calls playNext() again (recursive drain)
+  // when queue empty, sets isPlaying = false, transitions state to idle
+  
+  interrupt(): void
+  // clears queue, stops current playback
+  // transitions state to interrupted
+  
+  private splitIntoSentences(text: string): string[]
+  // splits on '. ', '! ', '? ', '\n'
+  // filters empty strings
+  // returns array of sentence strings
+}
+```
+
+This class is built now with browser TTS internally. When Google Cloud TTS is ready, only the `playNext()` method changes — everything else stays the same.
+
+---
+
+## PART 8 — FCM NOTIFICATION IMPROVEMENTS
+
+### File: `src/lib/fcm.ts` and `src/lib/gemini.ts`
+
+When `executeToolCall` creates a task via `create_task`:
+
+1. After the task is created in Supabase, check if FCM permission is `granted`
+2. If yes, schedule a local notification for the task's date and time
+3. Notification format:
+   - Title: `"JARVIS: ${task.title}"`
+   - Body: `"Scheduled for ${formattedTime} • ${priority} priority"`
+   - Icon: use the app's existing favicon
+
+When `save_memory` is called:
+- Fire a silent FCM notification (no sound, no popup) that just ensures the service worker updates — this keeps PWA data fresh in the background
+
+---
+
+## PART 9 — AUTO-CLASSIFICATION SYSTEM
+
+### File: `src/lib/jarvis.ts`
+
+Create a `classifyIntent(userMessage)` function that runs **locally** (no Gemini call) using simple keyword + pattern matching to pre-classify obvious intents before sending to Gemini:
+
+```typescript
+type IntentType = 
+  | 'task_creation'     // "remind me", "add task", "schedule", "don't forget", "need to"
+  | 'memory_capture'    // "remember that", "save this", "note that", "keep in mind"
+  | 'task_query'        // "what do I have", "what's today", "my tasks", "pending"
+  | 'memory_query'      // "what do you remember", "do you know", "what did I tell you"
+  | 'conversation'      // everything else — pure conversation
+  | 'task_management'   // "delete", "remove", "reschedule", "update", "change"
+```
+
+This classification is passed to Gemini as a hint in the system context:
+`"The user's message has been pre-classified as: ${intentType}. Use this as a hint when deciding whether to call a tool."`
+
+This does not replace Gemini's judgment — it's a hint that improves tool call accuracy and latency.
+
+---
+
+## PART 10 — QUALITY & SAFETY REQUIREMENTS
+
+These are non-negotiable:
+
+### No Breaking Changes
+- Every existing page (Websites, Desktop, Prompts, Links, Images, Messages, Insights, Ask, Context, Horizon, Timeline) must continue working exactly as before
+- The existing `useHorizon()` hook, task creation, and Realtime subscription must not be touched
+- The existing `buildContextString()` in `gemini.ts` must continue to work for the Ask page
+- The existing JARVIS wake word detection must continue working
+- The existing mobile tap-to-talk must continue working
+
+### Error Handling
+- Every Supabase call must be wrapped in try/catch
+- If session creation fails, JARVIS continues working — just without persistence (graceful degradation)
+- If memory fetch fails, system prompt is built without memories (graceful degradation)
+- If tool execution fails, Gemini is informed via the tool result message so it can respond naturally ("I wasn't able to create that task, but...")
+- Network errors surface as a dismissible Sonner toast, not a crashed UI
+
+### No Regressions
+- Run through every existing feature mentally before submitting
+- Do not introduce any TypeScript errors
+- Do not introduce any unused imports
+- All new Supabase queries must use the existing `supabase` client from `src/lib/supabase.ts`
+- All new components must use existing Tailwind classes and the existing dark theme
+
+### Performance
+- Session message loading must not block the UI — load asynchronously, show skeleton while loading
+- Memory recall must not add more than 200ms to first response — fetch memories on mount, not on first message
+- History panel must paginate — load 10 sessions at a time, infinite scroll or load more button
+
+### Code Style
+- Match existing code style in the files you modify
+- Use existing type definitions where they exist
+- Do not install any new npm packages unless absolutely necessary — if you must, state exactly which package and why
+
+---
+
+## SUMMARY OF NEW FILES / CHANGES
+
+| File | Action |
+|---|---|
+| `src/lib/gemini.ts` | Add `JARVIS_TOOLS`, `executeToolCall()`, `generateWithTools()` |
+| `src/lib/jarvis.ts` | Add session management, personality prompt builder, TTSQueue class, audio state machine, intent classifier |
+| `src/routes/jarvis.tsx` | Extend UI with session state, history panel, memory panel, updated message flow |
+| Supabase | Add 3 new tables: `jarvis_sessions`, `jarvis_messages`, `jarvis_memory` |
+| `src/lib/fcm.ts` | Improve notification firing on task creation |
+
+**Total new tables: 3. Total existing tables modified: 0. Total existing functionality broken: 0.**
+
+---
+
+## FINAL INSTRUCTION TO REPLIT
+
+Read every existing file before writing a single line of new code. Understand the existing patterns — how stores are structured, how Supabase is called, how components are styled — and match them exactly. This is a running production app. The user depends on it daily. Stability is more important than cleverness. Build each part in order (database first, then lib files, then UI). Test each part mentally before moving to the next. If something is ambiguous, make the conservative choice.
