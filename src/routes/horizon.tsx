@@ -898,8 +898,8 @@ function TimelineTaskCard({
           className={cn(
             "mt-[2px] h-[18px] w-[18px] shrink-0 rounded-[5px] border-[1.5px] grid place-items-center transition-all duration-200",
             task.completed
-              ? "border-sky-300/60"
-              : "border-white/[0.17] hover:border-sky-300/50",
+              ? "border-sky-300/70 bg-sky-300/70"
+              : "border-white/[0.17] hover:border-sky-300/50 hover:bg-sky-300/[0.06]",
           )}
         >
           <AnimatePresence initial={false}>
@@ -911,7 +911,7 @@ function TimelineTaskCard({
                 exit={{ scale: 0 }}
                 transition={{ type: "spring", stiffness: 550, damping: 24 }}
               >
-                <Check className="h-2.5 w-2.5" style={{ color: "#050609" }} strokeWidth={2.5} />
+                <Check className="h-2.5 w-2.5 text-[#050a10]" strokeWidth={3} />
               </motion.span>
             )}
           </AnimatePresence>
