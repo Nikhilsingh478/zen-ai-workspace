@@ -842,7 +842,8 @@ async function handleCommand(commandText: string) {
       type: "text",
     };
 
-    patch({ messages: [..._state.messages, userMsg, jarvisMsg], voiceState: "speaking" });
+    // _state.messages already contains userMsg from the earlier patch — only append jarvisMsg
+    patch({ messages: [..._state.messages, jarvisMsg], voiceState: "speaking" });
 
     saveMessage(sessionId, "assistant", clean, "conversation").catch(() => null);
 

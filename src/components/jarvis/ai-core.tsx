@@ -384,7 +384,7 @@ export function AICore({ voiceState, isAwake, size = 300 }: AICoreProps) {
 
         {/* 7 · Orb bloom (blurred underlay for glow) */}
         <motion.circle
-          cx={C} cy={C}
+          cx={C} cy={C} r={24}
           fill={`rgba(125,211,252,${isActive ? 0.55 : 0.3})`}
           filter="url(#jv-bloom)"
           animate={{ r: isListening ? 28 : 24, opacity: isActive ? 1 : 0.5 }}
@@ -393,7 +393,7 @@ export function AICore({ voiceState, isAwake, size = 300 }: AICoreProps) {
 
         {/* 8 · Orb body */}
         <motion.circle
-          cx={C} cy={C}
+          cx={C} cy={C} r={22}
           fill="url(#jv-orb)"
           filter="url(#jv-inner)"
           animate={{
