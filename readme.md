@@ -41,6 +41,7 @@ Power users, developers, and AI enthusiasts who want a single, fast, keyboard-an
 - `framer-motion` `^12.38.0` (Spring animations)
 
 **Build Tools**
+
 - `vite` `^7.3.3`
 - `@tailwindcss/vite` `^4.3.0`
 - `typescript` `^5.9.3`
