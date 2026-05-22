@@ -1,0 +1,414 @@
+JARVIS — Phase 1 Completion: Morning Briefing + Search Grounding + UI Overhaul
+Read every file mentioned before touching anything. This is a complex multi-part implementation. Do each part in order.
+
+PART 1 — MORNING BRIEFING
+File: src/lib/jarvis.ts and src/routes/jarvis.tsx
+What it does
+When a user opens the JARVIS page for the first time each day, Jarvis automatically delivers a spoken and displayed morning briefing covering today's tasks, priorities, and a brief motivational nudge. This should feel like a real assistant greeting you, not a system notification.
+Implementation in src/lib/jarvis.ts
+Add a function shouldDeliverMorningBriefing():
+
+Reads localStorage.getItem('jarvis:last-briefing-date')
+Compares it to today's date in YYYY-MM-DD format
+Returns true if no briefing has been delivered today, false otherwise
+
+Add a function markBriefingDelivered():
+
+Sets localStorage.setItem('jarvis:last-briefing-date', todayDateString)
+
+Add a function buildMorningBriefingPrompt(tasks):
+
+Takes today's task list as input
+Returns a Gemini prompt string that instructs Gemini to generate a morning briefing
+The prompt must specify:
+
+Greet the user naturally — vary the greeting, don't always say "Good morning"
+Reference the actual date and day of week
+Summarize today's tasks grouped by priority — high priority tasks mentioned first by name
+If no tasks today, acknowledge that and suggest it's a good day to plan
+End with one honest, non-cheesy motivational line relevant to the tasks
+Keep total length under 100 words — this will be spoken aloud
+Tone: warm but direct, like a sharp friend, not a corporate bot
+
+
+
+Implementation in src/routes/jarvis.tsx
+In the useEffect that runs on mount (after session starts and memories load):
+typescript// After startSession() and memory loading:
+if (shouldDeliverMorningBriefing()) {
+  const todayTasks = await getHorizonTasks() // existing function from horizon.ts
+  const todayOnly = todayTasks.filter(t => t.taskDate === todayDateString && !t.completed)
+  const briefingPrompt = buildMorningBriefingPrompt(todayOnly)
+  
+  // Show typing indicator in chat
+  setIsProcessing(true)
+  
+  const briefingText = await geminiAPI.generate(
+    [{ role: 'user', parts: [{ text: briefingPrompt }] }],
+    systemPrompt
+  )
+  
+  // Add as a special briefing message in chat display
+  addDisplayMessage({
+    role: 'assistant',
+    content: briefingText,
+    type: 'morning_briefing',
+    timestamp: new Date()
+  })
+  
+  // Speak it via TTSQueue
+  ttsQueue.enqueue(briefingText)
+  
+  // Save to session
+  await saveMessage(currentSessionId, 'assistant', briefingText, 'morning_briefing')
+  
+  markBriefingDelivered()
+  setIsProcessing(false)
+}
+Morning Briefing Message UI
+In the chat display, messages with type: 'morning_briefing' should render differently from normal messages:
+
+A subtle sunrise or sparkle icon (use Lucide Sunrise or Sparkles icon) in the top left of the message bubble
+Slightly different background — use bg-sky-950/40 border border-sky-800/30 instead of the normal assistant message background
+A small "Morning Briefing" label in text-sky-400/60 text-xs above the content
+Same text rendering as normal messages otherwise
+
+
+PART 2 — GEMINI SEARCH GROUNDING + DYNAMIC UI
+This is the biggest feature. Read carefully.
+What it does
+When the user asks Jarvis something that requires current information — news, prices, weather, directions, comparisons — Jarvis uses Gemini's built-in Google Search grounding to get real-time information, then renders the results in a dynamic UI that matches the type of query. Not hardcoded cards. Not a generic list. The UI adapts to what was searched.
+Step 1 — Enable Search Grounding in src/lib/gemini.ts
+Add a new method generateWithSearch(messages, systemPrompt) to the GeminiAPI class:
+typescriptasync generateWithSearch(
+  messages: GeminiMessage[],
+  systemPrompt: string
+): Promise<{ text: string; sources: SearchSource[]; searchType: SearchType }> {
+  
+  const payload = {
+    contents: messages,
+    systemInstruction: { parts: [{ text: systemPrompt }] },
+    tools: [{
+      googleSearch: {} // enables Gemini search grounding
+    }],
+    generationConfig: {
+      temperature: 0.7,
+      topK: 40,
+      topP: 0.95,
+      maxOutputTokens: 8192
+    }
+  }
+  
+  const response = await this._rawRequest(payload, this.primaryKey)
+  
+  // Extract grounding metadata from response
+  const groundingMetadata = response?.candidates?.[0]?.groundingMetadata
+  const sources: SearchSource[] = groundingMetadata?.groundingChunks?.map(chunk => ({
+    title: chunk.web?.title ?? '',
+    url: chunk.web?.uri ?? '',
+    snippet: ''
+  })) ?? []
+  
+  const text = response?.candidates?.[0]?.content?.parts
+    ?.find(p => p.text)?.text ?? ''
+  
+  // Classify what type of search this was
+  const searchType = classifySearchType(text, messages[messages.length - 1]?.parts?.[0]?.text ?? '')
+  
+  return { text, sources, searchType }
+}
+Add these TypeScript types:
+typescripttype SearchSource = {
+  title: string
+  url: string
+  snippet: string
+}
+
+type SearchType = 
+  | 'general'       // default — summary with sources
+  | 'news'          // recent events, news articles  
+  | 'weather'       // weather query
+  | 'comparison'    // comparing two or more things
+  | 'howto'         // how to do something, steps
+  | 'definition'    // what is X
+  | 'local'         // restaurants, places, nearby things
+  | 'code'          // programming, technical questions
+  | 'math'          // calculations, numbers
+Add a classifySearchType(responseText, userQuery) function using keyword matching:
+typescriptfunction classifySearchType(responseText: string, userQuery: string): SearchType {
+  const q = userQuery.toLowerCase()
+  
+  if (/weather|temperature|rain|forecast|humid|°/.test(q)) return 'weather'
+  if (/news|latest|today|happened|update|current/.test(q)) return 'news'
+  if (/vs|versus|compare|difference|better|which/.test(q)) return 'comparison'
+  if (/how to|how do|steps|guide|tutorial|setup/.test(q)) return 'howto'
+  if (/what is|define|meaning|explain|who is/.test(q)) return 'definition'
+  if (/near me|nearby|restaurant|hotel|place|location|where/.test(q)) return 'local'
+  if (/code|error|bug|function|syntax|javascript|python|react/.test(q)) return 'code'
+  if (/calculate|percent|formula|math|equation|\d+\s*[+\-*/]/.test(q)) return 'math'
+  
+  return 'general'
+}
+Step 2 — Intent Detection for Search
+In src/lib/jarvis.ts, update classifyIntent to add a 'search_query' type:
+Add these patterns to trigger search:
+
+"search for", "look up", "find out", "what's the latest", "tell me about", "google", "news about", "current", "today's", "price of", "how much is", "who won", "what happened"
+
+When intent is search_query, the message flow in jarvis.tsx should call generateWithSearch instead of generateWithTools.
+Step 3 — Dynamic Search Result UI Component
+Create a new file src/components/jarvis/search-result.tsx.
+This component receives { text, sources, searchType } and renders different layouts based on searchType.
+General layout (default):
+┌─────────────────────────────────────────┐
+│ 🔍 Search Result                        │
+│─────────────────────────────────────────│
+│ [AI answer text rendered as markdown]   │
+│                                         │
+│ Sources                                 │
+│ ● Site Title          site.com →        │
+│ ● Site Title 2        site2.com →       │
+└─────────────────────────────────────────┘
+News layout:
+┌─────────────────────────────────────────┐
+│ 📰 Latest News                          │
+│─────────────────────────────────────────│
+│ [AI summary]                            │
+│                                         │
+│ ● Article title       source →          │
+│ ● Article title 2     source2 →         │
+└─────────────────────────────────────────┘
+Comparison layout:
+┌─────────────────────────────────────────┐
+│ ⚖️ Comparison                           │
+│─────────────────────────────────────────│
+│ [AI comparison text as markdown —       │
+│  tables render properly]                │
+│                                         │
+│ Sources ──────────────────────────────  │
+└─────────────────────────────────────────┘
+How-to layout:
+┌─────────────────────────────────────────┐
+│ 📋 How To                               │
+│─────────────────────────────────────────│
+│ [AI steps — numbered list renders]      │
+│                                         │
+│ Sources ──────────────────────────────  │
+└─────────────────────────────────────────┘
+Weather layout:
+┌─────────────────────────────────────────┐
+│ 🌤 Weather                              │
+│─────────────────────────────────────────│
+│ [AI weather summary — large, clean]     │
+│                                         │
+│ Source ───────────────────────────────  │
+└─────────────────────────────────────────┘
+Code layout:
+┌─────────────────────────────────────────┐
+│ 💻 Code / Technical                     │
+│─────────────────────────────────────────│
+│ [AI answer — code blocks syntax         │
+│  highlighted properly]                  │
+│                                         │
+│ Sources ──────────────────────────────  │
+└─────────────────────────────────────────┘
+Styling requirements for all layouts:
+
+Dark background: bg-zinc-900/80 border border-zinc-700/50
+Rounded: rounded-xl
+Header row: icon + label in text-xs uppercase tracking-widest text-zinc-400
+Divider: border-b border-zinc-700/40 mb-3
+Source links: text-sky-400 hover:text-sky-300 text-xs with external link icon, open in new tab
+Sources section header: text-zinc-500 text-xs uppercase tracking-widest mb-2
+Framer Motion entrance: initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+Use react-markdown for rendering AI text (already installed)
+
+Step 4 — Wire Search Results into JARVIS Chat
+In src/routes/jarvis.tsx:
+When classifyIntent returns 'search_query':
+
+Show a "Searching..." indicator in the chat with a subtle pulse animation
+Call geminiAPI.generateWithSearch(conversationHistory, systemPrompt)
+Add the result to display messages with type: 'search_result' and attach { sources, searchType } as metadata
+Render <SearchResult text={...} sources={...} searchType={...} /> instead of plain text bubble
+Speak only the text portion via TTSQueue — don't read out source URLs
+Save to session: saveMessage(sessionId, 'assistant', text, 'search_result', { sources, searchType })
+
+
+PART 3 — UI OVERHAUL
+This is the most important part for making Jarvis feel real. Read the design requirements carefully.
+Design philosophy: Professional, clean, minimal. Think Linear.app meets Perplexity. Dark, purposeful, no decoration for decoration's sake. Every visual element earns its place.
+References: Linear.app, Raycast, Vercel dashboard, Perplexity. NOT Iron Man HUD. NOT neon cyberpunk. NOT glowing gradient everything.
+File: src/routes/jarvis.tsx — Full Layout Redesign
+Overall layout — 3 columns on desktop, single column on mobile:
+┌──────────────────────────────────────────────────────────────┐
+│  [Status Panel — 280px fixed]  [Chat — flex]  [Tabs — 320px] │
+└──────────────────────────────────────────────────────────────┘
+Color palette — use only these:
+
+Background: #0a0a0a (near black, not pure black)
+Surface: #111111 (slightly lighter)
+Border: #1f1f1f (very subtle)
+Border hover: #2a2a2a
+Text primary: #f0f0f0
+Text secondary: #6b6b6b
+Text muted: #3a3a3a
+Accent: #38bdf8 (sky-400, used sparingly)
+Accent glow: rgba(56, 189, 248, 0.08)
+Error: #f87171
+Success: #34d399
+
+Apply these as Tailwind arbitrary values or CSS variables — do not use bright neon colors anywhere.
+
+Left Panel — Status Panel Redesign
+Remove all colored borders and glowing effects from the current status panel.
+New structure:
+┌─────────────────────┐
+│ JARVIS              │  ← text-xs tracking-[0.3em] text-zinc-500 uppercase
+│ v1.0                │  ← text-[10px] text-zinc-600
+│                     │
+│ 14:32:07            │  ← Digital clock, text-3xl font-mono text-zinc-100
+│ Friday, 23 May      │  ← text-xs text-zinc-500
+│                     │
+│ ──────────────────  │  ← divider
+│                     │
+│ ● IDLE              │  ← state badge: small dot + state text
+│                     │
+│ ──────────────────  │  ← divider
+│                     │
+│ Today               │  ← section label text-[10px] tracking-widest text-zinc-600
+│ 3 tasks             │  ← text-sm text-zinc-300
+│ 1 high priority     │  ← text-xs text-red-400 (only if high priority exists)
+│                     │
+│ ──────────────────  │  ← divider
+│                     │
+│ [●] JARVIS Active   │  ← toggle, clean not colorful
+└─────────────────────┘
+State dot colors:
+
+idle: bg-zinc-600
+listening: bg-sky-400 with subtle pulse animation
+processing: bg-amber-400 with subtle pulse
+speaking: bg-emerald-400 with subtle pulse
+interrupted: bg-orange-400
+error: bg-red-400
+
+No glowing cards. No colored backgrounds on sections. Clean dividers only.
+
+Center Panel — AI Core Redesign
+The orb should be minimal and purposeful, not busy.
+Remove: multiple colored glow rings, excessive animation layers, anything that looks like a loading spinner.
+New orb design:
+
+Single clean circle, 120px diameter
+Border: 1px solid rgba(255,255,255,0.08) at idle
+Border transitions to 1px solid rgba(56, 189, 248, 0.4) when listening
+Very subtle inner glow — box-shadow: 0 0 40px rgba(56, 189, 248, 0.06) at idle, 0 0 40px rgba(56, 189, 248, 0.15) when listening
+Background: radial-gradient(circle, rgba(56,189,248,0.04) 0%, transparent 70%)
+When processing: a single clean rotation animation on the border only — border-style: dashed
+When speaking: gentle scale pulse 1.0 → 1.04 → 1.0 on a 2s loop
+Tap to talk button: centered mic icon, text-zinc-400 at idle, text-sky-400 when listening
+
+Below the orb:
+
+Live transcript text: text-zinc-300 text-sm text-center max-w-xs — appears with fade in, disappears after processing starts
+No separate "Voice state label" — the dot in the left panel handles state communication
+
+
+Right Panel — Chat + Tabs Redesign
+Tab bar:
+
+Three tabs: Chat / History / Memory
+Tab style: text-xs uppercase tracking-widest
+Active: text-zinc-100 border-b border-zinc-100
+Inactive: text-zinc-600 hover:text-zinc-400
+No background fills on tabs, no rounded pills
+
+Chat tab — message bubbles:
+User messages:
+                    [message text]
+                    10:32 AM ──────
+
+Right aligned
+bg-zinc-800/60 border border-zinc-700/40 rounded-2xl rounded-br-sm
+text-zinc-100 text-sm
+Timestamp: text-[10px] text-zinc-600 below right
+
+Assistant messages:
+  [J]
+  [message text]
+  10:32 AM ──────
+
+Left aligned
+Small J avatar: w-5 h-5 rounded-full bg-zinc-800 border border-zinc-700 text-[9px] text-zinc-400 flex items-center justify-center
+bg-transparent — no bubble background for assistant messages, just the text
+text-zinc-200 text-sm
+Timestamp: text-[10px] text-zinc-600
+
+Morning briefing messages: as specified in Part 1.
+Search result messages: render <SearchResult /> component.
+Task created messages:
+
+Small confirmation chip instead of full bubble
+bg-emerald-950/40 border border-emerald-800/30 rounded-lg px-3 py-2
+✓ Task created: [title] · [date] · [priority] in text-xs text-emerald-400
+
+Input area:
+┌──────────────────────────────────────────┐
+│  [mic icon]  Type or speak...  [send →]  │
+└──────────────────────────────────────────┘
+
+bg-zinc-900 border border-zinc-800 rounded-xl
+On focus: border-zinc-600
+Mic icon: text-zinc-500 hover:text-sky-400
+Send button: text-zinc-500 hover:text-zinc-200
+No colored backgrounds, no gradients
+
+History tab:
+
+Session cards: border-b border-zinc-800/60 — no card backgrounds, just divider separation
+Date in text-xs text-zinc-500, message count in text-[10px] text-zinc-600
+Summary preview: text-sm text-zinc-400 line-clamp-2
+Delete: text-zinc-600 hover:text-red-400 — trash icon, appears on hover only on desktop
+
+Memory tab:
+
+Same minimal list style as history
+Type badge: small pill text-[10px] px-2 py-0.5 rounded-full with these specific colors:
+
+preference: bg-violet-950/60 text-violet-400 border border-violet-800/30
+commitment: bg-amber-950/60 text-amber-400 border border-amber-800/30
+idea: bg-sky-950/60 text-sky-400 border border-sky-800/30
+fact: bg-zinc-800/60 text-zinc-400 border border-zinc-700/30
+general: bg-zinc-800/60 text-zinc-500 border border-zinc-700/30
+
+
+Filter tabs above: same minimal tab style as main tabs
+Content: text-sm text-zinc-300
+Date: text-[10px] text-zinc-600
+
+
+NON-NEGOTIABLE REQUIREMENTS
+
+Do not break any existing functionality — Horizon, Timeline, Ask, all other pages untouched
+Do not install any new npm packages — react-markdown is already installed, use it
+Do not add any bright neon colors, glowing gradients, or "futuristic" decorative elements anywhere
+Every Supabase call wrapped in try/catch with graceful degradation
+Morning briefing only fires once per day — localStorage guard is required
+Search grounding only activates when intent is classified as search_query — do not enable it for all messages (it costs more tokens)
+The generateWithSearch method must have the same dual key failover as generateWithTools
+All new UI must be responsive — test mentally for mobile single-column layout
+TypeScript — zero new errors introduced
+No // TODO comments left in submitted code
+Match existing code patterns and import styles throughout
+
+
+FINAL INSTRUCTION
+Build in this order:
+
+Morning briefing (Part 1) — smallest, test it works
+Search grounding backend (Part 2, Steps 1-2) — gemini.ts changes only
+Search result UI component (Part 2, Steps 3-4) — new component + wiring
+UI overhaul (Part 3) — biggest change, do last so it doesn't block testing
+
+Read all existing files before starting. This is a production app someone uses daily. Stability over cleverness. If anything is ambiguous, make the conservative choice and note what you assumed.

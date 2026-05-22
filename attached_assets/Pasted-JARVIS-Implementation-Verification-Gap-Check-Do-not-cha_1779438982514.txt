@@ -1,0 +1,88 @@
+JARVIS — Implementation Verification & Gap Check
+Do not change any code. This is a read-only audit. Read every relevant file thoroughly and answer each question precisely.
+
+AUDIT 1 — Gemini Model & Function Calling
+Read src/lib/gemini.ts completely and confirm:
+
+What is the exact model string being used in _request? What is it in _rawRequest?
+Does generateWithTools exist as a method on the GeminiAPI class?
+In generateWithTools, when building the follow-up request after a tool call — is the entire functionCallPart object passed as-is, or is it destructured? Show the exact line.
+Does parts.find() get used instead of parts[0] when extracting the function call part?
+Are all 7 tools defined in JARVIS_TOOLS: create_task, save_memory, get_today_tasks, get_pending_tasks, recall_memories, delete_task, update_task?
+Does executeToolCall exist and handle all 7 tool names with their own logic?
+Does generateWithTools have the dual API key failover — if primary key gets 429 or 403, does it retry with the fallback key?
+Does the existing generate() method and buildContextString() still exist untouched for the Ask page?
+
+
+AUDIT 2 — Session Management
+Read src/lib/jarvis.ts completely and confirm:
+
+Does startSession() exist and insert a row into jarvis_sessions?
+Does endSession(sessionId) exist, update ended_at, generate a summary via Gemini, and save it to session_summary?
+Does saveMessage(sessionId, role, content, messageType, metadata?) exist and insert into jarvis_messages?
+Does getRecentSessionSummaries(limit) exist and query jarvis_sessions?
+Does getRecentMemories(limit) exist and query jarvis_memory?
+Does buildJarvisSystemPrompt(userContext, recentMemories, sessionSummaries) exist and return a full system prompt string including the personality block, current date/time, memories, session summaries, and user context from localStorage?
+
+
+AUDIT 3 — Audio State Machine
+Read src/lib/jarvis.ts and confirm:
+
+Is JarvisAudioState type defined with exactly these 6 states: idle, listening, processing, speaking, interrupted, error?
+Does canTransitionTo(newState) exist with the correct transition rules?
+Does interrupt detection exist — when in speaking state, does it listen for "stop", "wait", "hold on", "shut up", "pause"?
+Does TTSQueue class exist with enqueue(), playNext(), interrupt(), splitIntoSentences() methods?
+Does classifyIntent(userMessage) exist returning one of: task_creation, memory_capture, task_query, memory_query, conversation, task_management?
+
+
+AUDIT 4 — JARVIS Page UI
+Read src/routes/jarvis.tsx completely and confirm:
+
+Is currentSessionId in component state?
+Is conversationHistory (the full Gemini message history array) tracked in state?
+On mount — is startSession() called and session ID stored?
+On mount — are recent memories and session summaries fetched and used to build the system prompt?
+Is there a welcome back message shown when previous session summaries exist?
+In the message send flow — are these steps happening in order: add to display + history → save to Supabase → call generateWithTools → add response to display + history → save response to Supabase?
+Is endSession() called on unmount or page leave (beforeunload)?
+Does a History tab exist showing past sessions as cards with date, message count, summary, and delete button?
+Does the delete flow show inline confirmation before deleting?
+Does a Memory tab exist with memories listed, type badges, delete per item, and filter tabs (All / Preferences / Commitments / Ideas / Facts / General)?
+
+
+AUDIT 5 — SVG & WebSocket Fixes
+
+Open src/components/jarvis/ai-core.tsx — do all motion.circle elements have an explicit numeric r prop AND initial={{ r: N }}? List exactly which elements were fixed and what r value was set.
+Open src/lib/horizon.ts — does setupRealtime have the isMounted guard and 150ms delay timer? Is there a teardownRealtime function that clears the timer, flips the flag, and removes the channel?
+
+
+AUDIT 6 — What's Missing or Incomplete
+After reading all files, identify and list:
+
+Any of the 7 tools in executeToolCall that have stub/placeholder logic instead of real implementation
+Any session management function that exists but doesn't actually write to Supabase (e.g. has a try/catch that silently swallows errors without doing anything)
+Any UI section that was supposed to be built but is missing
+Any place where the old model string (gemini-flash-latest, gemini-1.5-flash, gemini-2.0-flash) still appears
+Any TypeScript errors or // TODO comments left in the code
+Whether the SQL file supabase/JARVIS_EVOLUTION_SETUP.sql exists and contains all 3 table definitions with correct indexes
+
+
+AUDIT 7 — Regression Check
+Without running the app, read the following files and confirm nothing was accidentally broken:
+
+src/lib/gemini.ts — does buildContextString() still exist exactly as before?
+src/lib/horizon.ts — does useHorizon(), addTaskDirect(), getHorizonTasks() still exist untouched?
+src/routes/ask.tsx — does it still call geminiAPI.generate() or geminiAPI.generateContent() as before (not the new generateWithTools)?
+Any other page files — were any of them modified at all?
+
+
+OUTPUT FORMAT
+Give me a structured report:
+AUDIT 1 — Gemini: [PASS / PARTIAL / FAIL] — notes
+AUDIT 2 — Sessions: [PASS / PARTIAL / FAIL] — notes  
+AUDIT 3 — Audio: [PASS / PARTIAL / FAIL] — notes
+AUDIT 4 — UI: [PASS / PARTIAL / FAIL] — notes
+AUDIT 5 — Fixes: [PASS / PARTIAL / FAIL] — notes
+AUDIT 6 — Gaps found: [list]
+AUDIT 7 — Regressions: [PASS / PARTIAL / FAIL] — notes
+Do not fix anything. Just report accurately. I need to know exactly where we stand before moving forward.
