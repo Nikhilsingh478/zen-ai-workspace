@@ -2,9 +2,9 @@
 
 > A cinematic, full-stack personal command center. Built for one user. Built to be unreasonably powerful.
 
-AI Metrics is a React 19 SPA that fuses a curated AI tools directory, a drag-and-drop OS-style desktop launcher, a prompt library, a link board, an image board, a Markdown message board, a calendar and AI-generated life planner (Horizon + Timeline), a **JARVIS voice AI assistant** with a full cinematic 3-column HUD, persistent memory banks, session history, native function calling, and a standalone Gemini AI chat. All structured data lives in Supabase with real-time subscriptions. The app is installable as a PWA and compiles to a native Android app via Capacitor.
+AI Metrics is a React 19 SPA that fuses a curated AI tools directory, a drag-and-drop OS-style desktop launcher, a prompt library, a link board, an image board, a Markdown message board, a calendar and AI-generated life planner (Horizon + Timeline), a **JARVIS AI assistant** with a minimal Linear/Perplexity-aesthetic 3-column command center, persistent memory banks, session history, native function calling, real-time web search grounding, a daily morning briefing system, and a standalone Gemini AI chat. All structured data lives in Supabase with real-time subscriptions. The app is installable as a PWA and compiles to a native Android app via Capacitor.
 
-The JARVIS module is the crown jewel — Phase 1 of the "JARVIS Evolution" ships a full 6-state audio state machine, Gemini function calling with 7 tool declarations, a TTSQueue sentence splitter, an intent pre-classifier, persistent cross-session memory, and paginated session history — all wired into a space-black, arctic-electric-blue holographic HUD that looks like it came off an Iron Man set.
+The JARVIS module is the crown jewel — Phase 1 of "JARVIS Evolution" ships a full 6-state audio state machine, Gemini function calling with 7 tool declarations, a TTSQueue sentence splitter, an intent pre-classifier (7 intent types including `search_query`), Google Search Grounding integration with dynamic per-type result rendering, a daily morning briefing delivered once per calendar day, persistent cross-session memory, and paginated session history — all wired into a precision minimal `#0a0a0a` command center with Space Mono monospacing and arctic-blue state accents.
 
 ---
 
@@ -36,7 +36,7 @@ All variables must be prefixed `VITE_` — Vite injects them into the client bun
 |---|---|---|
 | `VITE_SUPABASE_URL` | ✅ | Supabase project URL (`https://<ref>.supabase.co`) |
 | `VITE_SUPABASE_ANON_KEY` | ✅ | Supabase public anon key (safe to expose in browser) |
-| `VITE_GEMINI_API_KEY` | ✅ | Primary Gemini key — powers Ask, JARVIS, Timeline, session summaries |
+| `VITE_GEMINI_API_KEY` | ✅ | Primary Gemini key — powers Ask, JARVIS, Timeline, session summaries, Search Grounding |
 | `VITE_GEMINI_API_KEY_2` | ⚠️ | Fallback Gemini key — auto-engaged on 429/403 from primary. Use a **different Google account** for genuine dual-quota |
 | `VITE_FIREBASE_API_KEY` | ⚠️ FCM | Firebase web API key |
 | `VITE_FIREBASE_AUTH_DOMAIN` | ⚠️ FCM | Firebase auth domain |
@@ -48,7 +48,7 @@ All variables must be prefixed `VITE_` — Vite injects them into the client bun
 
 > FCM vars are optional — the app degrades gracefully (SW still registers for caching, push notifications simply don't fire).
 
-> **Gemini model note:** The app uses `gemini-1.5-flash`. Do NOT switch to `gemini-2.0-flash` — that model has `limit: 0` on the free tier in many regions (India, etc.), causing immediate 429s regardless of how many accounts or keys you use. `gemini-1.5-flash` has full global free-tier availability (15 RPM, 1,500 req/day).
+> **Gemini model note:** The entire app uses `gemini-2.5-flash` exclusively. Do NOT switch to `gemini-2.0-flash` or `gemini-flash-latest` — they behave differently and `gemini-2.0-flash` has `limit: 0` on the free tier in some regions (India, etc.), causing immediate 429s. `gemini-2.5-flash` is used universally for all Gemini calls: JARVIS conversation, tool calls, search grounding, session summaries, Timeline generation, Ask chat, and Insights AI analysis.
 
 ---
 
@@ -67,8 +67,8 @@ All variables must be prefixed `VITE_` — Vite injects them into the client bun
 | Drag & Drop | @dnd-kit/core + modifiers + sortable | 6/9/10 |
 | Database / Realtime | Supabase JS v2 | 2 |
 | Server-side query cache | TanStack Query | 5 |
-| AI — Ask page | Gemini REST API (`gemini-flash-latest`) | — |
-| AI — JARVIS | Gemini REST API + function calling + Web Speech API + SpeechSynthesis | — |
+| AI — Ask page | Gemini REST API (`gemini-2.5-flash`) | — |
+| AI — JARVIS | Gemini REST API + function calling + Search Grounding + Web Speech API + SpeechSynthesis | — |
 | AI — Timeline | Gemini REST API (structured JSON schedule generation) | — |
 | Voice | Web Speech API (Chrome/Edge only) | — |
 | Push notifications | Firebase Cloud Messaging (FCM) | 12 |
@@ -119,8 +119,9 @@ id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
 session_id   uuid NOT NULL REFERENCES jarvis_sessions(id) ON DELETE CASCADE,
 role         text NOT NULL CHECK (role IN ('user', 'assistant')),
 content      text NOT NULL,
-message_type text NOT NULL DEFAULT 'conversation',  -- 'conversation' | 'task_created' | 'memory_saved' | 'error'
-metadata     jsonb,
+message_type text NOT NULL DEFAULT 'conversation',
+-- 'conversation' | 'task_created' | 'memory_saved' | 'error' | 'morning_briefing' | 'search_result'
+metadata     jsonb,   -- for search_result: { sources, searchType }; for morning_briefing: null
 created_at   timestamptz NOT NULL DEFAULT now()
 ```
 
@@ -304,38 +305,41 @@ select cron.schedule(
 ├── TIMELINE_SETUP.sql
 ├── NOTIFICATIONS_SETUP.sql
 ├── supabase/
-│   └── JARVIS_EVOLUTION_SETUP.sql       # jarvis_sessions, jarvis_messages, jarvis_memory
+│   ├── functions/
+│   │   └── send-reminders/           # Deno Edge Function — FCM push dispatcher
+│   └── JARVIS_EVOLUTION_SETUP.sql    # jarvis_sessions, jarvis_messages, jarvis_memory
 └── src/
-    ├── styles.css                        # oklch tokens, Tailwind @theme, JARVIS keyframes
+    ├── styles.css                    # oklch tokens, Tailwind @theme, JARVIS keyframes
     ├── main.tsx
     ├── router.tsx
-    ├── routeTree.gen.ts                  # AUTO-GENERATED — never edit manually
+    ├── routeTree.gen.ts              # AUTO-GENERATED — never edit manually
     │
     ├── routes/
-    │   ├── __root.tsx                    # Root layout: Splash + AppShell + Toaster + JarvisFloatingOrb + InAppNotificationHost
-    │   ├── index.tsx                     # /          Websites / AI tools directory
-    │   ├── desktop.tsx                   # /desktop   Drag-and-drop icon launcher
-    │   ├── prompts.tsx                   # /prompts   Prompt library
-    │   ├── links.tsx                     # /links     Quick-access link board
-    │   ├── images.tsx                    # /images    Image board (Supabase Storage)
-    │   ├── messages.tsx                  # /messages  Markdown notes / important messages
-    │   ├── horizon.tsx                   # /horizon   Monthly calendar + timeline task manager
-    │   ├── timeline.tsx                  # /timeline  AI-generated 6-month life planner
-    │   ├── insights.tsx                  # /insights  Usage analytics + Horizon productivity
-    │   ├── ask.tsx                       # /ask       Multi-turn Gemini AI chat + voice input
-    │   ├── jarvis.tsx                    # /jarvis    JARVIS fullscreen AI command center
-    │   └── context.tsx                   # /context   Personal context editor for JARVIS memory
+    │   ├── __root.tsx                # Root layout: Splash + AppShell + Toaster + JarvisFloatingOrb + InAppNotificationHost
+    │   ├── index.tsx                 # /          Websites / AI tools directory
+    │   ├── desktop.tsx               # /desktop   Drag-and-drop icon launcher
+    │   ├── prompts.tsx               # /prompts   Prompt library
+    │   ├── links.tsx                 # /links     Quick-access link board
+    │   ├── images.tsx                # /images    Image board (Supabase Storage)
+    │   ├── messages.tsx              # /messages  Markdown notes / important messages
+    │   ├── horizon.tsx               # /horizon   Monthly calendar + timeline task manager
+    │   ├── timeline.tsx              # /timeline  AI-generated 6-month life planner
+    │   ├── insights.tsx              # /insights  Usage analytics + Horizon productivity
+    │   ├── ask.tsx                   # /ask       Multi-turn Gemini AI chat + voice input
+    │   ├── jarvis.tsx                # /jarvis    JARVIS 3-column minimal AI command center
+    │   └── context.tsx               # /context   Personal context editor for JARVIS memory
     │
     ├── components/
-    │   ├── app-shell.tsx                 # Collapsible sidebar + mobile bottom nav + page layout
-    │   ├── matrix-modal.tsx              # React Portal modal (Framer Motion backdrop + scale)
+    │   ├── app-shell.tsx             # Collapsible sidebar + mobile bottom nav + page layout
+    │   ├── matrix-modal.tsx          # React Portal modal (Framer Motion backdrop + scale)
     │   ├── page-header.tsx
     │   ├── sync-indicator.tsx
     │   ├── voice-overlay.tsx
-    │   ├── in-app-notification.tsx       # Instagram-style FCM foreground banners
+    │   ├── in-app-notification.tsx   # Instagram-style FCM foreground banners
     │   ├── jarvis/
-    │   │   ├── ai-core.tsx               # Holographic AI orb SVG — arcs, radar sweep, pulse rings, bloom, HUD brackets
-    │   │   └── floating-orb.tsx          # Global JARVIS FAB — all non-JARVIS pages
+    │   │   ├── ai-core.tsx           # Minimal JARVIS orb — single circle, Mic icon, state-reactive border/glow
+    │   │   ├── floating-orb.tsx      # Global JARVIS FAB — all non-JARVIS pages
+    │   │   └── search-result.tsx     # Search grounding result card — 9 layout variants by SearchType
     │   ├── desktop/
     │   │   ├── desktop-grid.tsx
     │   │   ├── desktop-item.tsx
@@ -346,7 +350,7 @@ select cron.schedule(
     │   ├── image-board/
     │   ├── link-board/
     │   ├── messages/
-    │   └── ui/                           # shadcn/ui primitives
+    │   └── ui/                       # shadcn/ui primitives
     │
     ├── hooks/
     │   ├── use-mobile.tsx
@@ -361,11 +365,11 @@ select cron.schedule(
         ├── link-board.ts
         ├── important-messages.ts
         ├── image-board.ts
-        ├── horizon.ts                    # Horizon tasks store + addTaskDirect() + addTasksBatch() + deleteTasksByMonthKey()
+        ├── horizon.ts                # Horizon tasks store + addTaskDirect() + addTasksBatch() + deleteTasksByMonthKey()
         ├── timeline.ts
         ├── desktop-layout.ts
-        ├── gemini.ts                     # Gemini REST wrapper — JARVIS_TOOLS, executeToolCall(), generateWithTools(), dual-key failover
-        ├── jarvis.ts                     # JARVIS global store — 6-state machine, TTSQueue, intent classifier, session management, system prompt builder
+        ├── gemini.ts                 # Gemini REST wrapper — JARVIS_TOOLS, generateWithTools(), generateWithSearch(), dual-key failover
+        ├── jarvis.ts                 # JARVIS global store — 6-state machine, TTSQueue, intent classifier, morning briefing, session management
         ├── usage-tracking.ts
         ├── fcm.ts
         ├── firebase.ts
@@ -443,7 +447,7 @@ select cron.schedule(
 
 **Task cards:**
 - Collapsed: checkbox ✅, left priority stripe, title, time, bell icon (if reminder on)
-- **Checkbox when completed:** fills with `bg-sky-300/70` background so the dark tick is clearly visible — this was a known bug (invisible tick on dark background) that has been fixed
+- **Checkbox when completed:** fills with `bg-sky-300/70` background so the dark tick is clearly visible
 - Expanded (click card): description, priority badge, time badge, Edit + Delete buttons
 - Completed state: card dims to 30% opacity, title gets strikethrough
 - Priority stripe: Low → blue/45, Medium → amber/45, High → red/50
@@ -488,58 +492,243 @@ select cron.schedule(
 - Auto-refreshes every 30 seconds
 
 ### `/ask` — AI Chat
-- Multi-turn `gemini-1.5-flash` chat with full conversation history in React state
+- Multi-turn `gemini-2.5-flash` chat with full conversation history in React state
 - First message prepends full workspace context: all websites, prompts, links, messages, folders, JARVIS personal context
 - Voice input via Web Speech API — transcribes into the text field for review before send
 - Starter chips: "Plan my next 90 minutes", "Brainstorm names for…", etc.
 - Full Markdown rendering in assistant replies
 - Animated thinking indicator (rotating Sparkles + 3-dot bounce)
 
-### `/jarvis` — JARVIS AI Command Center (Phase 1)
+### `/jarvis` — JARVIS AI Command Center
 
-> The flagship. A fullscreen cinematic AI operating system with deep-space background (`#050609`), CSS grid dot overlay, radial vignette, and arctic electric-blue holographic palette.
+> A minimal Linear/Perplexity-aesthetic fullscreen AI command center. `#0a0a0a` background, `#1f1f1f` dividers, `Space Mono` monospacing for all system labels, `#38bdf8` arctic blue as the sole accent color. Precision over decoration.
 
-**Layout — 3-column desktop flex:**
+#### Layout — 3-column desktop flex
 
-**Left HUD panel (200px):**
-- `J.A.R.V.I.S` wordmark in `Space Mono` + `v3.0` badge
-- AI STATUS (ONLINE/OFFLINE) + VOICE MODE state indicator
-- System time (live clock updating every second)
-- Horizon task stats (Pending Today, Completed, Total Active) — live from `useHorizon()`
-- Completion progress bar
-- Wake phrase reference
-- Quick command chips — tap to send immediately
+**Left Status Panel (220px) — `StatusPanel` component:**
+- `JARVIS` wordmark in `Space Mono` + `v3.0` badge
+- **Live clock** — time in `Space Mono` 30px, date below in muted grey, updates every second via `setInterval`
+- **Voice state indicator** — animated dot (color + pulse per state) + state label with `AnimatePresence` cross-fade on change
+- **Today's task summary** — live from `useHorizon()`: total task count + high-priority count in red if > 0
+- **JARVIS active toggle** — pill-style toggle enabling/disabling the wake-word listener; persists intent to call `jarvis.enable()` / `jarvis.disable()`
+- **Quick command chips** — 4 preset commands ("What's pending today?", "Open Horizon", "Search latest news", "Open Ask") that call `jarvis.sendText()` immediately on click
 
-**Center — the orb:**
-- `AICore` component: animated holographic SVG orb
-  - 3 concentric spinning arcs (r=80, r=62, r=44) — different speeds, some reversed, via Framer Motion `rotate`
-  - Radar sweep: 30° sector with trailing gradient wedges, rotating continuously
-  - 2 pulse rings emanating outward with staggered delays
-  - Bloom layer (blurred underlay) for orb glow
-  - Orb body with `radial-gradient` fill and specular highlights
-  - HUD corner brackets that draw in on mount via `pathLength` animation
-  - All `r` attributes on `motion.circle` have explicit initial values — prevents SVG "r: undefined" errors
-- Frequency bars (22 bars, `jarvis-freq-bar` keyframe) at the bottom
-- Transcript bubble (what JARVIS is hearing — fades in/out)
-- State label below orb
+**Center Column — orb + transcript + state hint:**
+- `AICore` component (120px diameter) — minimal single circle with centered `Mic` icon
+  - **Listening:** `#38bdf8` border + stronger glow + `#38bdf8` mic icon
+  - **Processing:** `#fbbf24` (amber) border + spinning amber dashed ring overlay (360° rotation, 2.5s linear infinite)
+  - **Speaking:** `#34d399` (green) border + gentle `scale: [1, 1.04, 1]` breathe animation + green mic icon
+  - **Idle:** near-invisible `rgba(255,255,255,0.08)` border + dim grey mic icon
+- Transcript bubble — what JARVIS is hearing — fades in/out with `AnimatePresence` spring
+- State hint text below orb — "tap orb or type below" / "type below to talk" — only shown when not active
 
-**Right panel — 3 tabs:**
+**Mobile:** Single column. A "log" button in the header toggles a full-screen `AnimatePresence` chat overlay over the center column.
+
+**Right Panel (320px) — `RightPanel` component with 3 tabs:**
 
 | Tab | Contents |
 |---|---|
-| CHAT | Scrollable conversation — user bubbles (right-aligned), JARVIS bubbles (`J` avatar), interrupted markers, clear button |
-| HISTORY | Paginated session archive — date, message count, AI summary, delete with confirm |
-| MEMORY | Filterable memory banks — type filter chips (all / preference / commitment / idea / fact / general), delete with confirm, recalled count |
+| CHAT | Scrollable conversation — all message bubble types, auto-scroll on new messages, clear button |
+| HISTORY | `HistoryPanel` — paginated session archive with `getSessions(page, 10)`, date/time/count, AI summary excerpt, delete with inline confirm step |
+| MEMORY | `MemoryPanel` — type filter chips (all / preference / commitment / idea / fact / general), memory cards with type badge + recalled count + date, delete with inline confirm step |
 
-**Mobile:** single column with LOG toggle to show/hide chat overlay.
+#### Message Bubble Types
+
+All message types render distinctly in the CHAT tab:
+
+| `msg.type` | Visual |
+|---|---|
+| `text` (user) | Right-aligned bubble, `rgba(39,39,42,0.6)` background, `rgba(63,63,70,0.4)` border, springs in from right |
+| `text` (JARVIS) | Left-aligned with `J` avatar circle, grey text, springs in from left |
+| `task_created` | Left-aligned pill, emerald `#34d399` icon + text, `rgba(6,78,59,0.2)` background |
+| `morning_briefing` | Full-width card, `Sparkles` icon header ("Morning Briefing"), `rgba(8,47,73,0.4)` background, `rgba(56,189,248,0.15)` border |
+| `search_result` | `SearchResult` component card — see Search Grounding section below |
+| `interrupted` | Centered monospace dash separator — `— interrupted —` |
+
+#### Input Bar
+- Fixed bottom bar: mic button (toggles voice / `MicOff` icon when listening), text input, send button
+- Send button: activates with accent styling only when `input.trim()` is non-empty
+- Mic button calls `handleVoice()` which enables JARVIS if disabled, or toggles listening otherwise
+- On `beforeunload` and unmount: `endSession()` fires to generate and persist the session summary
 
 ---
 
-## JARVIS Evolution — Phase 1 Deep Dive
+## JARVIS Evolution — Deep Dive
+
+### Morning Briefing System (`src/lib/jarvis.ts`)
+
+Delivers a personalized spoken and visual briefing once per calendar day. The entire system is localStorage-gated so it only ever fires once regardless of how many times the page is visited.
+
+**Functions:**
+
+`shouldDeliverMorningBriefing(): boolean`
+- Reads `localStorage["jarvis:last-briefing-date"]`
+- Returns `true` only if the stored date differs from today's ISO date (`YYYY-MM-DD`)
+
+`markBriefingDelivered(): void`
+- Writes today's ISO date to `localStorage["jarvis:last-briefing-date"]`
+- Called immediately after the briefing text is received from Gemini
+
+`buildMorningBriefingPrompt(tasks: HorizonTask[]): string`
+- Accepts today's incomplete tasks from `getHorizonTasks()` filtered to today's date
+- Separates tasks into `high` priority and everything else
+- Builds a strict natural-language prompt instructing Gemini to:
+  - Vary the greeting (not always "Good morning")
+  - Reference the actual date and weekday by name
+  - Mention high-priority tasks first by their real title
+  - End with one honest, non-cheesy motivational line
+  - Stay under 100 words, plain text only (no markdown, no asterisks)
+
+`deliverMorningBriefing(sessionId: string): Promise<void>` — **exported, called on mount**
+1. Checks `shouldDeliverMorningBriefing()` — exits immediately if false
+2. Loads today's incomplete tasks from the Horizon store
+3. Builds the briefing prompt
+4. Sets `voiceState` to `"processing"`
+5. Calls `geminiAPI.generateContent(prompt, [])` — no tools, plain text
+6. If the API returns an error string or empty response, resets state and silently exits
+7. Constructs a `JarvisMessage` with `type: "morning_briefing"`
+8. Patches it into the message feed + sets `voiceState` to `"speaking"`
+9. Persists to `jarvis_messages` with `messageType: "morning_briefing"` (fire-and-forget)
+10. Enqueues the text in `TTSQueue` for spoken delivery
+11. On TTS completion: resets to `idle`, marks briefing delivered, restarts passive listening if enabled
+
+**Mount wiring in `jarvis.tsx`:**
+```tsx
+initJarvisSession().then(async (id) => {
+  sessionIdRef.current = id;
+  await deliverMorningBriefing(id);
+});
+```
+
+---
+
+### Gemini Search Grounding (`src/lib/gemini.ts`)
+
+JARVIS can now perform real-time web searches using Gemini's native Google Search Grounding tool. Results include structured source attribution and are classified into typed layouts before rendering.
+
+#### Types
+
+```typescript
+export type SearchSource = {
+  title: string;
+  url: string;
+};
+
+export type SearchType =
+  | "general"
+  | "news"
+  | "weather"
+  | "comparison"
+  | "howto"
+  | "definition"
+  | "local"
+  | "code"
+  | "math";
+
+// On GeminiResponse:
+groundingMetadata?: {
+  groundingChunks?: Array<{ web?: { uri: string; title: string } }>;
+  webSearchQueries?: string[];
+};
+```
+
+#### `classifySearchType(responseText, userQuery): SearchType`
+
+Regex-based classifier that inspects both the user's query and Gemini's response text to assign one of 9 search types. Runs client-side with zero latency — no extra API call.
+
+| Type | Detection Signals |
+|---|---|
+| `news` | "latest", "breaking", "today", "yesterday", news-related verbs |
+| `weather` | "weather", "temperature", "forecast", "rain", "humidity" |
+| `comparison` | "vs", "versus", "compare", "difference between", "better than" |
+| `howto` | "how to", "how do", "steps to", "tutorial", "guide" |
+| `definition` | "what is", "define", "meaning of", "definition" |
+| `local` | "near me", "nearby", "restaurant", "store", "address" |
+| `code` | "code", "error", "fix", "debug", "function", "script" |
+| `math` | numeric patterns, "calculate", "equation", "solve", "formula" |
+| `general` | catch-all fallback |
+
+#### `generateWithSearch(history, systemPrompt): Promise<{ text, sources, searchType }>`
+
+1. Sends the conversation history to Gemini with `tools: [{ googleSearch: {} }]` — enables Google Search Grounding natively
+2. Dual-key failover: tries primary key, falls back to `VITE_GEMINI_API_KEY_2` on 429/403
+3. Extracts `groundingMetadata.groundingChunks` → maps to `SearchSource[]` (up to 4 shown in UI)
+4. Runs `classifySearchType()` on the response text + last user message
+5. Returns `{ text: string, sources: SearchSource[], searchType: SearchType }`
+
+#### `search_query` Intent Routing in `handleCommand`
+
+When `classifyIntent()` returns `search_query`, `handleCommand` bypasses the standard `generateWithTools()` function call pipeline entirely:
+
+```
+handleCommand()
+  ├─ classifyIntent() → "search_query"
+  ├─ generateWithSearch()      ← Google Search Grounding
+  ├─ JarvisMessage { type: "search_result", metadata: { sources, searchType } }
+  ├─ saveMessage(..., "search_result", { sources, searchType })
+  └─ ttsQueue.enqueue(text)
+```
+
+Standard non-search intents continue to use `generateWithTools()` with the 7 function call tools unchanged.
+
+---
+
+### `SearchResult` Component (`src/components/jarvis/search-result.tsx`)
+
+Renders Gemini search grounding results with a type-appropriate header and full source attribution.
+
+**Structure:**
+1. **Header bar** — icon + label, both keyed to `searchType`, monospace uppercase
+
+| SearchType | Icon | Label |
+|---|---|---|
+| `general` | `Search` | Search Result |
+| `news` | `Newspaper` | Latest News |
+| `weather` | `Cloud` | Weather |
+| `comparison` | `Scale` | Comparison |
+| `howto` | `List` | How To |
+| `definition` | `HelpCircle` | Definition |
+| `local` | `MapPin` | Local Results |
+| `code` | `Code2` | Code / Technical |
+| `math` | `Calculator` | Math |
+
+2. **Content area** — `ReactMarkdown` renders the full Gemini response with GFM support; `className="jarvis-markdown"` for CSS scoping
+3. **Sources section** — rendered only when `sources.length > 0`; shows up to 4 sources as clickable links with hostname extraction via `getSafeHostname()`, hover color transition `#38bdf8` → `#7dd3fc`, external link icon
+
+---
+
+### `AICore` Component — Redesigned (`src/components/jarvis/ai-core.tsx`)
+
+The original complex SVG orb (concentric arcs, radar sweep, pulse rings, HUD brackets) has been replaced with a minimal precision circle. The design philosophy shifted to match the Linear/Perplexity aesthetic of the new JARVIS page.
+
+**Props:**
+```typescript
+interface AICoreProps {
+  voiceState: JarvisVoiceState;
+  isAwake: boolean;
+  size?: number;        // default: 120
+  onClick?: () => void; // optional — makes orb tappable; absent on non-voice-supported browsers
+}
+```
+
+**Visual behavior by state:**
+
+| State | Border | Box-Shadow Glow | Mic Icon Color | Extra |
+|---|---|---|---|---|
+| `idle` | `rgba(255,255,255,0.08)` | `rgba(56,189,248,0.06)` | `#52525b` grey | None |
+| `listening` | `rgba(56,189,248,0.4)` sky-blue | `rgba(56,189,248,0.15)` | `#38bdf8` blue | None |
+| `processing` | `rgba(251,191,36,0.25)` amber | `rgba(251,191,36,0.08)` | `#fbbf24` amber | Spinning dashed amber ring at `inset: -3px` |
+| `speaking` | `rgba(52,211,153,0.25)` green | `rgba(52,211,153,0.08)` | `#34d399` green | `scale: [1, 1.04, 1]` breathe loop (2s) |
+
+- The processing ring is a separate `motion.div` with `border: 1px dashed rgba(251,191,36,0.3)` animated to `rotate: 360` on 2.5s linear loop
+- All color and shadow transitions use `transition: "border-color 0.3s ease, box-shadow 0.3s ease"` inline
+- Mic icon size = `Math.round(size * 0.25)` — scales proportionally
+
+---
 
 ### Gemini Function Calling (`src/lib/gemini.ts`)
 
-JARVIS uses Gemini's native function calling API — not JSON-in-text parsing. 7 tool declarations:
+JARVIS uses Gemini's native function calling API — not JSON-in-text parsing. 7 tool declarations for non-search intents:
 
 | Tool | Triggers When… |
 |---|---|
@@ -559,6 +748,8 @@ JARVIS uses Gemini's native function calling API — not JSON-in-text parsing. 7
 
 Both calls use dual-key failover: primary → fallback on 429/403. No third-party library — pure REST.
 
+---
+
 ### 6-State Audio State Machine (`src/lib/jarvis.ts`)
 
 ```
@@ -569,14 +760,16 @@ idle → listening → processing → speaking → idle
 
 Invalid transitions are blocked with `canTransitionTo()`. Every state change is reflected in the UI label, orb visual, and CSS animations simultaneously.
 
-| State | Orb Visual | Label |
+| State | Orb Visual | Status Dot |
 |---|---|---|
-| `idle` | Dim orb, slow arcs, radar at half-speed | "Standing by, sir." |
-| `listening` | Bright orb, larger, green pulse dot | "Listening…" |
-| `processing` | Pulsing orb (mirror repeat), processing dots | "Processing…" |
-| `speaking` | Waveform bars animate inside orb | "Responding…" |
-| `interrupted` | Dims immediately | "Interrupted." |
-| `error` | Red state color | "Error occurred." |
+| `idle` | Dim border, grey mic | `#52525b` no pulse |
+| `listening` | Blue border + glow | `#38bdf8` pulsing |
+| `processing` | Amber border + spinning ring | `#fbbf24` pulsing |
+| `speaking` | Green border + breathe animation | `#34d399` pulsing |
+| `interrupted` | Resets to idle | `#f97316` no pulse |
+| `error` | Resets to idle | `#f87171` no pulse |
+
+---
 
 ### TTSQueue (`src/lib/jarvis.ts`)
 
@@ -586,20 +779,25 @@ Invalid transitions are blocked with `canTransitionTo()`. Every state change is 
 - `interrupt()` cancels the active utterance, clears the queue, transitions to `interrupted` → `listening` after 800ms
 - Interrupt detection: while `voiceState === "speaking"`, if the recognition detects "stop", "wait", "hold on", "shut up", or "pause" → fires `ttsQueue.interrupt()`
 
+---
+
 ### Intent Pre-Classifier (`src/lib/jarvis.ts`)
 
-Before every Gemini call, `classifyIntent(message)` runs a regex-based keyword scan and returns one of:
+Before every Gemini call, `classifyIntent(message)` runs a regex-based keyword scan and returns one of 7 intent types:
 
-| Intent | Sample Triggers |
-|---|---|
-| `task_creation` | "remind me", "add task", "tomorrow at", "deadline", "book a" |
-| `memory_capture` | "remember that", "save this", "make a note" |
-| `task_query` | "what do I have", "what's today", "pending tasks" |
-| `memory_query` | "what do you remember", "what did I tell you" |
-| `task_management` | "delete task", "reschedule", "cancel meeting" |
-| `conversation` | everything else |
+| Intent | Sample Triggers | Routes To |
+|---|---|---|
+| `task_creation` | "remind me", "add task", "tomorrow at", "deadline", "book a" | `generateWithTools()` |
+| `memory_capture` | "remember that", "save this", "make a note" | `generateWithTools()` |
+| `task_query` | "what do I have", "what's today", "pending tasks" | `generateWithTools()` |
+| `memory_query` | "what do you remember", "what did I tell you" | `generateWithTools()` |
+| `task_management` | "delete task", "reschedule", "cancel meeting" | `generateWithTools()` |
+| `search_query` | "search for", "look up", "latest news", "what happened", "price of" | `generateWithSearch()` |
+| `conversation` | everything else | `generateWithTools()` |
 
-The intent is appended to the system prompt as a hint — it nudges Gemini toward the right tool without forcing it.
+`search_query` is the only intent that bypasses function calling entirely and routes to Google Search Grounding. All other intents receive the intent as a hint appended to the system prompt.
+
+---
 
 ### Session Management (`src/lib/jarvis.ts`)
 
@@ -611,11 +809,15 @@ On JARVIS page mount → `initJarvisSession()`:
 
 Every message → `saveMessage()` persists to `jarvis_messages` (fire-and-forget, non-blocking).
 
+**Extended `messageType` values:** `"conversation"` | `"task_created"` | `"memory_saved"` | `"error"` | `"morning_briefing"` | `"search_result"`
+
 On page leave (unmount + `beforeunload`) → `endSession()`:
 1. If ≥ 4 messages, calls Gemini to generate a 2-3 sentence session summary
 2. Updates `jarvis_sessions` with `ended_at`, `session_summary`, `message_count`
 
 All failures are silently caught — JARVIS never crashes due to missing Supabase tables.
+
+---
 
 ### System Prompt Builder (`src/lib/jarvis.ts`)
 
@@ -629,6 +831,8 @@ All failures are silently caught — JARVIS never crashes due to missing Supabas
 - Full JARVIS personality spec (honest, direct, non-sycophantic, push-back capable, emotionally aware)
 - Navigation routing rules (`[NAVIGATE:/route]` block)
 
+---
+
 ### Conversation History Management
 
 Module-level `conversationHistory` array in `jarvis.ts`:
@@ -637,7 +841,7 @@ Module-level `conversationHistory` array in `jarvis.ts`:
 - Capped at 20 turns (40 entries) to prevent token bloat
 - System prompt injected as a fake first user+model exchange per Gemini's requirement (no native `system` role in REST API)
 
-**Critical fix:** `userMsg` is patched into state once, then only `jarvisMsg` is appended after Gemini responds. Previously both were appended in the second patch causing duplicate messages and inflated token counts that accelerated rate limiting.
+**`search_query` history:** Search responses are also written into `conversationHistory` — `{ role: "model", parts: [{ text: searchResult.text }] }` — so follow-up conversation references prior search results correctly.
 
 ---
 
@@ -679,10 +883,13 @@ Primary key attempt
   → 429 or 403 + fallback key exists: retry with fallback key
   → no fallback or other error: return error text
 ```
-Both `_request()` (for text responses) and `_rawRequest()` (for raw response data, needed for function call detection) implement this pattern.
+All three entry points implement this pattern: `_request()` (text), `_rawRequest()` (raw, for function call detection), and `generateWithSearch()` (search grounding).
 
 ### JARVIS Task Creation (Module-Level, Outside React)
 `addTaskDirect(input)` in `horizon.ts` is a standalone async function — not a hook. Inserts to Supabase, updates `state.tasks`, re-sorts, emits to all `useHorizon()` subscribers. The task appears in Horizon calendar immediately.
+
+### Morning Briefing Idempotency
+`shouldDeliverMorningBriefing()` gates on `localStorage["jarvis:last-briefing-date"]`. `markBriefingDelivered()` is called only after a successful Gemini response — not before. This means if the API fails, the briefing is retried on the next mount within the same calendar day.
 
 ### Cursor-Based DnD Collision (Desktop)
 Target cell recomputed from `activatorEvent.clientX + delta.x` / `activatorEvent.clientY + delta.y` — not dnd-kit's default rect (which lags by pointer grab offset). Makes folder drops land exactly where the ghost appears.
@@ -697,7 +904,27 @@ Timeline tasks live in `horizon_tasks`. Description field encodes: `[timeline:20
 
 ## Design Language
 
-### Colour System — Arctic Glass Futuristic
+### JARVIS Palette (scoped to `/jarvis` route and floating orb)
+
+The JARVIS page uses a completely independent palette from the rest of the app — precision minimal, not holographic:
+
+| Token | Value | Usage |
+|---|---|---|
+| Background | `#0a0a0a` | Page background |
+| Surface | `#111111` | Input bar |
+| Border | `#1f1f1f` | All dividers, panel borders |
+| Text primary | `#f0f0f0` | Headings, time display |
+| Text secondary | `#a1a1aa` | JARVIS message text |
+| Text muted | `#6b6b6b` | Timestamps, state labels |
+| Text dim | `#52525b` | Inactive controls, quick commands |
+| Text ghost | `#3f3f46` | Monospace system labels |
+| Accent | `#38bdf8` | Active state, links, mic icon when listening |
+| Accent hover | `#7dd3fc` | Source link hover |
+| Success | `#34d399` | Speaking state, task-created pills |
+| Warning | `#fbbf24` | Processing state |
+| Error | `#f87171` | Error state, high-priority count |
+
+### App-Wide Colour System — Arctic Glass Futuristic
 
 All tokens are `oklch` CSS variables in `src/styles.css`.
 
@@ -717,20 +944,13 @@ All tokens are `oklch` CSS variables in `src/styles.css`.
 - Background (hover): `rgba(125,211,252,0.045–0.09)`
 - Glow (ambient): `rgba(125,211,252,0.12–0.18)`
 
-**JARVIS scoped palette (isolated to `/jarvis` and floating orb):**
-- Background: `#050609`
-- Primary: `#7DD3FC` / `#0EA5E9`
-- Accent: `#93C5FD`
-- Panel: `rgba(14,165,233,0.04–0.10)`
-
 ### Motion Principles
 - **Easing:** `[0.22, 1, 0.36, 1]` — custom spring-like cubic-bezier — used on virtually all transitions
 - **Durations:** 0.15–0.22s micro (hover, toggle), 0.28–0.35s page-level, 0.4–0.5s entrances
 - **`AnimatePresence`** wraps every conditional mount — no abrupt DOM removals
 - **Hover lifts:** `y: -1` to `y: -2` + `scale: 1.02–1.08` on interactive cards
 - **Stagger:** `staggerChildren: 0.04–0.07s` on lists and grids
-- **Ambient loops:** today-cell glow, timeline node pulse, JARVIS arcs/orb — slow (3–5s), very low opacity
-- **JARVIS CSS animations** use `transform` only → GPU-accelerated, zero layout reflow
+- **Ambient loops:** today-cell glow, JARVIS orb breathe (speaking state) — slow, purposeful, never decorative
 
 ### JARVIS CSS Keyframes (`src/styles.css`)
 
@@ -746,7 +966,7 @@ All tokens are `oklch` CSS variables in `src/styles.css`.
 - **Inputs:** `rounded-xl` arctic blue border, blue glow on focus
 - **Modals:** React Portal + `AnimatePresence` fade+scale + arctic blue top-edge highlight
 - **Primary buttons:** arctic blue gradient, dark text (`#050609`), blue glow shadow
-- **Monospace text:** `Space Mono` — JARVIS HUD labels, clock, version badge, system indicators
+- **Monospace text:** `Space Mono` — JARVIS HUD labels, clock, version badge, state indicators, tab labels, source type labels
 
 ---
 
@@ -772,7 +992,7 @@ All tokens are `oklch` CSS variables in `src/styles.css`.
 | Horizon calendar | ✅ Complete | Month nav, today glow, task dots, viewport-fit desktop |
 | Horizon timeline | ✅ Complete | Grouped by hour, animated rail, time-of-day colored nodes |
 | Horizon tasks | ✅ Complete | Full CRUD, priority stripes, expand/collapse, realtime |
-| Horizon checkbox fix | ✅ Fixed | Checkbox now fills `bg-sky-300/70` on complete — tick is visible |
+| Horizon checkbox fix | ✅ Fixed | Checkbox fills `bg-sky-300/70` on complete — tick is visible |
 | Horizon reminders | ✅ Complete | Default ON, holographic toggle, FCM pipeline |
 | Timeline life planner | ✅ Complete | 6 months, 9 domains, Gemini AI schedule, filter, completion |
 | Insights — AI usage | ✅ Complete | Charts, ranked lists, Gemini insights, 30s auto-refresh |
@@ -780,18 +1000,24 @@ All tokens are `oklch` CSS variables in `src/styles.css`.
 | AI chat (Ask) | ✅ Complete | Multi-turn, workspace context, voice, Markdown |
 | Voice mic input | ✅ Active | Chrome/Edge only; gates on `isSpeechSupported` |
 | Horizon voice assistant | ✅ Complete | Wake word, command parsing, TTS, voice settings overlay |
+| **JARVIS — Morning Briefing** | ✅ Complete | Once-per-day via localStorage gate; today's tasks injected; spoken via TTSQueue |
+| **JARVIS — Google Search Grounding** | ✅ Complete | `generateWithSearch()`, native `googleSearch` tool, `search_query` intent routing |
+| **JARVIS — Search Result UI** | ✅ Complete | `SearchResult` component, 9 typed layouts, source attribution with up to 4 links |
+| **JARVIS — search_query intent** | ✅ Complete | 7th intent type; bypasses function calling; routes to search grounding pipeline |
+| **JARVIS — UI Overhaul (v3)** | ✅ Complete | Linear/Perplexity aesthetic; `#0a0a0a`; minimal AICore; 3-column with flat tab bar |
+| **JARVIS — AICore redesign** | ✅ Complete | Minimal circle + Mic icon; state-reactive border/glow; processing spinner ring |
+| **JARVIS — Morning Briefing bubble** | ✅ Complete | Distinct `Sparkles`-headered card in chat feed |
 | JARVIS — Wake word system | ✅ Complete | Passive + command modes, 7s timeout, inline commands |
 | JARVIS — Gemini function calling | ✅ Complete | 7 tools, native API (no JSON parsing), dual-call flow |
 | JARVIS — 6-state audio machine | ✅ Complete | idle/listening/processing/speaking/interrupted/error |
 | JARVIS — TTSQueue | ✅ Complete | Sentence splitting, interrupt detection, voice preference |
-| JARVIS — Intent classifier | ✅ Complete | Regex pre-classifier, 6 intent types, hint injected to Gemini |
+| JARVIS — Intent classifier | ✅ Complete | Regex pre-classifier, 7 intent types (inc. `search_query`), hint injected to Gemini |
 | JARVIS — Persistent sessions | ✅ Complete | Requires `JARVIS_EVOLUTION_SETUP.sql`; graceful degradation without it |
 | JARVIS — Memory banks | ✅ Complete | 5 memory types, filterable panel, delete, recalled_count tracking |
 | JARVIS — Session history | ✅ Complete | Paginated list, AI summaries, delete |
-| JARVIS — 3-tab right panel | ✅ Complete | Chat / History / Memory with tab bar |
-| JARVIS — AICore SVG | ✅ Fixed | `motion.circle` elements have explicit initial `r` — no SVG errors |
-| JARVIS — Duplicate messages | ✅ Fixed | `userMsg` patched once; `jarvisMsg` appended separately |
-| JARVIS HUD | ✅ Complete | Space Mono, EQ bars, signal bars, scan line, freq bars, 3-col layout |
+| JARVIS — 3-tab right panel | ✅ Complete | Chat / History / Memory with flat tab bar |
+| JARVIS — Duplicate messages fix | ✅ Fixed | `userMsg` patched once; `jarvisMsg` appended separately |
+| JARVIS — messageType extended | ✅ Complete | Supports `morning_briefing` and `search_result` in DB + feed |
 | JARVIS floating orb | ✅ Complete | Global, state-reactive (pulse/spin/waveform) |
 | Context Window | ✅ Complete | Personal context editor, `localStorage["jarvis:user-context"]` |
 | Collapsible sidebar | ✅ Complete | Spring animation, icon-only, hover tooltips, localStorage persisted |
@@ -808,13 +1034,16 @@ All tokens are `oklch` CSS variables in `src/styles.css`.
 
 - **`VITE_` prefix required** — all env vars must be `VITE_`-prefixed or they're `undefined` at runtime.
 - **Run all 6 SQL files in order** — missing files cause silent empty states (`PGRST205` errors are swallowed with `console.debug`/`console.warn`).
-- **`gemini-2.0-flash` is blocked in some regions** — `limit: 0` on the free tier in India and other markets. Always use `gemini-1.5-flash`. Creating new Google accounts or API keys does NOT fix this — it is a geographic model restriction, not an account quota issue.
+- **Always use `gemini-2.5-flash`** — never `gemini-2.0-flash` or `gemini-flash-latest`. `gemini-2.0-flash` has `limit: 0` on the free tier in some regions. `gemini-2.5-flash` is what is used everywhere in this codebase.
 - **`VITE_GEMINI_API_KEY_2` must be a different Google account** — same account = same quota, no benefit. For genuine dual-quota, use two separate Gmail accounts.
 - **RLS is off** — anyone with the Supabase anon key can read and write all data. Fine for single-user. Add Auth + RLS before any shared deployment.
 - **Voice input is Chrome/Edge only** — `SpeechRecognition` doesn't exist in Firefox or Safari. `isVoiceAssistantSupported` / `isSpeechSupported` gate all voice UI.
 - **JARVIS passive listening requires mic permission already granted** — `jarvis.autoStartIfEnabled()` checks `navigator.permissions.query({ name: "microphone" })`. If the permission is `"prompt"` or `"denied"`, passive mode does not start. It never triggers a browser permission dialog automatically.
 - **Single SpeechRecognition instance** — JARVIS owns the global `recRef`. The Horizon voice overlay and JARVIS cannot run simultaneously — the browser only honours one. Use one voice interface at a time.
 - **JARVIS session + memory tables are optional** — without `JARVIS_EVOLUTION_SETUP.sql`, JARVIS still works but doesn't persist sessions or memories. All Supabase calls are wrapped in `try/catch` with silent degradation.
+- **Morning briefing fires once per calendar day** — gated via `localStorage["jarvis:last-briefing-date"]`. Clearing localStorage or changing the system date resets it. If Gemini returns a 400/error, the briefing date is NOT marked — it will retry on next mount that same day.
+- **Search grounding requires `VITE_GEMINI_API_KEY`** — the `googleSearch` tool is part of the standard Gemini API; no separate Search API key is needed. However, search grounding is only available on models that support it (`gemini-2.5-flash` supports it).
+- **`search_query` intent uses no tools** — it completely bypasses the 7-tool function calling pipeline. JARVIS cannot simultaneously search the web and create a task in one message. Intent classifier decides the path.
 - **`routeTree.gen.ts` is auto-generated** — never edit. If it fails to regenerate after adding a route file, restart the dev server.
 - **Timeline month range is hardcoded** — `TIMELINE_MONTHS` covers May–Oct 2026. To extend, add entries to the array.
 - **Timeline tasks are in `horizon_tasks`** — the `[timeline:…]` description prefix is what links them. Never strip it manually or the Timeline planner loses those tasks.
@@ -823,6 +1052,7 @@ All tokens are `oklch` CSS variables in `src/styles.css`.
 - **Push notifications require all Firebase vars** — without them, the app logs `[fcm] Firebase not configured` and degrades gracefully.
 - **JARVIS task time is UTC** — `task_time` has no timezone. Push reminder timing may be off if the user's local timezone differs from UTC.
 - **Capacitor build requires Android Studio** — `npm run cap:open` opens Android Studio which must be installed separately. Always `npm run build` before syncing native assets.
+- **JARVIS design is intentionally isolated** — the `/jarvis` route uses its own `#0a0a0a` palette and Space Mono typography. Do not bleed the app-wide arctic-glass `oklch` tokens into JARVIS components — the two systems are deliberately separate.
 
 ---
 
@@ -831,12 +1061,13 @@ All tokens are `oklch` CSS variables in `src/styles.css`.
 - Code style: clean, senior-level TypeScript; no verbose JSX comments; no redundant CSS; `any` only when truly unavoidable
 - Modals must be centered regardless of page scroll (React Portal required for all modals)
 - Desktop grid must not shift layout on load or drag (fixed `gridTemplateRows` in px, never `auto`)
-- Arctic Glass aesthetic: consistent arctic blue (`rgba(125,211,252,…)`) across all borders, accents, glows
+- Arctic Glass aesthetic: consistent arctic blue (`rgba(125,211,252,…)`) across all borders, accents, glows — applies to all routes **except** `/jarvis`
+- JARVIS has its own isolated precision-minimal palette: `#0a0a0a` bg, `#1f1f1f` dividers, `#38bdf8` sole accent — no arctic-glass bleedover
 - Zero purple/violet accent colors anywhere except Timeline domain badges (semantic per-domain colors)
 - Semantic priority accents (blue/amber/red at low opacity) only in Horizon and JARVIS task contexts
-- JARVIS has its own scoped deeper electric-blue holographic palette — isolated to `/jarvis` route and floating orb
-- No over-animation — every animated element must feel premium, cinematic, purposeful; never decorative or distracting
+- No over-animation — every animated element must feel premium, purposeful; never decorative or distracting
 - Horizon reminder toggle defaults to **ON** for all new tasks
 - Sidebar collapse state persists via localStorage
-- `Space Mono` monospace font for JARVIS HUD elements, clocks, and system labels
-- Gemini model: always `gemini-1.5-flash` — never `gemini-2.0-flash` (regional free-tier quota = 0)
+- `Space Mono` monospace font for JARVIS HUD elements, clocks, system labels, and tab headers
+- Gemini model: always `gemini-2.5-flash` — never `gemini-2.0-flash` or `gemini-flash-latest`
+- Morning briefing prompt tone: warm but direct, like a sharp friend — no cheesy motivational language, no markdown in the spoken output, under 100 words
