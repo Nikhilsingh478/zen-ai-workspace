@@ -8,6 +8,7 @@ import { useSyncExternalStore } from "react";
 import { geminiAPI } from "@/lib/gemini";
 import type { GeminiMessage } from "@/lib/gemini";
 import { getHorizonTasks, ensureBooted } from "@/lib/horizon";
+import type { HorizonTask } from "@/lib/horizon";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 
@@ -36,8 +37,9 @@ export type JarvisMessage = {
   role: "user" | "jarvis";
   content: string;
   timestamp: number;
-  type?: "text" | "task_created" | "memory_saved" | "error" | "interrupted";
+  type?: "text" | "task_created" | "memory_saved" | "error" | "interrupted" | "morning_briefing" | "search_result";
   tasks?: ParsedTask[];
+  metadata?: Record<string, unknown>;
 };
 
 export type Memory = {
@@ -65,6 +67,7 @@ export type IntentType =
   | "task_query"
   | "memory_query"
   | "task_management"
+  | "search_query"
   | "conversation";
 
 type JarvisState = {
@@ -260,7 +263,99 @@ export function classifyIntent(message: string): IntentType {
   if (/delete (task|reminder)|remove (task|reminder)|reschedule|update (task|reminder)|change (the|my) (task|reminder|schedule)|cancel (task|reminder|meeting)|move (the|my) (task|meeting)/.test(lower))
     return "task_management";
 
+  if (
+    /search for|look up|find out|what's the latest|tell me about|google|news about|current events|today's news|price of|how much is|who won|what happened|latest on|what are the|any updates on/.test(lower)
+  )
+    return "search_query";
+
   return "conversation";
+}
+
+// ─── Morning Briefing ─────────────────────────────────────────────────────────
+
+export function shouldDeliverMorningBriefing(): boolean {
+  try {
+    const last = localStorage.getItem("jarvis:last-briefing-date");
+    const today = new Date().toISOString().split("T")[0];
+    return last !== today;
+  } catch {
+    return false;
+  }
+}
+
+function markBriefingDelivered(): void {
+  try {
+    const today = new Date().toISOString().split("T")[0];
+    localStorage.setItem("jarvis:last-briefing-date", today);
+  } catch {
+    /* ignore */
+  }
+}
+
+function buildMorningBriefingPrompt(tasks: HorizonTask[]): string {
+  const now = new Date();
+  const dateStr = now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+
+  const highPriority = tasks.filter((t) => t.priority === "high");
+  const medLow = tasks.filter((t) => t.priority !== "high");
+
+  let taskSection = "";
+  if (tasks.length === 0) {
+    taskSection = "The user has no tasks scheduled for today. Acknowledge this and suggest it's a good day to plan.";
+  } else {
+    const lines: string[] = [];
+    if (highPriority.length > 0) {
+      lines.push(`High priority: ${highPriority.map((t) => t.title).join(", ")}`);
+    }
+    if (medLow.length > 0) {
+      lines.push(`Other tasks: ${medLow.map((t) => t.title).join(", ")}`);
+    }
+    taskSection = lines.join(". ");
+  }
+
+  return `Today is ${dateStr}. Generate a short morning briefing for the user. ${taskSection}. Rules: vary the greeting (not always "Good morning"), reference the actual date and day, mention high-priority tasks by name first, end with one honest non-cheesy motivational line relevant to their tasks. Keep it under 100 words. Tone: warm but direct, like a sharp friend. No markdown, no asterisks, plain spoken text only.`;
+}
+
+export async function deliverMorningBriefing(sessionId: string): Promise<void> {
+  if (!shouldDeliverMorningBriefing()) return;
+
+  const today = new Date().toISOString().split("T")[0];
+  const allTasks = getHorizonTasks();
+  const todayTasks = allTasks.filter((t) => t.taskDate === today && !t.completed);
+  const prompt = buildMorningBriefingPrompt(todayTasks);
+
+  patch({ voiceState: "processing" });
+
+  try {
+    const text = await geminiAPI.generateContent(prompt, []);
+    if (!text || text.startsWith("API key")) {
+      patch({ voiceState: "idle" });
+      return;
+    }
+
+    const msg: JarvisMessage = {
+      id: crypto.randomUUID(),
+      role: "jarvis",
+      content: text,
+      timestamp: Date.now(),
+      type: "morning_briefing",
+    };
+
+    patch({ messages: [..._state.messages, msg], voiceState: "speaking" });
+    saveMessage(sessionId, "assistant", text, "morning_briefing").catch(() => null);
+
+    ttsQueue.enqueue(text, () => {
+      patch({ voiceState: "idle", isAwake: false, transcript: "" });
+      if (_state.enabled) {
+        setTimeout(() => startRecognition("passive"), 400);
+      }
+    });
+
+    markBriefingDelivered();
+  } catch (err) {
+    console.warn("[JARVIS] Morning briefing failed:", err);
+    patch({ voiceState: "idle" });
+  }
 }
 
 // ─── Session Management ───────────────────────────────────────────────────────
@@ -321,7 +416,7 @@ export async function saveMessage(
   sessionId: string,
   role: "user" | "assistant",
   content: string,
-  messageType: "conversation" | "task_created" | "memory_saved" | "error" = "conversation",
+  messageType: "conversation" | "task_created" | "memory_saved" | "error" | "morning_briefing" | "search_result" = "conversation",
   metadata?: Record<string, unknown>,
 ): Promise<void> {
   if (!sessionId) return;
@@ -801,13 +896,51 @@ async function handleCommand(commandText: string) {
       _state.systemPrompt ||
       buildJarvisSystemPrompt(_state.recentMemories, _state.sessionSummaries);
 
-    const intentHint = `\nThe user's message has been pre-classified as: ${intent}. Use this as a hint when deciding whether to call a tool.`;
-    const fullSystemPrompt = systemPrompt + intentHint;
-
     const userGeminiMsg: GeminiMessage = {
       role: "user",
       parts: [{ text: commandText }],
     };
+
+    if (intent === "search_query") {
+      const searchResult = await geminiAPI.generateWithSearch(
+        [...conversationHistory, userGeminiMsg],
+        systemPrompt,
+      );
+
+      conversationHistory = [
+        ...conversationHistory,
+        { role: "user", parts: [{ text: commandText }] },
+        { role: "model", parts: [{ text: searchResult.text }] },
+      ];
+      if (conversationHistory.length > 20) {
+        conversationHistory = conversationHistory.slice(-20);
+      }
+
+      const jarvisMsg: JarvisMessage = {
+        id: crypto.randomUUID(),
+        role: "jarvis",
+        content: searchResult.text,
+        timestamp: Date.now(),
+        type: "search_result",
+        metadata: { sources: searchResult.sources, searchType: searchResult.searchType },
+      };
+
+      patch({ messages: [..._state.messages, jarvisMsg], voiceState: "speaking" });
+      saveMessage(sessionId, "assistant", searchResult.text, "search_result", {
+        sources: searchResult.sources,
+        searchType: searchResult.searchType,
+      }).catch(() => null);
+
+      ttsQueue.enqueue(searchResult.text, () => {
+        patch({ voiceState: "idle", isAwake: false, transcript: "" });
+        if (_state.enabled) setTimeout(() => startRecognition("passive"), 400);
+      });
+
+      return;
+    }
+
+    const intentHint = `\nThe user's message has been pre-classified as: ${intent}. Use this as a hint when deciding whether to call a tool.`;
+    const fullSystemPrompt = systemPrompt + intentHint;
 
     const rawResponse = await geminiAPI.generateWithTools(
       [...conversationHistory, userGeminiMsg],
@@ -842,7 +975,6 @@ async function handleCommand(commandText: string) {
       type: "text",
     };
 
-    // _state.messages already contains userMsg from the earlier patch — only append jarvisMsg
     patch({ messages: [..._state.messages, jarvisMsg], voiceState: "speaking" });
 
     saveMessage(sessionId, "assistant", clean, "conversation").catch(() => null);

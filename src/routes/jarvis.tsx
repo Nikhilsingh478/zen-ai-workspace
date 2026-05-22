@@ -3,104 +3,21 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useRef, useState, useCallback } from "react";
 import {
   Mic, MicOff, Send, Trash2, Zap, CheckSquare,
-  Volume2, ChevronLeft, Radio, Brain, Clock, Tag,
-  ChevronDown, X, MessageSquare, Database,
+  Volume2, ChevronLeft, Clock, X, Sparkles,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { useJarvis, jarvis, initJarvisSession, endSession, getSessions, deleteSession, getAllMemories, deleteMemory } from "@/lib/jarvis";
+import {
+  useJarvis, jarvis, initJarvisSession, endSession,
+  getSessions, deleteSession, getAllMemories, deleteMemory,
+  deliverMorningBriefing,
+} from "@/lib/jarvis";
 import type { JarvisSession, Memory } from "@/lib/jarvis";
+import type { SearchSource, SearchType } from "@/lib/gemini";
 import { useHorizon } from "@/lib/horizon";
 import { AICore } from "@/components/jarvis/ai-core";
+import { SearchResult } from "@/components/jarvis/search-result";
 import { isVoiceAssistantSupported } from "@/hooks/use-voice-assistant";
 
 export const Route = createFileRoute("/jarvis")({ component: JarvisPage });
-
-// ─── Background layers ─────────────────────────────────────────────────────────
-
-function JarvisBackground() {
-  return (
-    <>
-      <div
-        className="pointer-events-none absolute inset-0 z-0"
-        style={{
-          background:
-            "radial-gradient(ellipse 80% 50% at 50% -5%, rgba(125,211,252,0.07) 0%, transparent 70%), " +
-            "radial-gradient(ellipse 40% 35% at 85% 85%, rgba(56,189,248,0.03) 0%, transparent 60%)",
-        }}
-      />
-      <div
-        className="pointer-events-none absolute inset-0 z-0"
-        style={{
-          backgroundImage:
-            "linear-gradient(rgba(125,211,252,0.045) 1px, transparent 1px), " +
-            "linear-gradient(90deg, rgba(125,211,252,0.045) 1px, transparent 1px)",
-          backgroundSize: "40px 40px",
-        }}
-      />
-      <div
-        className="pointer-events-none absolute inset-0 z-0"
-        style={{
-          background:
-            "radial-gradient(ellipse 100% 100% at 50% 50%, transparent 35%, rgba(5,6,9,0.75) 100%)",
-        }}
-      />
-    </>
-  );
-}
-
-// ─── Header waveform EQ ────────────────────────────────────────────────────────
-
-function HeaderEQ({ active }: { active: boolean }) {
-  const bases = [0.35, 0.7, 1, 0.8, 0.55, 0.9, 0.45];
-  if (!active) return null;
-  return (
-    <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 14 }}>
-      {bases.map((b, i) => (
-        <div
-          key={i}
-          className="jarvis-eq-bar"
-          style={{ height: 14, "--b": `${b * 0.5}s`, "--d": `${i * 0.07}s` } as React.CSSProperties}
-        />
-      ))}
-    </div>
-  );
-}
-
-// ─── Signal bars ──────────────────────────────────────────────────────────────
-
-function SignalBars() {
-  return (
-    <div style={{ display: "flex", alignItems: "flex-end", gap: 2 }}>
-      {[5, 8, 11, 14].map((h, i) => (
-        <div
-          key={i}
-          style={{
-            width: 3, height: h, borderRadius: 1,
-            background: i < 3 ? "#7DD3FC" : "rgba(125,211,252,0.2)",
-          }}
-        />
-      ))}
-    </div>
-  );
-}
-
-// ─── HUD panel ────────────────────────────────────────────────────────────────
-
-function HudPanel({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) {
-  return (
-    <div
-      className={cn("rounded-xl p-3 transition-all duration-200", className)}
-      style={{ background: "rgba(125,211,252,0.025)", border: "1px solid rgba(125,211,252,0.09)" }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "rgba(125,211,252,0.18)"; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "rgba(125,211,252,0.09)"; }}
-    >
-      <p style={{ fontFamily: "'Space Mono', monospace", fontSize: 7, letterSpacing: "0.32em", color: "rgba(125,211,252,0.3)", textTransform: "uppercase", marginBottom: 8, fontWeight: 700 }}>
-        {label}
-      </p>
-      {children}
-    </div>
-  );
-}
 
 // ─── Live clock ───────────────────────────────────────────────────────────────
 
@@ -110,135 +27,107 @@ function LiveClock() {
     const id = setInterval(() => setT(new Date()), 1000);
     return () => clearInterval(id);
   }, []);
-  const hh = t.getHours().toString().padStart(2, "0");
-  const mm = t.getMinutes().toString().padStart(2, "0");
-  const ss = t.getSeconds().toString().padStart(2, "0");
-  const date = t.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+  const time = t.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+  const date = t.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
-        <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 20, fontWeight: 700, color: "#7DD3FC", letterSpacing: "0.04em", lineHeight: 1 }}>
-          {hh}:{mm}
-        </span>
-        <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 11, color: "rgba(125,211,252,0.4)", letterSpacing: "0.06em" }}>
-          {ss}
-        </span>
-      </div>
-      <p style={{ fontSize: 9, color: "rgba(125,211,252,0.28)", letterSpacing: "0.1em", marginTop: 3 }}>{date}</p>
-    </div>
-  );
-}
-
-// ─── Stat row ─────────────────────────────────────────────────────────────────
-
-function StatRow({ icon, label, value, color = "#7DD3FC" }: { icon: React.ReactNode; label: string; value: number; color?: string }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "3px 0" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, color: "rgba(125,211,252,0.38)" }}>
-        {icon}
-        <span style={{ fontSize: 9, letterSpacing: "0.05em" }}>{label}</span>
-      </div>
-      <motion.span
-        key={value}
-        initial={{ opacity: 0, y: -3 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ type: "spring", stiffness: 400, damping: 28 }}
-        style={{ fontFamily: "'Space Mono', monospace", fontSize: 13, fontWeight: 700, color }}
-      >
-        {value}
-      </motion.span>
+      <p style={{ fontSize: 30, fontFamily: "'Space Mono', monospace", fontWeight: 700, color: "#f0f0f0", lineHeight: 1, letterSpacing: "0.02em" }}>
+        {time}
+      </p>
+      <p style={{ fontSize: 11, color: "#6b6b6b", marginTop: 4 }}>{date}</p>
     </div>
   );
 }
 
 // ─── Left status panel ────────────────────────────────────────────────────────
 
+const STATE_DOT: Record<string, { color: string; pulse: boolean }> = {
+  idle:        { color: "#52525b", pulse: false },
+  listening:   { color: "#38bdf8", pulse: true },
+  processing:  { color: "#fbbf24", pulse: true },
+  speaking:    { color: "#34d399", pulse: true },
+  interrupted: { color: "#f97316", pulse: false },
+  error:       { color: "#f87171", pulse: false },
+};
+
 function StatusPanel({ voiceState, enabled }: { voiceState: string; enabled: boolean }) {
   const { tasks } = useHorizon();
   const todayStr = new Date().toISOString().split("T")[0];
-  const pendingToday = tasks.filter((t) => t.taskDate === todayStr && !t.completed).length;
-  const completedToday = tasks.filter((t) => t.taskDate === todayStr && t.completed).length;
-  const totalActive = tasks.filter((t) => !t.completed).length;
-  const totalToday = pendingToday + completedToday;
-  const pct = totalToday > 0 ? Math.round((completedToday / totalToday) * 100) : 0;
+  const todayTasks = tasks.filter((t) => t.taskDate === todayStr && !t.completed);
+  const highPriority = todayTasks.filter((t) => t.priority === "high");
+  const dotInfo = STATE_DOT[voiceState] ?? STATE_DOT.idle;
 
-  const STATE_COLOR: Record<string, string> = {
-    idle: "rgba(125,211,252,0.35)", listening: "#93C5FD",
-    processing: "#7DD3FC", speaking: "#BAE6FD",
-    interrupted: "#FCD34D", error: "#F87171",
-  };
-  const STATE_LABEL: Record<string, string> = {
-    idle: "STANDBY", listening: "LISTENING", processing: "PROCESSING",
-    speaking: "RESPONDING", interrupted: "INTERRUPTED", error: "ERROR",
-  };
+  const DIV = <div style={{ height: 1, background: "#1f1f1f", margin: "16px 0" }} />;
 
   return (
-    <div className="flex flex-col gap-2 h-full overflow-y-auto" style={{ scrollbarWidth: "none" }}>
-      <HudPanel label="AI STATUS">
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div
-            className={enabled ? "jarvis-blink" : ""}
-            style={{ width: 6, height: 6, borderRadius: "50%", background: enabled ? "#7DD3FC" : "rgba(125,211,252,0.18)", boxShadow: enabled ? "0 0 6px rgba(125,211,252,0.7)" : "none", flexShrink: 0 }}
-          />
-          <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 11, fontWeight: 700, letterSpacing: "0.2em", color: enabled ? "#93C5FD" : "rgba(125,211,252,0.28)" }}>
-            {enabled ? "ONLINE" : "OFFLINE"}
-          </span>
-        </div>
-      </HudPanel>
+    <div style={{ padding: "20px 16px", display: "flex", flexDirection: "column", overflowY: "auto", scrollbarWidth: "none", height: "100%" }}>
+      <div style={{ marginBottom: 20 }}>
+        <p style={{ fontSize: 9, letterSpacing: "0.3em", color: "#52525b", textTransform: "uppercase", fontFamily: "'Space Mono', monospace" }}>JARVIS</p>
+        <p style={{ fontSize: 9, color: "#3f3f46", marginTop: 2, fontFamily: "'Space Mono', monospace" }}>v3.0</p>
+      </div>
 
-      <HudPanel label="VOICE MODE">
+      <LiveClock />
+      {DIV}
+
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <motion.div
+          style={{ width: 6, height: 6, borderRadius: "50%", background: dotInfo.color, flexShrink: 0 }}
+          animate={dotInfo.pulse ? { opacity: [1, 0.35, 1] } : { opacity: 1 }}
+          transition={dotInfo.pulse ? { duration: 1.2, repeat: Infinity } : {}}
+        />
         <AnimatePresence mode="wait">
-          <motion.div key={voiceState} initial={{ opacity: 0, y: 2 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -2 }} transition={{ duration: 0.15 }} style={{ display: "flex", alignItems: "center", gap: 7 }}>
-            <div style={{ width: 5, height: 5, borderRadius: "50%", background: STATE_COLOR[voiceState] ?? "rgba(125,211,252,0.3)", flexShrink: 0 }} />
-            <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 10, fontWeight: 700, letterSpacing: "0.18em", color: STATE_COLOR[voiceState] ?? "rgba(125,211,252,0.35)" }}>
-              {STATE_LABEL[voiceState] ?? "STANDBY"}
-            </span>
-          </motion.div>
-        </AnimatePresence>
-      </HudPanel>
-
-      <HudPanel label="SYSTEM TIME"><LiveClock /></HudPanel>
-
-      <HudPanel label="HORIZON TASKS">
-        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          <StatRow icon={<CheckSquare size={9} />} label="Pending Today" value={pendingToday} />
-          <StatRow icon={<Zap size={9} />} label="Completed" value={completedToday} color="#34D399" />
-          <StatRow icon={<Radio size={9} />} label="Total Active" value={totalActive} color="#93C5FD" />
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }}>
-          <div style={{ flex: 1, height: 3, borderRadius: 99, background: "rgba(125,211,252,0.1)", overflow: "hidden" }}>
-            <motion.div
-              initial={{ width: 0 }}
-              animate={{ width: `${pct}%` }}
-              transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
-              style={{ height: "100%", borderRadius: 99, background: "linear-gradient(90deg, #0369A1, #7DD3FC)" }}
-            />
-          </div>
-          <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 9, color: "rgba(125,211,252,0.45)" }}>{pct}%</span>
-        </div>
-      </HudPanel>
-
-      <HudPanel label="WAKE PHRASES">
-        {["Jarvis", "Hey Jarvis", "Okay Jarvis"].map((w) => (
-          <p key={w} style={{ fontSize: 10, color: "rgba(125,211,252,0.42)", letterSpacing: "0.04em", padding: "2px 0" }}>"{w}"</p>
-        ))}
-      </HudPanel>
-
-      <HudPanel label="QUICK COMMANDS">
-        {["What's pending today?", "Open Horizon", "Schedule a meeting", "Open Ask"].map((cmd) => (
-          <motion.button
-            key={cmd}
-            onClick={() => jarvis.sendText(cmd)}
-            whileHover={{ x: 2 }}
-            transition={{ type: "spring", stiffness: 400, damping: 25 }}
-            style={{ display: "block", width: "100%", textAlign: "left", padding: "5px 8px", borderRadius: 7, fontSize: 9, color: "rgba(125,211,252,0.45)", letterSpacing: "0.04em", background: "transparent", border: "1px solid rgba(125,211,252,0.07)", cursor: "pointer", marginBottom: 3, transition: "all 0.15s ease" }}
-            onMouseEnter={(e) => { const el = e.currentTarget as HTMLElement; el.style.color = "#7DD3FC"; el.style.background = "rgba(125,211,252,0.08)"; el.style.borderColor = "rgba(125,211,252,0.2)"; }}
-            onMouseLeave={(e) => { const el = e.currentTarget as HTMLElement; el.style.color = "rgba(125,211,252,0.45)"; el.style.background = "transparent"; el.style.borderColor = "rgba(125,211,252,0.07)"; }}
+          <motion.span
+            key={voiceState}
+            initial={{ opacity: 0, y: 2 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -2 }}
+            transition={{ duration: 0.15 }}
+            style={{ fontSize: 10, letterSpacing: "0.12em", color: "#6b6b6b", textTransform: "uppercase", fontFamily: "'Space Mono', monospace" }}
           >
-            <span style={{ color: "rgba(125,211,252,0.4)", marginRight: 4 }}>›</span>{cmd}
-          </motion.button>
-        ))}
-      </HudPanel>
+            {voiceState}
+          </motion.span>
+        </AnimatePresence>
+      </div>
+      {DIV}
+
+      <div>
+        <p style={{ fontSize: 9, letterSpacing: "0.2em", color: "#3f3f46", textTransform: "uppercase", marginBottom: 8, fontFamily: "'Space Mono', monospace" }}>Today</p>
+        <p style={{ fontSize: 14, color: "#d4d4d8", fontWeight: 500 }}>{todayTasks.length} tasks</p>
+        {highPriority.length > 0 && (
+          <p style={{ fontSize: 12, color: "#f87171", marginTop: 4 }}>{highPriority.length} high priority</p>
+        )}
+      </div>
+      {DIV}
+
+      <button
+        onClick={() => (enabled ? jarvis.disable() : jarvis.enable())}
+        style={{ display: "flex", alignItems: "center", gap: 8, padding: 0, background: "none", border: "none", cursor: "pointer" }}
+      >
+        <div style={{ width: 28, height: 16, borderRadius: 8, position: "relative", background: enabled ? "rgba(56,189,248,0.15)" : "#27272a", border: `1px solid ${enabled ? "rgba(56,189,248,0.35)" : "#3f3f46"}`, transition: "all 0.2s", flexShrink: 0 }}>
+          <motion.div
+            style={{ position: "absolute", top: 2, width: 10, height: 10, borderRadius: "50%", background: enabled ? "#38bdf8" : "#52525b" }}
+            animate={{ left: enabled ? 13 : 2 }}
+            transition={{ type: "spring", stiffness: 500, damping: 30 }}
+          />
+        </div>
+        <span style={{ fontSize: 12, color: enabled ? "#38bdf8" : "#52525b", transition: "color 0.2s" }}>
+          {enabled ? "JARVIS Active" : "JARVIS Inactive"}
+        </span>
+      </button>
+      {DIV}
+
+      <p style={{ fontSize: 9, letterSpacing: "0.2em", color: "#3f3f46", textTransform: "uppercase", marginBottom: 10, fontFamily: "'Space Mono', monospace" }}>Quick</p>
+      {["What's pending today?", "Open Horizon", "Search latest news", "Open Ask"].map((cmd) => (
+        <button
+          key={cmd}
+          onClick={() => jarvis.sendText(cmd)}
+          style={{ display: "block", width: "100%", textAlign: "left", padding: "5px 0", background: "none", border: "none", fontSize: 12, color: "#52525b", cursor: "pointer", transition: "color 0.15s", marginBottom: 2 }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "#a1a1aa"; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "#52525b"; }}
+        >
+          <span style={{ marginRight: 6, color: "#3f3f46" }}>›</span>{cmd}
+        </button>
+      ))}
     </div>
   );
 }
@@ -246,52 +135,104 @@ function StatusPanel({ voiceState, enabled }: { voiceState: string; enabled: boo
 // ─── Message bubble ───────────────────────────────────────────────────────────
 
 function MessageBubble({ msg }: { msg: ReturnType<typeof useJarvis>["messages"][number] }) {
-  const isUser = msg.role === "user";
-  const isInterrupted = msg.type === "interrupted";
+  const isUser          = msg.role === "user";
+  const isInterrupted   = msg.type === "interrupted";
+  const isMorningBrief  = msg.type === "morning_briefing";
+  const isSearchResult  = msg.type === "search_result";
+  const isTaskCreated   = msg.type === "task_created";
+
+  const time = new Date(msg.timestamp).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
 
   if (isInterrupted) {
     return (
       <div style={{ textAlign: "center", padding: "4px 0" }}>
-        <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 9, color: "rgba(125,211,252,0.25)", letterSpacing: "0.14em" }}>
+        <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 9, color: "#3f3f46", letterSpacing: "0.14em" }}>
           — interrupted —
         </span>
       </div>
     );
   }
 
+  if (isTaskCreated) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 4 }}
+        animate={{ opacity: 1, y: 0 }}
+        style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", borderRadius: 8, background: "rgba(6,78,59,0.2)", border: "1px solid rgba(52,211,153,0.2)", alignSelf: "flex-start" }}
+      >
+        <CheckSquare size={11} style={{ color: "#34d399", flexShrink: 0 }} />
+        <span style={{ fontSize: 11, color: "#34d399" }}>{msg.content}</span>
+      </motion.div>
+    );
+  }
+
+  if (isMorningBrief) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        style={{ borderRadius: 12, padding: "12px 14px", background: "rgba(8,47,73,0.4)", border: "1px solid rgba(56,189,248,0.15)" }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+          <Sparkles size={11} style={{ color: "rgba(56,189,248,0.6)" }} />
+          <span style={{ fontSize: 9, color: "rgba(56,189,248,0.6)", letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "'Space Mono', monospace" }}>
+            Morning Briefing
+          </span>
+        </div>
+        <p style={{ fontSize: 13, color: "#a1a1aa", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{msg.content}</p>
+        <p style={{ fontSize: 10, color: "#3a3a3a", marginTop: 8, textAlign: "right" }}>{time}</p>
+      </motion.div>
+    );
+  }
+
+  if (isSearchResult && msg.metadata) {
+    const sources = (msg.metadata.sources as SearchSource[]) ?? [];
+    const searchType = (msg.metadata.searchType as SearchType) ?? "general";
+    return (
+      <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}>
+        <SearchResult text={msg.content} sources={sources} searchType={searchType} />
+        <p style={{ fontSize: 10, color: "#3a3a3a", marginTop: 4, paddingLeft: 2 }}>{time}</p>
+      </motion.div>
+    );
+  }
+
+  if (isUser) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, x: 8, y: 4 }}
+        animate={{ opacity: 1, x: 0, y: 0 }}
+        transition={{ type: "spring", stiffness: 380, damping: 30 }}
+        style={{ display: "flex", justifyContent: "flex-end" }}
+      >
+        <div
+          style={{
+            maxWidth: "80%",
+            padding: "8px 12px",
+            borderRadius: "16px 16px 4px 16px",
+            background: "rgba(39,39,42,0.6)",
+            border: "1px solid rgba(63,63,70,0.4)",
+          }}
+        >
+          <p style={{ fontSize: 13, color: "#f0f0f0", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{msg.content}</p>
+          <p style={{ fontSize: 10, color: "#3f3f46", marginTop: 4, textAlign: "right" }}>{time}</p>
+        </div>
+      </motion.div>
+    );
+  }
+
   return (
     <motion.div
-      initial={{ opacity: 0, x: isUser ? 8 : -8, y: 4 }}
+      initial={{ opacity: 0, x: -8, y: 4 }}
       animate={{ opacity: 1, x: 0, y: 0 }}
       transition={{ type: "spring", stiffness: 380, damping: 30 }}
-      className={cn("flex", isUser ? "justify-end" : "justify-start")}
+      style={{ display: "flex", gap: 8, alignItems: "flex-start" }}
     >
-      {!isUser && (
-        <div style={{ width: 24, height: 24, borderRadius: 8, flexShrink: 0, background: "rgba(125,211,252,0.1)", border: "1px solid rgba(125,211,252,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Space Mono', monospace", fontSize: 9, color: "#7DD3FC", fontWeight: 700, marginRight: 7, alignSelf: "flex-end" }}>
-          J
-        </div>
-      )}
-      <div
-        style={{
-          maxWidth: "86%",
-          borderRadius: isUser ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
-          padding: "9px 12px",
-          ...(isUser
-            ? { background: "rgba(125,211,252,0.09)", border: "1px solid rgba(125,211,252,0.22)" }
-            : { background: "rgba(255,255,255,0.03)", border: "1px solid rgba(125,211,252,0.1)" }),
-        }}
-      >
-        {!isUser && (
-          <p style={{ fontFamily: "'Space Mono', monospace", fontSize: 7, letterSpacing: "0.22em", color: "rgba(125,211,252,0.5)", marginBottom: 4 }}>
-            J.A.R.V.I.S
-          </p>
-        )}
-        <p style={{ fontSize: 12, lineHeight: 1.55, color: isUser ? "rgba(186,230,253,0.92)" : "rgba(243,247,250,0.82)", whiteSpace: "pre-wrap" }}>
-          {msg.content}
-        </p>
-        <p style={{ fontSize: 9, marginTop: 4, textAlign: "right", color: "rgba(125,211,252,0.22)", fontFamily: "'Space Mono', monospace" }}>
-          {new Date(msg.timestamp).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
-        </p>
+      <div style={{ width: 20, height: 20, borderRadius: "50%", flexShrink: 0, marginTop: 2, background: "#1c1c1e", border: "1px solid #2a2a2a", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Space Mono', monospace", fontSize: 8, color: "#6b6b6b", fontWeight: 700 }}>
+        J
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p style={{ fontSize: 13, color: "#a1a1aa", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{msg.content}</p>
+        <p style={{ fontSize: 10, color: "#3a3a3a", marginTop: 4 }}>{time}</p>
       </div>
     </motion.div>
   );
@@ -307,18 +248,13 @@ function HistoryPanel() {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const PER_PAGE = 10;
 
-  useEffect(() => {
-    loadPage(0);
-  }, []);
+  useEffect(() => { loadPage(0); }, []);
 
   async function loadPage(p: number) {
     setLoading(true);
     const data = await getSessions(p, PER_PAGE);
-    if (p === 0) {
-      setSessions(data);
-    } else {
-      setSessions((prev) => [...prev, ...data]);
-    }
+    if (p === 0) setSessions(data);
+    else setSessions((prev) => [...prev, ...data]);
     setHasMore(data.length === PER_PAGE);
     setPage(p);
     setLoading(false);
@@ -326,47 +262,41 @@ function HistoryPanel() {
 
   async function handleDelete(id: string) {
     const ok = await deleteSession(id);
-    if (ok) {
-      setSessions((prev) => prev.filter((s) => s.id !== id));
-      setConfirmDelete(null);
-    }
+    if (ok) { setSessions((prev) => prev.filter((s) => s.id !== id)); setConfirmDelete(null); }
   }
-
-  const MONO = { fontFamily: "'Space Mono', monospace" };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
-      <div style={{ padding: "12px 12px 8px", borderBottom: "1px solid rgba(125,211,252,0.07)", flexShrink: 0 }}>
-        <span style={{ ...MONO, fontSize: 7, letterSpacing: "0.32em", color: "rgba(125,211,252,0.3)" }}>
-          SESSION ARCHIVE
+      <div style={{ padding: "12px 14px 8px", borderBottom: "1px solid #1f1f1f", flexShrink: 0 }}>
+        <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 8, letterSpacing: "0.25em", color: "#3f3f46", textTransform: "uppercase" }}>
+          Session Archive
         </span>
       </div>
 
-      <div style={{ flex: 1, overflowY: "auto", scrollbarWidth: "none", padding: "8px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ flex: 1, overflowY: "auto", scrollbarWidth: "none" }}>
         {loading && sessions.length === 0 ? (
-          <div style={{ display: "flex", justifyContent: "center", padding: "24px 0" }}>
-            <span style={{ ...MONO, fontSize: 9, color: "rgba(125,211,252,0.3)", letterSpacing: "0.16em" }}>LOADING…</span>
-          </div>
+          <div style={{ padding: "24px 14px", color: "#3f3f46", fontSize: 12 }}>Loading…</div>
         ) : sessions.length === 0 ? (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 8, textAlign: "center" }}>
-            <Clock size={18} style={{ color: "rgba(125,211,252,0.2)" }} />
-            <p style={{ ...MONO, fontSize: 9, color: "rgba(125,211,252,0.28)", letterSpacing: "0.16em" }}>NO SESSIONS YET</p>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 8 }}>
+            <Clock size={16} style={{ color: "#3f3f46" }} />
+            <p style={{ fontSize: 11, color: "#3f3f46" }}>No sessions yet</p>
           </div>
         ) : (
           <>
             {sessions.map((session) => (
               <motion.div
                 key={session.id}
-                initial={{ opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                style={{ borderRadius: 10, padding: "10px 12px", background: "rgba(125,211,252,0.03)", border: "1px solid rgba(125,211,252,0.09)" }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                style={{ padding: "12px 14px", borderBottom: "1px solid #1f1f1f" }}
+                className="jarvis-history-row"
               >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                   <div>
-                    <p style={{ ...MONO, fontSize: 9, color: "rgba(125,211,252,0.6)", letterSpacing: "0.12em" }}>
+                    <p style={{ fontSize: 12, color: "#a1a1aa" }}>
                       {new Date(session.started_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                     </p>
-                    <p style={{ fontSize: 9, color: "rgba(125,211,252,0.3)", marginTop: 1 }}>
+                    <p style={{ fontSize: 10, color: "#52525b", marginTop: 2 }}>
                       {new Date(session.started_at).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })} · {session.message_count} messages
                     </p>
                   </div>
@@ -375,13 +305,13 @@ function HistoryPanel() {
                     <div style={{ display: "flex", gap: 4 }}>
                       <button
                         onClick={() => handleDelete(session.id)}
-                        style={{ ...MONO, fontSize: 8, padding: "2px 7px", borderRadius: 5, background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.35)", color: "#FCA5A5", cursor: "pointer", letterSpacing: "0.1em" }}
+                        style={{ fontSize: 10, padding: "2px 7px", borderRadius: 5, background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)", color: "#f87171", cursor: "pointer" }}
                       >
-                        DELETE
+                        Delete
                       </button>
                       <button
                         onClick={() => setConfirmDelete(null)}
-                        style={{ ...MONO, fontSize: 8, padding: "2px 7px", borderRadius: 5, background: "transparent", border: "1px solid rgba(125,211,252,0.15)", color: "rgba(125,211,252,0.4)", cursor: "pointer" }}
+                        style={{ background: "none", border: "1px solid #2a2a2a", borderRadius: 5, padding: "2px 6px", color: "#52525b", cursor: "pointer", display: "flex", alignItems: "center" }}
                       >
                         <X size={8} />
                       </button>
@@ -389,9 +319,9 @@ function HistoryPanel() {
                   ) : (
                     <button
                       onClick={() => setConfirmDelete(session.id)}
-                      style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(125,211,252,0.2)", padding: 2, transition: "color 0.15s" }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "rgba(239,68,68,0.7)"; }}
-                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "rgba(125,211,252,0.2)"; }}
+                      style={{ background: "none", border: "none", cursor: "pointer", color: "#3f3f46", padding: 2, transition: "color 0.15s" }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "#f87171"; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "#3f3f46"; }}
                     >
                       <Trash2 size={11} />
                     </button>
@@ -399,19 +329,9 @@ function HistoryPanel() {
                 </div>
 
                 {session.session_summary && (
-                  <p style={{ fontSize: 10, color: "rgba(125,211,252,0.45)", lineHeight: 1.5, marginTop: 4, borderTop: "1px solid rgba(125,211,252,0.06)", paddingTop: 6 }}>
+                  <p style={{ fontSize: 12, color: "#6b6b6b", lineHeight: 1.5, marginTop: 6, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
                     {session.session_summary}
                   </p>
-                )}
-
-                {session.tags?.length > 0 && (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
-                    {session.tags.map((tag) => (
-                      <span key={tag} style={{ ...MONO, fontSize: 7, padding: "1px 5px", borderRadius: 4, background: "rgba(125,211,252,0.07)", border: "1px solid rgba(125,211,252,0.15)", color: "rgba(125,211,252,0.4)", letterSpacing: "0.08em" }}>
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
                 )}
               </motion.div>
             ))}
@@ -420,9 +340,9 @@ function HistoryPanel() {
               <button
                 onClick={() => loadPage(page + 1)}
                 disabled={loading}
-                style={{ ...MONO, fontSize: 8, letterSpacing: "0.18em", padding: "6px 12px", borderRadius: 7, background: "rgba(125,211,252,0.04)", border: "1px solid rgba(125,211,252,0.12)", color: "rgba(125,211,252,0.4)", cursor: "pointer", textAlign: "center" }}
+                style={{ width: "100%", padding: "10px", fontSize: 11, color: "#52525b", background: "none", border: "none", cursor: "pointer", borderTop: "1px solid #1f1f1f" }}
               >
-                {loading ? "LOADING…" : "LOAD MORE"}
+                {loading ? "Loading…" : "Load more"}
               </button>
             )}
           </>
@@ -434,12 +354,12 @@ function HistoryPanel() {
 
 // ─── Memory Panel ─────────────────────────────────────────────────────────────
 
-const MEMORY_TYPE_COLORS: Record<string, string> = {
-  general: "rgba(125,211,252,0.6)",
-  preference: "#93C5FD",
-  commitment: "#FCD34D",
-  idea: "#86EFAC",
-  fact: "#C084FC",
+const MEMORY_BADGES: Record<string, React.CSSProperties> = {
+  preference: { background: "rgba(88,28,135,0.25)", border: "1px solid rgba(139,92,246,0.25)", color: "#a78bfa" },
+  commitment: { background: "rgba(92,45,0,0.25)",   border: "1px solid rgba(251,191,36,0.25)",  color: "#fbbf24" },
+  idea:       { background: "rgba(8,47,73,0.25)",   border: "1px solid rgba(56,189,248,0.25)",  color: "#38bdf8" },
+  fact:       { background: "rgba(24,24,27,0.4)",   border: "1px solid rgba(63,63,70,0.3)",     color: "#a1a1aa" },
+  general:    { background: "rgba(24,24,27,0.4)",   border: "1px solid rgba(63,63,70,0.3)",     color: "#6b6b6b" },
 };
 
 function MemoryPanel() {
@@ -447,13 +367,9 @@ function MemoryPanel() {
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState("all");
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-
   const FILTERS = ["all", "preference", "commitment", "idea", "fact", "general"];
-  const MONO = { fontFamily: "'Space Mono', monospace" };
 
-  useEffect(() => {
-    loadMemories(activeFilter);
-  }, [activeFilter]);
+  useEffect(() => { loadMemories(activeFilter); }, [activeFilter]);
 
   async function loadMemories(type: string) {
     setLoading(true);
@@ -464,95 +380,90 @@ function MemoryPanel() {
 
   async function handleDelete(id: string) {
     const ok = await deleteMemory(id);
-    if (ok) {
-      setMemories((prev) => prev.filter((m) => m.id !== id));
-      setConfirmDelete(null);
-    }
+    if (ok) { setMemories((prev) => prev.filter((m) => m.id !== id)); setConfirmDelete(null); }
   }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
-      <div style={{ padding: "12px 12px 8px", borderBottom: "1px solid rgba(125,211,252,0.07)", flexShrink: 0 }}>
-        <span style={{ ...MONO, fontSize: 7, letterSpacing: "0.32em", color: "rgba(125,211,252,0.3)" }}>
-          MEMORY BANKS
+      <div style={{ padding: "12px 14px 8px", borderBottom: "1px solid #1f1f1f", flexShrink: 0 }}>
+        <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 8, letterSpacing: "0.25em", color: "#3f3f46", textTransform: "uppercase" }}>
+          Memory Banks
         </span>
       </div>
 
-      <div style={{ display: "flex", gap: 4, padding: "8px 12px 0", flexWrap: "wrap", flexShrink: 0 }}>
+      <div style={{ display: "flex", gap: 6, padding: "8px 14px", flexWrap: "wrap", flexShrink: 0, borderBottom: "1px solid #1f1f1f" }}>
         {FILTERS.map((f) => (
           <button
             key={f}
             onClick={() => setActiveFilter(f)}
             style={{
-              ...MONO, fontSize: 7, padding: "2px 7px", borderRadius: 5, cursor: "pointer", letterSpacing: "0.1em",
-              background: activeFilter === f ? "rgba(125,211,252,0.12)" : "transparent",
-              border: `1px solid ${activeFilter === f ? "rgba(125,211,252,0.35)" : "rgba(125,211,252,0.1)"}`,
-              color: activeFilter === f ? "#7DD3FC" : "rgba(125,211,252,0.35)",
+              fontSize: 9, padding: "2px 8px", borderRadius: 4, cursor: "pointer", letterSpacing: "0.08em",
+              background: activeFilter === f ? "#27272a" : "transparent",
+              border: `1px solid ${activeFilter === f ? "#3f3f46" : "#1f1f1f"}`,
+              color: activeFilter === f ? "#a1a1aa" : "#52525b",
               transition: "all 0.15s",
             }}
           >
-            {f.toUpperCase()}
+            {f}
           </button>
         ))}
       </div>
 
-      <div style={{ flex: 1, overflowY: "auto", scrollbarWidth: "none", padding: "8px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ flex: 1, overflowY: "auto", scrollbarWidth: "none" }}>
         {loading ? (
-          <div style={{ display: "flex", justifyContent: "center", padding: "24px 0" }}>
-            <span style={{ ...MONO, fontSize: 9, color: "rgba(125,211,252,0.3)", letterSpacing: "0.16em" }}>LOADING…</span>
-          </div>
+          <div style={{ padding: "24px 14px", color: "#3f3f46", fontSize: 12 }}>Loading…</div>
         ) : memories.length === 0 ? (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 8 }}>
-            <Brain size={18} style={{ color: "rgba(125,211,252,0.2)" }} />
-            <p style={{ ...MONO, fontSize: 9, color: "rgba(125,211,252,0.28)", letterSpacing: "0.16em" }}>NO MEMORIES</p>
+            <p style={{ fontSize: 11, color: "#3f3f46" }}>No memories yet</p>
           </div>
         ) : (
           memories.map((memory) => (
             <motion.div
               key={memory.id}
-              initial={{ opacity: 0, y: 3 }}
-              animate={{ opacity: 1, y: 0 }}
-              style={{ borderRadius: 9, padding: "9px 10px", background: "rgba(125,211,252,0.03)", border: "1px solid rgba(125,211,252,0.08)" }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              style={{ padding: "10px 14px", borderBottom: "1px solid #1f1f1f" }}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 6 }}>
-                <p style={{ fontSize: 11, color: "rgba(243,247,250,0.78)", lineHeight: 1.5, flex: 1 }}>{memory.content}</p>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                    <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 4, ...MEMORY_BADGES[memory.memory_type] ?? MEMORY_BADGES.general }}>
+                      {memory.memory_type}
+                    </span>
+                    {memory.recalled_count > 0 && (
+                      <span style={{ fontSize: 9, color: "#3f3f46" }}>recalled {memory.recalled_count}×</span>
+                    )}
+                  </div>
+                  <p style={{ fontSize: 12, color: "#a1a1aa", lineHeight: 1.5 }}>{memory.content}</p>
+                  <p style={{ fontSize: 10, color: "#3f3f46", marginTop: 4 }}>
+                    {new Date(memory.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                  </p>
+                </div>
 
                 {confirmDelete === memory.id ? (
-                  <div style={{ display: "flex", gap: 3, flexShrink: 0 }}>
+                  <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
                     <button
                       onClick={() => handleDelete(memory.id)}
-                      style={{ ...MONO, fontSize: 7, padding: "2px 6px", borderRadius: 4, background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.35)", color: "#FCA5A5", cursor: "pointer" }}
+                      style={{ fontSize: 10, padding: "2px 7px", borderRadius: 5, background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)", color: "#f87171", cursor: "pointer" }}
                     >
-                      DEL
+                      Delete
                     </button>
                     <button
                       onClick={() => setConfirmDelete(null)}
-                      style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(125,211,252,0.3)", padding: 1 }}
+                      style={{ background: "none", border: "1px solid #2a2a2a", borderRadius: 5, padding: "2px 6px", color: "#52525b", cursor: "pointer", display: "flex", alignItems: "center" }}
                     >
-                      <X size={9} />
+                      <X size={8} />
                     </button>
                   </div>
                 ) : (
                   <button
                     onClick={() => setConfirmDelete(memory.id)}
-                    style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(125,211,252,0.18)", flexShrink: 0, padding: 2, transition: "color 0.15s" }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "rgba(239,68,68,0.6)"; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "rgba(125,211,252,0.18)"; }}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "#3f3f46", padding: 2, flexShrink: 0, transition: "color 0.15s" }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "#f87171"; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "#3f3f46"; }}
                   >
-                    <Trash2 size={10} />
+                    <Trash2 size={11} />
                   </button>
-                )}
-              </div>
-
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
-                <span style={{ ...MONO, fontSize: 7, padding: "1px 5px", borderRadius: 4, border: `1px solid ${MEMORY_TYPE_COLORS[memory.memory_type] ?? "rgba(125,211,252,0.3)"}33`, color: MEMORY_TYPE_COLORS[memory.memory_type] ?? "rgba(125,211,252,0.4)", letterSpacing: "0.08em" }}>
-                  {memory.memory_type.toUpperCase()}
-                </span>
-                <span style={{ fontSize: 9, color: "rgba(125,211,252,0.25)" }}>
-                  {new Date(memory.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                </span>
-                {memory.recalled_count > 0 && (
-                  <span style={{ fontSize: 9, color: "rgba(125,211,252,0.22)" }}>· recalled {memory.recalled_count}×</span>
                 )}
               </div>
             </motion.div>
@@ -563,7 +474,7 @@ function MemoryPanel() {
   );
 }
 
-// ─── Right panel with tabs ────────────────────────────────────────────────────
+// ─── Right panel ──────────────────────────────────────────────────────────────
 
 type RightTab = "chat" | "history" | "memory";
 
@@ -572,70 +483,56 @@ function RightPanel({ messages }: { messages: ReturnType<typeof useJarvis>["mess
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (activeTab === "chat") {
-      endRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
+    if (activeTab === "chat") endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, activeTab]);
-
-  const MONO = { fontFamily: "'Space Mono', monospace" };
-
-  const TAB_ICONS: Record<RightTab, React.ReactNode> = {
-    chat: <MessageSquare size={9} />,
-    history: <Clock size={9} />,
-    memory: <Database size={9} />,
-  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, overflow: "hidden" }}>
-      {/* Tab bar */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px 0", borderBottom: "1px solid rgba(125,211,252,0.07)", flexShrink: 0 }}>
-        <div style={{ display: "flex", gap: 2 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 14px", borderBottom: "1px solid #1f1f1f", flexShrink: 0 }}>
+        <div style={{ display: "flex" }}>
           {(["chat", "history", "memory"] as RightTab[]).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
               style={{
-                ...MONO, display: "flex", alignItems: "center", gap: 4, fontSize: 7, letterSpacing: "0.22em", padding: "4px 8px", borderRadius: "6px 6px 0 0", cursor: "pointer", transition: "all 0.15s",
-                background: activeTab === tab ? "rgba(125,211,252,0.07)" : "transparent",
-                border: `1px solid ${activeTab === tab ? "rgba(125,211,252,0.18)" : "transparent"}`,
-                borderBottom: activeTab === tab ? "1px solid rgba(5,6,9,1)" : "1px solid transparent",
-                color: activeTab === tab ? "#7DD3FC" : "rgba(125,211,252,0.3)",
-                marginBottom: -1,
+                padding: "10px 12px", background: "none", border: "none",
+                borderBottom: activeTab === tab ? "1px solid #f0f0f0" : "1px solid transparent",
+                fontSize: 9, letterSpacing: "0.2em", textTransform: "uppercase",
+                color: activeTab === tab ? "#f0f0f0" : "#52525b",
+                cursor: "pointer", transition: "color 0.15s",
+                fontFamily: "'Space Mono', monospace",
               }}
+              onMouseEnter={(e) => { if (activeTab !== tab) (e.currentTarget as HTMLElement).style.color = "#a1a1aa"; }}
+              onMouseLeave={(e) => { if (activeTab !== tab) (e.currentTarget as HTMLElement).style.color = "#52525b"; }}
             >
-              {TAB_ICONS[tab]}
-              {tab.toUpperCase()}
+              {tab}
             </button>
           ))}
         </div>
 
         {activeTab === "chat" && messages.length > 0 && (
-          <motion.button
+          <button
             onClick={() => jarvis.clearMessages()}
-            whileHover={{ scale: 1.04 }}
-            whileTap={{ scale: 0.96 }}
-            style={{ display: "flex", alignItems: "center", gap: 4, ...MONO, fontSize: 8, letterSpacing: "0.16em", color: "rgba(125,211,252,0.28)", background: "none", border: "1px solid rgba(125,211,252,0.08)", padding: "3px 8px", borderRadius: 5, cursor: "pointer", marginBottom: 0, transition: "all 0.15s ease" }}
-            onMouseEnter={(e) => { const el = e.currentTarget as HTMLElement; el.style.color = "rgba(125,211,252,0.7)"; el.style.borderColor = "rgba(125,211,252,0.25)"; }}
-            onMouseLeave={(e) => { const el = e.currentTarget as HTMLElement; el.style.color = "rgba(125,211,252,0.28)"; el.style.borderColor = "rgba(125,211,252,0.08)"; }}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "#3f3f46", fontSize: 10, display: "flex", alignItems: "center", gap: 4, padding: "4px 6px", borderRadius: 4, transition: "color 0.15s" }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "#6b6b6b"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "#3f3f46"; }}
           >
-            <Trash2 size={8} /> CLEAR
-          </motion.button>
+            <Trash2 size={9} /> clear
+          </button>
         )}
       </div>
 
-      {/* Tab content */}
       <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
         {activeTab === "chat" && (
-          <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, overflow: "hidden" }}>
-            <div style={{ flex: 1, minHeight: 0, overflowY: "auto", scrollbarWidth: "none", display: "flex", flexDirection: "column", gap: 10, padding: "10px 12px" }}>
+          <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
+            <div style={{ flex: 1, minHeight: 0, overflowY: "auto", scrollbarWidth: "none", display: "flex", flexDirection: "column", gap: 12, padding: "14px 14px 10px" }}>
               <AnimatePresence initial={false}>
                 {messages.length === 0 ? (
-                  <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", textAlign: "center", gap: 10, padding: "24px 0" }}>
-                    <div style={{ borderRadius: "50%", padding: 14, border: "1px solid rgba(125,211,252,0.1)", background: "rgba(125,211,252,0.04)" }}>
-                      <Volume2 size={18} style={{ color: "rgba(125,211,252,0.28)" }} />
+                  <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 10, padding: "24px 0" }}>
+                    <div style={{ borderRadius: "50%", padding: 14, border: "1px solid #1f1f1f", background: "#111111" }}>
+                      <Volume2 size={16} style={{ color: "#3f3f46" }} />
                     </div>
-                    <p style={{ ...MONO, fontSize: 9, letterSpacing: "0.2em", color: "rgba(125,211,252,0.28)", textTransform: "uppercase" }}>Awaiting Command</p>
-                    <p style={{ fontSize: 10, color: "rgba(125,211,252,0.16)" }}>Say "Hey Jarvis" or type below</p>
+                    <p style={{ fontSize: 12, color: "#52525b" }}>Say "Hey Jarvis" or type below</p>
                   </motion.div>
                 ) : (
                   messages.map((msg) => <MessageBubble key={msg.id} msg={msg} />)
@@ -645,44 +542,12 @@ function RightPanel({ messages }: { messages: ReturnType<typeof useJarvis>["mess
             </div>
           </div>
         )}
-
         {activeTab === "history" && <HistoryPanel />}
         {activeTab === "memory" && <MemoryPanel />}
       </div>
     </div>
   );
 }
-
-// ─── Frequency bars ───────────────────────────────────────────────────────────
-
-function FreqBars({ active }: { active: boolean }) {
-  const COUNT = 22;
-  return (
-    <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 32, width: 220 }}>
-      {Array.from({ length: COUNT }, (_, i) => {
-        const h = (Math.sin(i * 0.7) * 0.35 + 0.55).toFixed(2);
-        return (
-          <div
-            key={i}
-            className="jarvis-freq-bar"
-            style={{ height: 32, opacity: active ? 1 : 0.35, "--i": i, "--h": h } as React.CSSProperties}
-          />
-        );
-      })}
-    </div>
-  );
-}
-
-// ─── State display ────────────────────────────────────────────────────────────
-
-const STATE_DISPLAY: Record<string, { text: string; sub: string }> = {
-  idle:        { text: "Standing by, sir.",   sub: 'Say "Hey Jarvis" to activate' },
-  listening:   { text: "Listening…",          sub: "Speak your command" },
-  processing:  { text: "Processing…",         sub: "One moment, sir" },
-  speaking:    { text: "Responding…",         sub: "J.A.R.V.I.S is speaking" },
-  interrupted: { text: "Interrupted.",        sub: "Ready for your next command" },
-  error:       { text: "Error occurred.",     sub: "Please try again" },
-};
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
@@ -691,42 +556,28 @@ function JarvisPage() {
   const navigate = useNavigate();
   const [input, setInput] = useState("");
   const [showChat, setShowChat] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const coreRef = useRef<HTMLDivElement>(null);
-  const [coreSize, setCoreSize] = useState(260);
   const sessionIdRef = useRef<string>("");
 
   useEffect(() => {
-    if (!coreRef.current) return;
-    const obs = new ResizeObserver(([entry]) => {
-      const { width, height } = entry.contentRect;
-      setCoreSize(Math.min(width * 0.78, height * 0.78, 300));
-    });
-    obs.observe(coreRef.current);
-    return () => obs.disconnect();
-  }, []);
+    let isMounted = true;
 
-  // Init session on mount
-  useEffect(() => {
-    initJarvisSession().then((id) => {
+    initJarvisSession().then(async (id) => {
+      if (!isMounted) return;
       sessionIdRef.current = id;
+      await deliverMorningBriefing(id);
     });
 
     jarvis.autoStartIfEnabled();
 
-    // End session on page leave
     const handleBeforeUnload = () => {
-      if (sessionIdRef.current) {
-        endSession(sessionIdRef.current);
-      }
+      if (sessionIdRef.current) endSession(sessionIdRef.current);
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
 
     return () => {
+      isMounted = false;
       window.removeEventListener("beforeunload", handleBeforeUnload);
-      if (sessionIdRef.current) {
-        endSession(sessionIdRef.current);
-      }
+      if (sessionIdRef.current) endSession(sessionIdRef.current);
     };
   }, []);
 
@@ -746,142 +597,114 @@ function JarvisPage() {
     voiceState === "listening" ? jarvis.dismiss() : jarvis.activate();
   };
 
-  const stateInfo = STATE_DISPLAY[voiceState] ?? STATE_DISPLAY.idle;
   const isListening = voiceState === "listening";
   const isActive = isAwake || isListening;
 
   return (
-    <div className="relative h-full flex flex-col overflow-hidden" style={{ background: "#050609" }}>
-      <JarvisBackground />
+    <div className="relative h-full flex flex-col overflow-hidden" style={{ background: "#0a0a0a" }}>
 
       {/* ── Header ── */}
       <div
-        className="relative z-10 shrink-0 flex items-center justify-between px-4 md:px-5"
-        style={{ height: 48, borderBottom: "1px solid rgba(125,211,252,0.08)", background: "rgba(5,6,9,0.7)", backdropFilter: "blur(12px)" }}
+        className="relative z-10 shrink-0 flex items-center justify-between px-4"
+        style={{ height: 48, borderBottom: "1px solid #1f1f1f", background: "#0a0a0a" }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div
-            className={enabled ? "jarvis-blink" : ""}
-            style={{ width: 7, height: 7, borderRadius: "50%", background: enabled ? "#7DD3FC" : "rgba(125,211,252,0.18)", boxShadow: enabled ? "0 0 8px rgba(125,211,252,0.8)" : "none", flexShrink: 0 }}
+          <motion.div
+            style={{ width: 6, height: 6, borderRadius: "50%", background: enabled ? "#38bdf8" : "#3f3f46", flexShrink: 0 }}
+            animate={enabled ? { opacity: [1, 0.4, 1] } : { opacity: 1 }}
+            transition={enabled ? { duration: 2, repeat: Infinity } : {}}
           />
-          <span style={{ fontFamily: "'Space Mono', 'DM Mono', monospace", fontSize: 13, fontWeight: 700, letterSpacing: "0.28em", color: "#7DD3FC" }}>
-            J.A.R.V.I.S
+          <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 12, fontWeight: 700, letterSpacing: "0.2em", color: "#f0f0f0" }}>
+            JARVIS
           </span>
-          <span className="hidden md:block" style={{ fontSize: 8, letterSpacing: "0.18em", color: "rgba(125,211,252,0.25)", fontWeight: 400 }}>
-            PERSONAL AI OPERATING SYSTEM
+          <span className="hidden md:block" style={{ fontSize: 9, color: "#3f3f46", fontFamily: "'Space Mono', monospace", letterSpacing: "0.12em" }}>
+            PERSONAL AI OS
           </span>
-          <div className="hidden md:flex" style={{ fontSize: 8, padding: "1px 6px", borderRadius: 4, background: "rgba(125,211,252,0.06)", border: "1px solid rgba(125,211,252,0.18)", color: "rgba(125,211,252,0.45)", letterSpacing: "0.12em", fontFamily: "'Space Mono', monospace" }}>
-            v3.0
-          </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <HeaderEQ active={isActive} />
-          <div className="hidden md:block" style={{ width: 1, height: 18, background: "rgba(125,211,252,0.12)" }} />
-          <SignalBars />
-
-          <motion.button
-            onClick={() => (enabled ? jarvis.disable() : jarvis.enable())}
-            whileTap={{ scale: 0.95 }}
-            style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 12px", borderRadius: 8, fontFamily: "'Space Mono', monospace", fontSize: 9, fontWeight: 700, letterSpacing: "0.16em", cursor: "pointer", transition: "all 0.2s ease", background: enabled ? "rgba(125,211,252,0.1)" : "rgba(125,211,252,0.03)", border: `1px solid ${enabled ? "rgba(125,211,252,0.4)" : "rgba(125,211,252,0.12)"}`, color: enabled ? "#7DD3FC" : "rgba(125,211,252,0.35)", boxShadow: enabled ? "0 0 16px rgba(125,211,252,0.15)" : "none" }}
-          >
-            <Zap size={9} />{enabled ? "ACTIVE" : "ENABLE"}
-          </motion.button>
-
-          <motion.button
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button
             onClick={() => setShowChat((v) => !v)}
-            whileTap={{ scale: 0.95 }}
             className="md:hidden"
-            style={{ padding: "4px 10px", borderRadius: 7, fontFamily: "'Space Mono', monospace", fontSize: 9, letterSpacing: "0.12em", background: showChat ? "rgba(125,211,252,0.09)" : "rgba(125,211,252,0.03)", border: "1px solid rgba(125,211,252,0.12)", color: "rgba(125,211,252,0.5)", cursor: "pointer" }}
+            style={{ padding: "4px 10px", borderRadius: 6, fontSize: 10, background: "transparent", border: "1px solid #1f1f1f", color: "#52525b", cursor: "pointer", fontFamily: "'Space Mono', monospace" }}
           >
-            LOG
-          </motion.button>
+            log
+          </button>
 
-          <motion.button
+          <button
             onClick={() => void navigate({ to: "/" })}
-            whileTap={{ scale: 0.95 }}
-            style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 7, fontFamily: "'Space Mono', monospace", fontSize: 9, letterSpacing: "0.12em", background: "rgba(125,211,252,0.02)", border: "1px solid rgba(125,211,252,0.07)", color: "rgba(125,211,252,0.28)", cursor: "pointer" }}
+            style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 6, fontSize: 10, background: "transparent", border: "1px solid #1f1f1f", color: "#52525b", cursor: "pointer", transition: "color 0.15s" }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "#a1a1aa"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "#52525b"; }}
           >
-            <ChevronLeft size={10} /><span className="hidden md:inline">BACK</span>
-          </motion.button>
+            <ChevronLeft size={11} /><span className="hidden md:inline" style={{ fontFamily: "'Space Mono', monospace" }}>back</span>
+          </button>
         </div>
       </div>
 
       {/* ── Three-column body ── */}
       <div className="relative z-10 flex-1 min-h-0 flex overflow-hidden">
 
-        {/* Left status panel */}
+        {/* Left panel */}
         <motion.div
-          initial={{ opacity: 0, x: -12 }}
+          initial={{ opacity: 0, x: -8 }}
           animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ duration: 0.3 }}
           className="hidden md:flex flex-col"
-          style={{ width: 200, flexShrink: 0, padding: 12, borderRight: "1px solid rgba(125,211,252,0.07)", overflowY: "auto", scrollbarWidth: "none", gap: 6 }}
+          style={{ width: 220, flexShrink: 0, borderRight: "1px solid #1f1f1f", overflowY: "auto", scrollbarWidth: "none" }}
         >
           <StatusPanel voiceState={voiceState} enabled={enabled} />
         </motion.div>
 
-        {/* Center: orb + labels + freq bars */}
-        <div
-          className="flex-1 min-w-0 flex flex-col items-center justify-center relative"
-          style={{ padding: "20px 24px", overflow: "hidden" }}
-          ref={coreRef}
-        >
-          <div className="jarvis-scan-line" />
+        {/* Center */}
+        <div className="flex-1 min-w-0 flex flex-col items-center justify-center relative" style={{ padding: "24px", overflow: "hidden" }}>
 
           <AnimatePresence>
             {transcript && (
               <motion.div
-                initial={{ opacity: 0, y: -10, scale: 0.96 }}
+                initial={{ opacity: 0, y: -8, scale: 0.97 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -6, scale: 0.97 }}
-                transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                className="absolute top-4 left-1/2 -translate-x-1/2 max-w-xs w-full text-center text-[11px] truncate px-4 py-1.5 rounded-full"
-                style={{ background: "rgba(0,15,25,0.82)", border: "1px solid rgba(125,211,252,0.25)", color: "rgba(125,211,252,0.8)", backdropFilter: "blur(12px)", boxShadow: "0 4px 20px rgba(125,211,252,0.08)", zIndex: 5 }}
+                transition={{ type: "spring", stiffness: 380, damping: 28 }}
+                className="absolute top-4 left-1/2 -translate-x-1/2 max-w-xs w-full text-center"
+                style={{ zIndex: 5 }}
               >
-                {transcript}
+                <p style={{ fontSize: 13, color: "#a1a1aa", padding: "6px 16px", background: "#111111", border: "1px solid #1f1f1f", borderRadius: 20, display: "inline-block", maxWidth: "100%" }}>
+                  {transcript}
+                </p>
               </motion.div>
             )}
           </AnimatePresence>
 
           <motion.div
-            initial={{ opacity: 0, scale: 0.88 }}
+            initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-            style={{ flexShrink: 0 }}
+            transition={{ duration: 0.4 }}
           >
-            <AICore voiceState={voiceState} isAwake={isActive} size={coreSize} />
+            <AICore voiceState={voiceState} isAwake={isActive} size={120} onClick={isVoiceAssistantSupported ? handleVoice : undefined} />
           </motion.div>
 
-          <div style={{ textAlign: "center", flexShrink: 0, marginTop: 12 }}>
-            <AnimatePresence mode="wait">
-              <motion.p
-                key={voiceState}
-                initial={{ opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -4 }}
-                transition={{ duration: 0.2 }}
-                style={{ fontSize: 14, letterSpacing: "0.12em", fontWeight: 300, color: isActive ? "#7DD3FC" : "rgba(125,211,252,0.38)" }}
-              >
-                {stateInfo.text}
-              </motion.p>
-            </AnimatePresence>
-            <p style={{ fontSize: 9, letterSpacing: "0.12em", color: "rgba(125,211,252,0.2)", marginTop: 4 }}>{stateInfo.sub}</p>
-          </div>
+          {/* State hint below orb — only show when not active, to avoid redundancy with left panel */}
+          {!isActive && (
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              style={{ fontSize: 11, color: "#3f3f46", marginTop: 16, textAlign: "center" }}
+            >
+              {isVoiceAssistantSupported ? "tap orb or type below" : "type below to talk"}
+            </motion.p>
+          )}
 
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2" style={{ zIndex: 1 }}>
-            <FreqBars active={isActive} />
-          </div>
-
+          {/* Mobile chat overlay */}
           <AnimatePresence>
             {showChat && (
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                transition={{ duration: 0.18 }}
+                transition={{ duration: 0.15 }}
                 className="md:hidden absolute inset-0 flex flex-col overflow-hidden"
-                style={{ background: "rgba(5,6,9,0.97)", backdropFilter: "blur(16px)", zIndex: 20 }}
+                style={{ background: "#0a0a0a", zIndex: 20 }}
               >
                 <RightPanel messages={messages} />
               </motion.div>
@@ -889,13 +712,13 @@ function JarvisPage() {
           </AnimatePresence>
         </div>
 
-        {/* Right panel with tabs */}
+        {/* Right panel */}
         <motion.div
-          initial={{ opacity: 0, x: 12 }}
+          initial={{ opacity: 0, x: 8 }}
           animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ duration: 0.3 }}
           className="hidden md:flex flex-col"
-          style={{ width: 280, flexShrink: 0, borderLeft: "1px solid rgba(125,211,252,0.07)", minHeight: 0, overflow: "hidden" }}
+          style={{ width: 320, flexShrink: 0, borderLeft: "1px solid #1f1f1f", minHeight: 0, overflow: "hidden" }}
         >
           <RightPanel messages={messages} />
         </motion.div>
@@ -903,55 +726,60 @@ function JarvisPage() {
 
       {/* ── Input bar ── */}
       <div
-        className="relative z-10 shrink-0 px-3 py-2.5"
-        style={{ borderTop: "1px solid rgba(125,211,252,0.07)", background: "rgba(5,6,9,0.7)", backdropFilter: "blur(14px)" }}
+        className="relative z-10 shrink-0 px-3 py-2"
+        style={{ borderTop: "1px solid #1f1f1f", background: "#0a0a0a" }}
       >
-        <form onSubmit={handleSubmit} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <motion.button
+        <form
+          onSubmit={handleSubmit}
+          style={{ display: "flex", alignItems: "center", gap: 6, background: "#111111", border: "1px solid #1f1f1f", borderRadius: 10, padding: "4px 4px 4px 10px", transition: "border-color 0.2s" }}
+          onFocus={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "#2a2a2a"; }}
+          onBlur={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "#1f1f1f"; }}
+        >
+          <button
             type="button"
-            onClick={handleVoice}
-            whileHover={{ scale: 1.06 }}
-            whileTap={{ scale: 0.92 }}
+            onClick={isVoiceAssistantSupported ? handleVoice : undefined}
             disabled={!isVoiceAssistantSupported}
-            style={{ height: 36, width: 36, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.2s ease", background: isListening ? "rgba(125,211,252,0.15)" : "rgba(125,211,252,0.04)", border: `1px solid ${isListening ? "rgba(125,211,252,0.48)" : "rgba(125,211,252,0.12)"}`, boxShadow: isListening ? "0 0 16px rgba(125,211,252,0.22)" : "none", color: isListening ? "#7DD3FC" : "rgba(125,211,252,0.38)", cursor: isVoiceAssistantSupported ? "pointer" : "not-allowed" }}
+            style={{ background: "none", border: "none", cursor: isVoiceAssistantSupported ? "pointer" : "default", padding: 4, display: "flex", alignItems: "center", justifyContent: "center", color: isListening ? "#38bdf8" : "#52525b", transition: "color 0.15s" }}
+            onMouseEnter={(e) => { if (isVoiceAssistantSupported) (e.currentTarget as HTMLElement).style.color = "#38bdf8"; }}
+            onMouseLeave={(e) => { if (!isListening) (e.currentTarget as HTMLElement).style.color = "#52525b"; }}
           >
             {isListening ? <MicOff size={14} /> : <Mic size={14} />}
-          </motion.button>
+          </button>
 
           <input
-            ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Enter command, sir…"
-            style={{ flex: 1, height: 36, borderRadius: 10, padding: "0 14px", fontSize: 12, outline: "none", transition: "all 0.2s ease", background: "rgba(125,211,252,0.04)", border: "1px solid rgba(125,211,252,0.12)", color: "rgba(200,235,255,0.85)", caretColor: "#7DD3FC" }}
-            onFocus={(e) => { e.target.style.borderColor = "rgba(125,211,252,0.35)"; e.target.style.background = "rgba(125,211,252,0.06)"; }}
-            onBlur={(e) => { e.target.style.borderColor = "rgba(125,211,252,0.12)"; e.target.style.background = "rgba(125,211,252,0.04)"; }}
+            placeholder="Type or speak…"
+            style={{ flex: 1, background: "none", border: "none", outline: "none", fontSize: 13, color: "#f0f0f0", caretColor: "#38bdf8" }}
           />
 
-          <motion.button
+          <button
             type="submit"
             disabled={!input.trim()}
-            whileHover={{ scale: input.trim() ? 1.06 : 1 }}
-            whileTap={{ scale: input.trim() ? 0.92 : 1 }}
-            style={{ height: 36, width: 36, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.2s ease", background: input.trim() ? "rgba(125,211,252,0.12)" : "rgba(125,211,252,0.03)", border: `1px solid ${input.trim() ? "rgba(125,211,252,0.35)" : "rgba(125,211,252,0.09)"}`, color: input.trim() ? "#7DD3FC" : "rgba(125,211,252,0.22)", boxShadow: input.trim() ? "0 0 14px rgba(125,211,252,0.2)" : "none", cursor: input.trim() ? "pointer" : "not-allowed" }}
+            style={{
+              height: 30, width: 30, borderRadius: 7, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+              background: input.trim() ? "rgba(56,189,248,0.1)" : "transparent",
+              border: `1px solid ${input.trim() ? "rgba(56,189,248,0.25)" : "transparent"}`,
+              color: input.trim() ? "#38bdf8" : "#3f3f46",
+              cursor: input.trim() ? "pointer" : "default",
+              transition: "all 0.15s",
+            }}
           >
-            <Send size={13} />
-          </motion.button>
+            <Send size={11} />
+          </button>
         </form>
       </div>
 
-      {/* ── Footer status strip ── */}
+      {/* ── Footer ── */}
       <div
         className="relative z-10 shrink-0 hidden md:flex items-center justify-between px-4"
-        style={{ height: 24, borderTop: "1px solid rgba(125,211,252,0.06)", background: "rgba(5,6,9,0.6)" }}
+        style={{ height: 22, borderTop: "1px solid #1f1f1f" }}
       >
-        <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 7, letterSpacing: "0.2em", color: "rgba(125,211,252,0.2)" }}>
-          SYSTEM SECURE · NEURAL LINK ACTIVE · MEMORY ONLINE · ALL SENSORS NOMINAL
+        <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 7, letterSpacing: "0.18em", color: "#2a2a2a", textTransform: "uppercase" }}>
+          JARVIS · SECURE CONNECTION · {enabled ? "ACTIVE" : "STANDBY"}
         </span>
-        <div style={{ display: "flex", gap: 3, alignItems: "center" }}>
-          {[1, 1, 1, 0, 1, 0, 0, 1].map((v, i) => (
-            <div key={i} style={{ width: 4, height: 4, borderRadius: "50%", background: v ? "rgba(125,211,252,0.5)" : "rgba(125,211,252,0.12)" }} />
-          ))}
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <Zap size={8} style={{ color: enabled ? "#38bdf8" : "#2a2a2a" }} />
         </div>
       </div>
     </div>

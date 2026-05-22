@@ -16,7 +16,7 @@ export interface GeminiMessage {
 
 interface GeminiRequest {
   contents: GeminiMessage[];
-  tools?: Array<{ functionDeclarations: unknown[] }>;
+  tools?: Array<{ functionDeclarations?: unknown[] } | { googleSearch?: Record<string, never> }>;
   generationConfig?: {
     temperature?: number;
     topK?: number;
@@ -30,6 +30,11 @@ interface GeminiResponse {
     content: { parts: GeminiMessagePart[]; role: string };
     finishReason: string;
     index: number;
+    groundingMetadata?: {
+      groundingChunks?: Array<{
+        web?: { title?: string; uri?: string };
+      }>;
+    };
   }>;
 }
 
@@ -40,6 +45,23 @@ export interface UserContext {
   messages?: Array<{ motive: string; time: string; message: string }>;
   folders?: Array<{ name: string; items: string[] }>;
 }
+
+export type SearchSource = {
+  title: string;
+  url: string;
+  snippet: string;
+};
+
+export type SearchType =
+  | "general"
+  | "news"
+  | "weather"
+  | "comparison"
+  | "howto"
+  | "definition"
+  | "local"
+  | "code"
+  | "math";
 
 // ─── Error map ────────────────────────────────────────────────────────────────
 
@@ -219,8 +241,7 @@ export async function executeToolCall(
         .from("jarvis_memory")
         .update({ recalled_count: rows[0].recalled_count + 1, last_recalled_at: new Date().toISOString() })
         .in("id", ids)
-        .then(() => null)
-        .catch(() => null);
+        .then(() => null, () => null);
       return rows
         .map((m) => `• [${m.memory_type}] ${m.content} (saved ${new Date(m.created_at).toLocaleDateString()})`)
         .join("\n");
@@ -302,6 +323,24 @@ function buildContextString(ctx: UserContext): string {
   }
 
   return parts.join("");
+}
+
+// ─── Search type classifier ───────────────────────────────────────────────────
+
+function classifySearchType(responseText: string, userQuery: string): SearchType {
+  void responseText;
+  const q = userQuery.toLowerCase();
+
+  if (/weather|temperature|rain|forecast|humid|°/.test(q)) return "weather";
+  if (/news|latest|today|happened|update|current events/.test(q)) return "news";
+  if (/\bvs\b|versus|compare|difference|better|which is/.test(q)) return "comparison";
+  if (/how to|how do|steps|guide|tutorial|setup/.test(q)) return "howto";
+  if (/what is|define|meaning|explain|who is/.test(q)) return "definition";
+  if (/near me|nearby|restaurant|hotel|place|location|where/.test(q)) return "local";
+  if (/code|error|bug|function|syntax|javascript|python|react/.test(q)) return "code";
+  if (/calculate|percent|formula|math|equation|\d+\s*[+\-*/]/.test(q)) return "math";
+
+  return "general";
 }
 
 // ─── API class ────────────────────────────────────────────────────────────────
@@ -465,7 +504,6 @@ class GeminiAPI {
 
     const parts = candidate.content.parts ?? [];
 
-    // Use .find() — gemini-2.5-flash may prepend thinking parts before the function call
     const functionCallPart = parts.find((p) => "functionCall" in p && p.functionCall);
     const textPart = parts.find((p) => "text" in p && p.text);
 
@@ -473,8 +511,6 @@ class GeminiAPI {
       const { name, args } = functionCallPart.functionCall;
       const toolResult = await executeToolCall(name, args as Record<string, unknown>, sessionId);
 
-      // Preserve the ENTIRE functionCallPart — gemini-2.5-flash adds thought_signature
-      // which causes a 400 if stripped. Pass the object as-is.
       const followUpHistory: GeminiMessage[] = [
         ...fullHistory,
         { role: "model", parts: [functionCallPart] },
@@ -504,6 +540,56 @@ class GeminiAPI {
     if (textPart && "text" in textPart && textPart.text) return textPart.text;
 
     return "No response received.";
+  }
+
+  async generateWithSearch(
+    messages: GeminiMessage[],
+    systemPrompt: string,
+  ): Promise<{ text: string; sources: SearchSource[]; searchType: SearchType }> {
+    const fallback = { text: "API key not configured.", sources: [] as SearchSource[], searchType: "general" as SearchType };
+    if (!this.primaryKey && !this.fallbackKey) return fallback;
+
+    const fullHistory: GeminiMessage[] = [
+      { role: "user", parts: [{ text: systemPrompt }] },
+      { role: "model", parts: [{ text: "Understood. I will search for current information." }] },
+      ...messages,
+    ];
+
+    const body: GeminiRequest = {
+      contents: fullHistory,
+      tools: [{ googleSearch: {} }],
+      generationConfig: { temperature: 0.7, topK: 40, topP: 0.95, maxOutputTokens: 8192 },
+    };
+
+    let raw = this.primaryKey ? await this._rawRequest(this.primaryKey, body) : null;
+    if (!raw?.ok && this.fallbackKey) {
+      console.warn("[Gemini] Primary key failed for search — retrying with fallback.");
+      raw = await this._rawRequest(this.fallbackKey, body);
+    }
+
+    if (!raw?.ok || !raw.data) {
+      return { text: "I encountered an error searching for that.", sources: [], searchType: "general" };
+    }
+
+    const candidate = raw.data.candidates?.[0];
+    if (!candidate) return { text: "No search results received.", sources: [], searchType: "general" };
+
+    const textPart = candidate.content.parts?.find((p) => "text" in p && p.text);
+    const text = (textPart && "text" in textPart ? textPart.text : "") || "No results found.";
+
+    const sources: SearchSource[] = (candidate.groundingMetadata?.groundingChunks ?? [])
+      .filter((chunk) => chunk.web?.uri)
+      .map((chunk) => ({
+        title: chunk.web?.title ?? "",
+        url: chunk.web?.uri ?? "",
+        snippet: "",
+      }));
+
+    const userQuery = messages[messages.length - 1]?.parts?.find((p) => "text" in p && p.text);
+    const queryText = (userQuery && "text" in userQuery ? userQuery.text : "") ?? "";
+    const searchType = classifySearchType(text, queryText);
+
+    return { text, sources, searchType };
   }
 
   get configured(): boolean {
