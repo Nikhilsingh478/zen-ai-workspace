@@ -327,7 +327,7 @@ class GeminiAPI {
   ): Promise<{ ok: boolean; text: string; status: number }> {
     try {
       const res = await fetch(
-        `${this.baseUrl}/gemini-flash-latest:generateContent?key=${apiKey}`,
+        `${this.baseUrl}/gemini-2.5-flash:generateContent?key=${apiKey}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -367,7 +367,7 @@ class GeminiAPI {
   ): Promise<{ ok: boolean; data: GeminiResponse | null; status: number }> {
     try {
       const res = await fetch(
-        `${this.baseUrl}/gemini-flash-latest:generateContent?key=${apiKey}`,
+        `${this.baseUrl}/gemini-2.5-flash:generateContent?key=${apiKey}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -463,16 +463,21 @@ class GeminiAPI {
     const candidate = raw.data.candidates?.[0];
     if (!candidate) return "No response received.";
 
-    const part = candidate.content.parts[0];
-    if (!part) return "No response received.";
+    const parts = candidate.content.parts ?? [];
 
-    if ("functionCall" in part && part.functionCall) {
-      const { name, args } = part.functionCall;
+    // Use .find() — gemini-2.5-flash may prepend thinking parts before the function call
+    const functionCallPart = parts.find((p) => "functionCall" in p && p.functionCall);
+    const textPart = parts.find((p) => "text" in p && p.text);
+
+    if (functionCallPart && "functionCall" in functionCallPart && functionCallPart.functionCall) {
+      const { name, args } = functionCallPart.functionCall;
       const toolResult = await executeToolCall(name, args as Record<string, unknown>, sessionId);
 
+      // Preserve the ENTIRE functionCallPart — gemini-2.5-flash adds thought_signature
+      // which causes a 400 if stripped. Pass the object as-is.
       const followUpHistory: GeminiMessage[] = [
         ...fullHistory,
-        { role: "model", parts: [{ functionCall: { name, args: args as Record<string, unknown> } }] },
+        { role: "model", parts: [functionCallPart] },
         { role: "user", parts: [{ functionResponse: { name, response: { result: toolResult } } }] },
       ];
 
@@ -496,7 +501,7 @@ class GeminiAPI {
       return toolResult;
     }
 
-    if ("text" in part && part.text) return part.text;
+    if (textPart && "text" in textPart && textPart.text) return textPart.text;
 
     return "No response received.";
   }

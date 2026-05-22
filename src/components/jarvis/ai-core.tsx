@@ -184,9 +184,11 @@ function PulseRings({ active }: { active: boolean }) {
         <motion.circle
           key={i}
           cx={C} cy={C}
+          r={28}
           fill="none"
           stroke={i === 0 ? `rgba(147,197,253,0.55)` : `rgba(125,211,252,0.4)`}
           strokeWidth="0.7"
+          initial={{ r: 28 }}
           animate={{
             r:            [28, active ? 74 : 58],
             opacity:      [active ? 0.6 : 0.3, 0],

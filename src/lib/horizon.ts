@@ -50,6 +50,8 @@ const listeners = new Set<() => void>();
 let state: State = { tasks: [], loaded: false };
 let booted = false;
 let realtimeChannel: ReturnType<typeof supabase.channel> | null = null;
+let realtimeMounted = true;
+let realtimeTimer: ReturnType<typeof setTimeout> | null = null;
 
 function emit() {
   listeners.forEach((fn) => fn());
@@ -93,16 +95,35 @@ async function refetch() {
 
 function setupRealtime() {
   if (realtimeChannel) return;
-  realtimeChannel = supabase
-    .channel("horizon_tasks_changes")
-    .on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "horizon_tasks" },
-      () => {
-        refetch().catch(console.error);
-      },
-    )
-    .subscribe();
+  if (realtimeTimer) clearTimeout(realtimeTimer);
+
+  realtimeMounted = true;
+  realtimeTimer = setTimeout(() => {
+    if (!realtimeMounted) return;
+    realtimeChannel = supabase
+      .channel("horizon_tasks_changes")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "horizon_tasks" },
+        () => {
+          if (!realtimeMounted) return;
+          refetch().catch(console.error);
+        },
+      )
+      .subscribe();
+  }, 150);
+}
+
+function teardownRealtime() {
+  realtimeMounted = false;
+  if (realtimeTimer) {
+    clearTimeout(realtimeTimer);
+    realtimeTimer = null;
+  }
+  if (realtimeChannel) {
+    supabase.removeChannel(realtimeChannel).catch(() => null);
+    realtimeChannel = null;
+  }
 }
 
 export async function ensureBooted() {

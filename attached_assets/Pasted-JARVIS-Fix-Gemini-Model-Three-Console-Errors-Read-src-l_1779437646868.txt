@@ -1,0 +1,131 @@
+JARVIS — Fix Gemini Model + Three Console Errors
+Read src/lib/gemini.ts and src/components/jarvis/ai-core.tsx fully before writing a single line.
+
+Fix 1 — Switch Models (Most Critical)
+In src/lib/gemini.ts, find every place the model string appears in fetch calls.
+Replace all model strings with:
+
+Primary: gemini-2.5-flash
+The model string in the fallback fetch call: gemini-2.5-flash
+
+Also update the JARVIS_TOOLS request structure. In generateWithTools, the follow-up request that sends the tool result back to Gemini must include the full original function call part exactly as received from the first response — do not strip any fields from it. The correct pattern is:
+typescript// Step 1 — First request to Gemini with tools
+const firstResponse = await this._rawRequest({
+  model: 'gemini-2.5-flash',
+  contents: messages,
+  tools: [{ functionDeclarations: JARVIS_TOOLS }],
+  generationConfig: {
+    temperature: 0.7,
+    topK: 40,
+    topP: 0.95,
+    maxOutputTokens: 8192
+  }
+}, apiKey)
+
+// Step 2 — Check if response contains a function call
+const parts = firstResponse?.candidates?.[0]?.content?.parts ?? []
+const functionCallPart = parts.find(p => p.functionCall)
+
+if (!functionCallPart) {
+  // No tool call, return text directly
+  return parts.find(p => p.text)?.text ?? ''
+}
+
+// Step 3 — Execute the tool
+const toolResult = await executeToolCall(
+  functionCallPart.functionCall.name,
+  functionCallPart.functionCall.args ?? {},
+  sessionId
+)
+
+// Step 4 — Build follow-up preserving the ENTIRE functionCallPart
+// (This handles thought_signature automatically for 2.5 models)
+const followUpContents = [
+  ...messages,
+  {
+    role: 'model',
+    parts: [functionCallPart] // entire part object, no destructuring
+  },
+  {
+    role: 'user',
+    parts: [{
+      functionResponse: {
+        name: functionCallPart.functionCall.name,
+        response: { result: toolResult }
+      }
+    }]
+  }
+]
+
+// Step 5 — Second request to get natural language response
+const secondResponse = await this._rawRequest({
+  model: 'gemini-2.5-flash',
+  contents: followUpContents,
+  generationConfig: {
+    temperature: 0.7,
+    topK: 40,
+    topP: 0.95,
+    maxOutputTokens: 8192
+  }
+}, apiKey)
+
+const finalParts = secondResponse?.candidates?.[0]?.content?.parts ?? []
+return finalParts.find(p => p.text)?.text ?? 'Done.'
+Also update the dual key fallover logic: primary key uses gemini-2.5-flash, fallback key also uses gemini-2.5-flash. Both should be identical model strings — the fallback is purely for quota, not model switching.
+Update anywhere in the codebase the old model string (gemini-flash-latest, gemini-2.0-flash, gemini-1.5-flash) appears and replace with gemini-2.5-flash.
+
+Fix 2 — SVG Circle r undefined (permanent)
+File: src/components/jarvis/ai-core.tsx
+Find every single motion.circle element. For each one, no exceptions:
+
+Add a concrete numeric r prop directly on the JSX element
+If it uses animate with an r value, also add the same as initial={{ r: X }}
+Never leave a motion.circle without an explicit r prop
+
+Common values to use based on typical orb sizing — outer ring: r={48}, middle ring: r={36}, inner ring: r={24}, core: r={16}. Match whatever the animation targets show.
+After this fix, zero <circle> attribute r: Expected length "undefined" errors should appear.
+
+Fix 3 — WebSocket Teardown Loop
+File: src/lib/horizon.ts
+Find the Supabase Realtime channel subscription. Add a mounted guard and a small setup delay:
+typescriptlet isMounted = true
+let channel: RealtimeChannel | null = null
+
+const setupSubscription = () => {
+  if (!isMounted) return
+  
+  channel = supabase
+    .channel('horizon_tasks_changes')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'horizon_tasks' },
+      (payload) => {
+        if (!isMounted) return
+        // existing handler logic unchanged
+      }
+    )
+    .subscribe()
+}
+
+// Small delay prevents WebSocket teardown on rapid mount/unmount
+const subscriptionTimer = setTimeout(setupSubscription, 150)
+
+// In your existing cleanup / unsubscribe logic, add:
+clearTimeout(subscriptionTimer)
+isMounted = false
+if (channel) {
+  supabase.removeChannel(channel)
+  channel = null
+}
+Do not change any other logic in horizon.ts — only wrap the subscription setup with this guard pattern.
+
+Non-Negotiable Requirements
+
+Do not touch any page other than src/lib/gemini.ts, src/components/jarvis/ai-core.tsx, and src/lib/horizon.ts
+Do not change the JARVIS UI, the Horizon UI, or any other existing functionality
+After these fixes the console on the JARVIS page should show zero errors
+The Gemini model string gemini-2.5-flash must appear consistently everywhere — no mixing of model versions
+Do not install any new packages
+Do not modify vite.config.ts
+Test mentally: open JARVIS → zero SVG errors → send message → Gemini responds → if tool called → tool result sent back with full part preserved → natural language response returned → zero 400 errors → WebSocket connects cleanly without teardown warnings
+
