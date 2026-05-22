@@ -996,7 +996,7 @@ async function handleCommand(commandText: string) {
       type: "error",
     };
     patch({
-      messages: [..._state.messages, userMsg, errMsg],
+      messages: [..._state.messages, errMsg],
       voiceState: "idle",
       isAwake: false,
       transcript: "",
