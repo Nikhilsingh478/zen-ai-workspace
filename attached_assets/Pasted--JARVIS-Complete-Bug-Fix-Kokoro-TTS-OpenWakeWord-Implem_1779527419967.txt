@@ -1,0 +1,949 @@
+**JARVIS — Complete Bug Fix + Kokoro TTS + OpenWakeWord Implementation**
+
+Read every single file mentioned before writing one line of code. This is a multi-part implementation touching several files. Build in the exact order listed. Do not skip any section.
+
+---
+
+## CONTEXT
+
+This is a production React 19 + Vite 7 personal AI OS. The JARVIS subsystem has several bugs identified through testing. This prompt fixes all of them in one shot and adds two major features: Kokoro TTS (replacing browser TTS) and OpenWakeWord (replacing unreliable Web Speech API wake word detection).
+
+**Files you will touch:**
+- `src/components/jarvis/ai-core.tsx`
+- `src/lib/jarvis.ts`
+- `src/lib/horizon.ts`
+- `src/lib/gemini.ts`
+- `src/routes/jarvis.tsx`
+- New file: `src/workers/kokoro-worker.js`
+
+**Files you must NOT touch:**
+- Any other page or route
+- `src/lib/supabase.ts`
+- `src/lib/timeline.ts`
+- `src/routes/horizon.tsx`
+- `src/routes/ask.tsx`
+- Any other existing lib or route file
+
+---
+
+## PART 1 — SVG CIRCLE r UNDEFINED (PERMANENT FIX)
+
+**File:** `src/components/jarvis/ai-core.tsx`
+
+**Problem:** Every page load throws `Error: <circle> attribute r: Expected length, "undefined"` multiple times. This happens because `motion.circle` elements have their `r` attribute only in the `animate` prop — Framer Motion doesn't inject it before first paint so SVG receives `r="undefined"`.
+
+**Fix:** Find every single `motion.circle` element in this file. For each one without exception:
+- Add a concrete numeric `r` prop directly on the JSX element
+- Add the same value in `initial={{ r: N }}`
+- Never leave any `motion.circle` without both of these
+
+After this fix zero circle errors on any load or refresh. Check all animated circles — there are likely 2-4 of them. Fix every single one.
+
+---
+
+## PART 2 — SESSION SPAM FIX
+
+**File:** `src/lib/jarvis.ts` and `src/routes/jarvis.tsx`
+
+**Problem:** Every single page mount creates a new row in `jarvis_sessions` even with zero messages. User has 70+ sessions with 0 messages polluting the history tab. Sessions are created on mount instead of on first actual message.
+
+**Fix Part A — `src/lib/jarvis.ts`:**
+
+In `startSession()`, add a module-level flag:
+```typescript
+let _sessionStartedThisVisit = false
+```
+
+Update `startSession()`:
+```typescript
+export async function startSession(): Promise<string> {
+  if (_sessionStartedThisVisit && _state.currentSessionId) {
+    return _state.currentSessionId
+  }
+  // existing session creation logic
+  _sessionStartedThisVisit = true
+  // return session id
+}
+```
+
+Update `endSession(sessionId)`: if `message_count === 0`, delete the session row entirely instead of saving an empty summary:
+```typescript
+export async function endSession(sessionId: string): Promise<void> {
+  try {
+    // count messages first
+    const { count } = await supabase
+      .from('jarvis_messages')
+      .select('*', { count: 'exact', head: true })
+      .eq('session_id', sessionId)
+
+    if (!count || count === 0) {
+      // delete empty session — never persist empty sessions
+      await supabase.from('jarvis_sessions').delete().eq('id', sessionId)
+      return
+    }
+    // existing summary generation and save logic for sessions with messages
+  } catch (err) {
+    console.error('[JARVIS] endSession error:', err)
+  }
+}
+```
+
+Reset `_sessionStartedThisVisit = false` when `endSession` is called.
+
+**Fix Part B — `src/routes/jarvis.tsx`:**
+
+Remove `startSession()` from the mount `useEffect`. Instead set `currentSessionId` to `null` on mount.
+
+In the message send handler, before calling `saveMessage()` for the first time:
+```typescript
+let sessionId = currentSessionId
+if (!sessionId) {
+  sessionId = await startSession()
+  setCurrentSessionId(sessionId)
+}
+// now use sessionId for saveMessage calls
+```
+
+This guarantees sessions are only created when the user actually sends a message.
+
+---
+
+## PART 3 — HISTORY TAB FIXES
+
+**File:** `src/routes/jarvis.tsx` and Supabase query in `src/lib/jarvis.ts`
+
+**Problem 1:** History tab shows dozens of 0-message sessions cluttering the view.
+
+**Fix:** In the Supabase query that fetches sessions for the History tab, filter out empty ones:
+```typescript
+const { data } = await supabase
+  .from('jarvis_sessions')
+  .select('*')
+  .gt('message_count', 0)
+  .order('started_at', { ascending: false })
+  .limit(20)
+```
+
+Also add a one-time cleanup query that runs on mount to delete all existing 0-message sessions:
+```typescript
+// Run once on JARVIS page mount — cleans up historical spam
+await supabase
+  .from('jarvis_sessions')
+  .delete()
+  .eq('message_count', 0)
+```
+
+**Problem 2:** Current active conversation never appears in History tab.
+
+**Fix:** After every complete message exchange (both user message and Jarvis response saved to Supabase), if History tab is currently active, refresh the session list. Add a `refreshHistory()` function that re-fetches and updates the history list state. Call it after each message pair is saved.
+
+Also update `message_count` in `jarvis_sessions` after every `saveMessage()` call:
+```typescript
+await supabase
+  .from('jarvis_sessions')
+  .update({ message_count: supabase.rpc('increment', { row_id: sessionId }) })
+  .eq('id', sessionId)
+```
+
+Or simpler — just do a count query and update:
+```typescript
+const { count } = await supabase
+  .from('jarvis_messages')
+  .select('*', { count: 'exact', head: true })
+  .eq('session_id', sessionId)
+
+await supabase
+  .from('jarvis_sessions')
+  .update({ message_count: count ?? 0 })
+  .eq('id', sessionId)
+```
+
+---
+
+## PART 4 — WEBSOCKET TEARDOWN FIX (PERMANENT)
+
+**File:** `src/lib/horizon.ts`
+
+**Problem:** WebSocket connection closed before established — appears on every load. Subscription setup and teardown is happening too fast on rapid mount/unmount cycles.
+
+**Fix:** Find `setupRealtime()`. Wrap with mounted guard and delay:
+
+```typescript
+let _realtimeMounted = true
+let _realtimeTimer: ReturnType<typeof setTimeout> | null = null
+let _realtimeChannel: ReturnType<typeof supabase.channel> | null = null
+
+function setupRealtime() {
+  _realtimeMounted = true
+  _realtimeTimer = setTimeout(() => {
+    if (!_realtimeMounted) return
+    
+    _realtimeChannel = supabase
+      .channel('horizon_tasks_realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'horizon_tasks' },
+        (payload) => {
+          if (!_realtimeMounted) return
+          // existing handler logic unchanged
+        }
+      )
+      .subscribe()
+  }, 150)
+}
+
+function teardownRealtime() {
+  _realtimeMounted = false
+  if (_realtimeTimer) {
+    clearTimeout(_realtimeTimer)
+    _realtimeTimer = null
+  }
+  if (_realtimeChannel) {
+    supabase.removeChannel(_realtimeChannel)
+    _realtimeChannel = null
+  }
+}
+```
+
+---
+
+## PART 5 — AUDIO STATE MACHINE: STUCK IN RESPONDING + NO IDLE RETURN
+
+**File:** `src/lib/jarvis.ts`
+
+**Problem 1:** After speaking finishes, state gets stuck in `speaking`/`responding` forever. Browser TTS `onend` event is unreliable — Chrome has a known bug where speechSynthesis pauses after ~15 seconds and `onend` never fires.
+
+**Fix:** Replace the entire `TTSQueue.playNext()` method:
+
+```typescript
+private playNext(): void {
+  if (this.queue.length === 0) {
+    this.isPlaying = false
+    transitionAudioState('idle')
+    return
+  }
+
+  const sentence = this.queue.shift()!
+  const utterance = new SpeechSynthesisUtterance(sentence)
+  utterance.rate = 1.0
+  utterance.pitch = 1.0
+
+  // Estimated duration + buffer for timeout fallback
+  const estimatedMs = Math.max((sentence.length / 12) * 1000, 3000) + 4000
+
+  let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+    window.speechSynthesis.cancel()
+    this.queue = []
+    this.isPlaying = false
+    transitionAudioState('idle')
+  }, estimatedMs)
+
+  const cleanup = () => {
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+      timeoutId = null
+    }
+  }
+
+  utterance.onend = () => {
+    cleanup()
+    this.playNext()
+  }
+
+  utterance.onerror = () => {
+    cleanup()
+    this.isPlaying = false
+    transitionAudioState('idle')
+  }
+
+  window.speechSynthesis.speak(utterance)
+}
+```
+
+**Problem 2:** Chrome speechSynthesis pauses mid-speech after ~15s.
+
+**Fix:** Add keepalive in `TTSQueue`:
+```typescript
+private startKeepAlive(): void {
+  this.keepAliveInterval = setInterval(() => {
+    if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
+      window.speechSynthesis.pause()
+      window.speechSynthesis.resume()
+    }
+  }, 10000)
+}
+
+private stopKeepAlive(): void {
+  if (this.keepAliveInterval) {
+    clearInterval(this.keepAliveInterval)
+    this.keepAliveInterval = null
+  }
+}
+```
+
+Call `startKeepAlive()` when first sentence starts playing, `stopKeepAlive()` when queue empties or is interrupted.
+
+---
+
+## PART 6 — INTERRUPT WORDS NOT WORKING
+
+**File:** `src/lib/jarvis.ts`
+
+**Problem:** "stop", "wait" etc don't interrupt Jarvis while speaking because no SpeechRecognition instance is listening during the `speaking` state.
+
+**Fix:** Add a dedicated interrupt listener that activates whenever state transitions to `speaking`:
+
+```typescript
+let _interruptRecognition: SpeechRecognition | null = null
+
+function startInterruptListener(): void {
+  if (!('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)) return
+  
+  try {
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    _interruptRecognition = new SR()
+    _interruptRecognition!.continuous = false
+    _interruptRecognition!.interimResults = false
+    _interruptRecognition!.lang = 'en-US'
+    _interruptRecognition!.maxAlternatives = 1
+
+    _interruptRecognition!.onresult = (event: SpeechRecognitionEvent) => {
+      const transcript = event.results[0][0].transcript.toLowerCase().trim()
+      const INTERRUPT_WORDS = ['stop', 'wait', 'hold on', 'shut up', 'pause', 'enough', 'quiet']
+      
+      if (INTERRUPT_WORDS.some(word => transcript.includes(word))) {
+        ttsQueue.interrupt()
+        stopInterruptListener()
+        transitionAudioState('interrupted')
+        setTimeout(() => {
+          if (_state.audioState === 'interrupted') {
+            transitionAudioState('idle')
+          }
+        }, 800)
+      }
+    }
+
+    _interruptRecognition!.onerror = () => {
+      // silent fail — interrupt listener is best-effort
+    }
+
+    _interruptRecognition!.onend = () => {
+      // restart if still speaking
+      if (_state.audioState === 'speaking') {
+        try { _interruptRecognition?.start() } catch (e) {}
+      }
+    }
+
+    _interruptRecognition!.start()
+  } catch (e) {
+    console.warn('[JARVIS] Interrupt listener failed to start:', e)
+  }
+}
+
+function stopInterruptListener(): void {
+  if (_interruptRecognition) {
+    try { _interruptRecognition.stop() } catch (e) {}
+    _interruptRecognition = null
+  }
+}
+```
+
+In `transitionAudioState()`:
+- When transitioning TO `speaking` → call `startInterruptListener()`
+- When transitioning AWAY from `speaking` → call `stopInterruptListener()`
+
+---
+
+## PART 7 — MARKDOWN ASTERISKS BEING READ ALOUD
+
+**File:** `src/lib/jarvis.ts`
+
+**Problem:** Gemini responses contain markdown (`**bold**`, `*italic*`, `##headings`, bullet points) which get passed raw to TTS and read aloud as "asterisk asterisk bold asterisk asterisk".
+
+**Fix:** Add `cleanTextForSpeech()` function:
+
+```typescript
+function cleanTextForSpeech(text: string): string {
+  return text
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/\*(.*?)\*/g, '$1')
+    .replace(/#{1,6}\s+/g, '')
+    .replace(/`{3}[\s\S]*?`{3}/g, 'code block omitted')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/^\s*\d+\.\s+/gm, '')
+    .replace(/\n{2,}/g, '. ')
+    .replace(/\n/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+}
+```
+
+Call this on EVERY text string before passing to `ttsQueue.enqueue()`. No exceptions — morning briefing, search results, regular replies, task confirmations, all of it.
+
+---
+
+## PART 8 — SEARCH INTENT CLASSIFICATION FIXES
+
+**File:** `src/lib/jarvis.ts` — `classifyIntent()` function
+**File:** `src/lib/gemini.ts` — `classifySearchType()` function and `generateWithSearch()`
+
+**Problem 1:** "what is machine learning", "what is X" queries not classified as `search_query` — falling through to `conversation` and showing plain text instead of SearchResult component.
+
+**Fix:** Add these patterns to `search_query` detection in `classifyIntent()`:
+
+```typescript
+const searchPatterns = [
+  /^what is\b/i,
+  /^what are\b/i,
+  /^who is\b/i,
+  /^who are\b/i,
+  /^when (was|did|is|are)\b/i,
+  /^where (is|are|was)\b/i,
+  /^why (is|are|did|does)\b/i,
+  /^how (does|do|did|much|many|long|far)\b/i,
+  /latest|recent|current|breaking|today'?s news/i,
+  /search for|look up|look it up|find out|google|tell me about/i,
+  /news about|what happened|update on/i,
+  /price of|how much (is|does|do)/i,
+  /weather|temperature|forecast/i,
+  /vs\b|versus|compare|difference between/i,
+]
+
+if (searchPatterns.some(p => p.test(message))) return 'search_query'
+```
+
+**Problem 2:** "how to center a div" response gets cut off halfway through.
+
+**Fix:** In `generateWithSearch()` in `gemini.ts`, update generationConfig:
+```typescript
+generationConfig: {
+  temperature: 0.5,
+  topK: 40,
+  topP: 0.95,
+  maxOutputTokens: 4096
+}
+```
+
+Also add a 25-second timeout to the fetch call in `generateWithSearch` specifically — search grounding requests can hang:
+```typescript
+const controller = new AbortController()
+const timeout = setTimeout(() => controller.abort(), 25000)
+
+try {
+  const response = await fetch(url, { 
+    ...options, 
+    signal: controller.signal 
+  })
+  clearTimeout(timeout)
+  // rest of handler
+} catch (err) {
+  clearTimeout(timeout)
+  if ((err as Error).name === 'AbortError') {
+    throw new Error('Search request timed out. Try a shorter query.')
+  }
+  throw err
+}
+```
+
+**Problem 3:** `classifySearchType()` not differentiating definition queries correctly.
+
+**Fix:** Update the definition pattern:
+```typescript
+if (/^what is\b|^what are\b|^who is\b|^who are\b|define\b|meaning of\b|explain\b/.test(q)) return 'definition'
+```
+
+Make sure this check runs BEFORE the general fallback.
+
+---
+
+## PART 9 — INTENT RELIABILITY FOR TASK QUERIES
+
+**File:** `src/lib/jarvis.ts`
+
+**Problem:** "what's up for today" returns "no tasks" but "what all have we got for today" returns correct tasks. The intent classifier is too brittle — only exact phrases trigger `task_query`.
+
+**Fix:** Expand `task_query` patterns significantly:
+
+```typescript
+const taskQueryPatterns = [
+  /what('?s| is) (up |on |my )?(for )?today/i,
+  /what (do i|have i) (have|got) today/i,
+  /what all (have|do) (we|i) (got|have)/i,
+  /today'?s tasks?/i,
+  /my (tasks?|schedule|agenda|plan) (for )?today/i,
+  /what('?s| is) (pending|due|scheduled)/i,
+  /show (me )?(my )?(tasks?|schedule|agenda)/i,
+  /tasks? for today/i,
+  /what (should|do) i (do|work on) today/i,
+  /highest priority/i,
+  /what'?s (on )?my (plate|list)/i,
+]
+
+if (taskQueryPatterns.some(p => p.test(message))) return 'task_query'
+```
+
+---
+
+## PART 10 — MORNING BRIEFING SPARKLES ICON
+
+**File:** `src/routes/jarvis.tsx`
+
+**Problem:** Morning briefing message renders as plain text without the Sparkles icon and distinct styling.
+
+**Fix:** In the message rendering section of the chat, add a specific render path for `type === 'morning_briefing'`:
+
+```tsx
+if (message.type === 'morning_briefing') {
+  return (
+    <div key={message.id} className="flex gap-2 items-start mb-4">
+      <div className="w-6 h-6 rounded-full bg-sky-950 border border-sky-800/50 
+                      flex items-center justify-center flex-shrink-0 mt-0.5">
+        <Sparkles className="w-3 h-3 text-sky-400" />
+      </div>
+      <div className="flex-1 bg-sky-950/30 border border-sky-800/20 
+                      rounded-xl rounded-tl-sm px-4 py-3">
+        <div className="text-[10px] text-sky-400/70 uppercase tracking-widest mb-2 font-mono">
+          Morning Briefing
+        </div>
+        <div className="text-sm text-zinc-200 leading-relaxed">
+          <ReactMarkdown>{message.content}</ReactMarkdown>
+        </div>
+        <div className="text-[10px] text-zinc-600 mt-2">
+          {formatTime(message.timestamp)}
+        </div>
+      </div>
+    </div>
+  )
+}
+```
+
+Make sure `Sparkles` is imported from `lucide-react`.
+
+---
+
+## PART 11 — KOKORO TTS (REPLACES BROWSER TTS)
+
+**New file:** `src/workers/kokoro-worker.js`
+**Modified file:** `src/lib/jarvis.ts`
+
+**What Kokoro is:** An 82MB neural TTS model that runs entirely in the browser via WebAssembly. Voice quality is significantly better than browser TTS — sounds human, not robotic. No API key. No server. Free forever. Model downloads once and caches in IndexedDB permanently.
+
+**Step 1 — Install:**
+```
+npm install kokoro-js
+```
+
+**Step 2 — Create Web Worker:**
+
+Create `src/workers/kokoro-worker.js`:
+
+```javascript
+import { KokoroTTS } from 'kokoro-js'
+
+let tts = null
+let isLoading = false
+
+self.onmessage = async (event) => {
+  const { type, text, voice, id } = event.data
+
+  if (type === 'load') {
+    if (tts || isLoading) {
+      self.postMessage({ type: 'load_status', ready: !!tts })
+      return
+    }
+    
+    isLoading = true
+    self.postMessage({ type: 'loading', message: 'Downloading voice model (82MB, one-time)...' })
+    
+    try {
+      tts = await KokoroTTS.from_pretrained(
+        'onnx-community/Kokoro-82M-v1.0_fp16',
+        { dtype: 'fp16' }
+      )
+      isLoading = false
+      self.postMessage({ type: 'load_status', ready: true })
+    } catch (err) {
+      isLoading = false
+      self.postMessage({ type: 'load_error', error: err.message })
+    }
+  }
+
+  if (type === 'synthesize') {
+    if (!tts) {
+      self.postMessage({ type: 'synth_error', id, error: 'Model not loaded' })
+      return
+    }
+
+    try {
+      const audio = await tts.generate(text, {
+        voice: voice || 'am_adam', // am_adam = American male, natural voice
+      })
+      
+      // Convert to transferable ArrayBuffer
+      const audioData = audio.audio
+      const sampleRate = audio.sampling_rate
+      
+      self.postMessage(
+        { type: 'synth_result', id, audioData, sampleRate },
+        [audioData.buffer]
+      )
+    } catch (err) {
+      self.postMessage({ type: 'synth_error', id, error: err.message })
+    }
+  }
+}
+```
+
+**Step 3 — Kokoro Manager in `src/lib/jarvis.ts`:**
+
+Add a `KokoroManager` class that manages the worker:
+
+```typescript
+class KokoroManager {
+  private worker: Worker | null = null
+  private isReady: boolean = false
+  private isLoading: boolean = false
+  private pendingCallbacks: Map<string, {
+    resolve: (audioData: Float32Array, sampleRate: number) => void
+    reject: (err: Error) => void
+  }> = new Map()
+  private onLoadingCallback: ((msg: string) => void) | null = null
+
+  initialize(onLoading?: (msg: string) => void): void {
+    if (this.worker || this.isLoading) return
+    this.onLoadingCallback = onLoading || null
+    this.isLoading = true
+
+    try {
+      this.worker = new Worker(
+        new URL('../workers/kokoro-worker.js', import.meta.url),
+        { type: 'module' }
+      )
+
+      this.worker.onmessage = (event) => {
+        const { type, id, audioData, sampleRate, error, message, ready } = event.data
+
+        if (type === 'loading') {
+          this.onLoadingCallback?.(message)
+        }
+
+        if (type === 'load_status') {
+          this.isReady = ready
+          this.isLoading = false
+        }
+
+        if (type === 'load_error') {
+          this.isReady = false
+          this.isLoading = false
+          console.warn('[Kokoro] Failed to load model:', error)
+          // fallback to browser TTS handled in TTSQueue
+        }
+
+        if (type === 'synth_result') {
+          const cb = this.pendingCallbacks.get(id)
+          if (cb) {
+            this.pendingCallbacks.delete(id)
+            cb.resolve(new Float32Array(audioData), sampleRate)
+          }
+        }
+
+        if (type === 'synth_error') {
+          const cb = this.pendingCallbacks.get(id)
+          if (cb) {
+            this.pendingCallbacks.delete(id)
+            cb.reject(new Error(error))
+          }
+        }
+      }
+
+      this.worker.onerror = (err) => {
+        console.warn('[Kokoro] Worker error:', err)
+        this.isReady = false
+        this.isLoading = false
+      }
+
+      this.worker.postMessage({ type: 'load' })
+    } catch (err) {
+      console.warn('[Kokoro] Failed to initialize worker:', err)
+      this.isLoading = false
+    }
+  }
+
+  async synthesize(text: string, voice = 'am_adam'): Promise<{ audioData: Float32Array, sampleRate: number }> {
+    if (!this.worker || !this.isReady) {
+      throw new Error('Kokoro not ready')
+    }
+
+    const id = `synth_${Date.now()}_${Math.random()}`
+
+    return new Promise((resolve, reject) => {
+      this.pendingCallbacks.set(id, { resolve, reject })
+      this.worker!.postMessage({ type: 'synthesize', text, voice, id })
+    })
+  }
+
+  get ready(): boolean { return this.isReady }
+  get loading(): boolean { return this.isLoading }
+
+  destroy(): void {
+    this.worker?.terminate()
+    this.worker = null
+    this.isReady = false
+    this.pendingCallbacks.clear()
+  }
+}
+
+export const kokoroManager = new KokoroManager()
+```
+
+**Step 4 — Update TTSQueue to use Kokoro:**
+
+Replace `TTSQueue.playNext()` with a version that uses Kokoro when available, falls back to browser TTS when not:
+
+```typescript
+private async playNext(): Promise<void> {
+  if (this.queue.length === 0) {
+    this.isPlaying = false
+    this.stopKeepAlive()
+    transitionAudioState('idle')
+    return
+  }
+
+  const sentence = this.queue.shift()!
+
+  // Try Kokoro first
+  if (kokoroManager.ready) {
+    try {
+      const { audioData, sampleRate } = await kokoroManager.synthesize(sentence)
+      
+      // Play via Web Audio API
+      const audioContext = new AudioContext()
+      const buffer = audioContext.createBuffer(1, audioData.length, sampleRate)
+      buffer.getChannelData(0).set(audioData)
+      
+      const source = audioContext.createBufferSource()
+      source.buffer = buffer
+      source.connect(audioContext.destination)
+      
+      source.onended = () => {
+        audioContext.close()
+        this.playNext()
+      }
+      
+      source.start(0)
+      this.currentSource = source
+      return
+    } catch (err) {
+      console.warn('[Kokoro] Synthesis failed, falling back to browser TTS:', err)
+      // fall through to browser TTS
+    }
+  }
+
+  // Browser TTS fallback
+  const utterance = new SpeechSynthesisUtterance(sentence)
+  utterance.rate = 1.0
+
+  const estimatedMs = Math.max((sentence.length / 12) * 1000, 3000) + 4000
+  let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+    window.speechSynthesis.cancel()
+    this.queue = []
+    this.isPlaying = false
+    transitionAudioState('idle')
+  }, estimatedMs)
+
+  utterance.onend = () => {
+    if (timeoutId) { clearTimeout(timeoutId); timeoutId = null }
+    this.playNext()
+  }
+  
+  utterance.onerror = () => {
+    if (timeoutId) { clearTimeout(timeoutId); timeoutId = null }
+    this.isPlaying = false
+    transitionAudioState('idle')
+  }
+
+  window.speechSynthesis.speak(utterance)
+}
+
+interrupt(): void {
+  this.queue = []
+  
+  // Stop Kokoro audio
+  if (this.currentSource) {
+    try { this.currentSource.stop() } catch (e) {}
+    this.currentSource = null
+  }
+  
+  // Stop browser TTS
+  window.speechSynthesis.cancel()
+  
+  this.isPlaying = false
+  this.stopKeepAlive()
+  transitionAudioState('interrupted')
+}
+```
+
+Add `private currentSource: AudioBufferSourceNode | null = null` to TTSQueue class properties.
+
+**Step 5 — Initialize Kokoro on JARVIS page mount:**
+
+In `src/routes/jarvis.tsx`, in the mount `useEffect`:
+
+```typescript
+// Initialize Kokoro TTS in background — non-blocking
+kokoroManager.initialize((msg) => {
+  console.log('[Kokoro]', msg)
+  // optionally show a subtle "Loading voice model..." indicator
+})
+```
+
+**Step 6 — Show loading indicator:**
+
+In the JARVIS page UI, add a subtle one-line indicator near the input area that shows when Kokoro is still loading:
+
+```tsx
+{kokoroLoading && (
+  <div className="text-[10px] text-zinc-600 text-center py-1">
+    Loading voice model...
+  </div>
+)}
+```
+
+Track `kokoroLoading` state — set to `true` when `kokoroManager.loading` is true, `false` when `kokoroManager.ready` becomes true. Check readiness every 2 seconds via a small `useEffect` interval that clears itself once ready.
+
+---
+
+## PART 12 — OPENWAKEWORD IMPLEMENTATION (REPLACES UNRELIABLE WEB SPEECH WAKE WORD)
+
+**File:** `src/lib/jarvis.ts`
+
+**What OpenWakeWord is:** A completely free, open-source wake word detection library that runs in the browser via WebAssembly. Uses ONNX neural network models. Has `hey_jarvis` as a pre-trained built-in model. Zero API key. Zero signup. Zero cost. Significantly more reliable than the current Web Speech API wake word scanning loop.
+
+**Step 1 — Install:**
+```
+npm install openwakeword-wasm-browser
+```
+
+**Step 2 — Replace wake word logic:**
+
+Remove the existing Web Speech API passive listening loop that scans for "jarvis", "hey jarvis", "okay jarvis" using SpeechRecognition. This entire loop is what causes unreliable behavior — SpeechRecognition was never designed for always-on keyword spotting.
+
+Replace with:
+
+```typescript
+import WakeWordEngine from 'openwakeword-wasm-browser'
+
+let _wakeWordEngine: InstanceType<typeof WakeWordEngine> | null = null
+let _wakeWordActive = false
+
+async function startWakeWordDetection(): Promise<void> {
+  // Only on desktop — mobile uses tap-to-talk
+  if (isMobile()) return
+  
+  if (_wakeWordActive || _wakeWordEngine) return
+  
+  try {
+    _wakeWordEngine = new WakeWordEngine({
+      keywords: ['hey_jarvis'],
+      detectionThreshold: 0.5,
+      cooldownMs: 2000, // 2s cooldown between detections
+    })
+
+    await _wakeWordEngine.load()
+
+    _wakeWordEngine.on('detect', ({ keyword, score }: { keyword: string, score: number }) => {
+      console.log(`[WakeWord] Detected: ${keyword} (score: ${score.toFixed(2)})`)
+      
+      if (_state.audioState === 'idle' && _state.enabled) {
+        transitionAudioState('listening')
+        startCommandListening() // existing function that starts SpeechRecognition for command capture
+      }
+    })
+
+    _wakeWordEngine.on('error', (err: Error) => {
+      console.warn('[WakeWord] Error:', err)
+    })
+
+    await _wakeWordEngine.start()
+    _wakeWordActive = true
+    
+    console.log('[JARVIS] Wake word detection active — say "Hey Jarvis"')
+  } catch (err) {
+    console.warn('[WakeWord] Failed to initialize:', err)
+    // Graceful degradation — tap-to-talk still works
+  }
+}
+
+async function stopWakeWordDetection(): Promise<void> {
+  if (_wakeWordEngine) {
+    try {
+      await _wakeWordEngine.stop()
+    } catch (e) {}
+    _wakeWordEngine = null
+  }
+  _wakeWordActive = false
+}
+```
+
+**Step 3 — Wire into enable/disable:**
+
+When `jarvis.enable()` is called → call `startWakeWordDetection()`
+When `jarvis.disable()` is called → call `stopWakeWordDetection()`
+On JARVIS page unmount → call `stopWakeWordDetection()`
+
+**Step 4 — Asset files:**
+
+The `openwakeword-wasm-browser` package requires ONNX model files to be served from a public path. After installing the package, copy the model files to the Vite public directory:
+
+In `vite.config.ts`, check if there's a way to copy assets. Otherwise manually copy the contents of `node_modules/openwakeword-wasm-browser/models/` to `public/openwakeword/models/`.
+
+In the WakeWordEngine initialization, set:
+```typescript
+_wakeWordEngine = new WakeWordEngine({
+  baseAssetUrl: '/openwakeword/models',
+  keywords: ['hey_jarvis'],
+  detectionThreshold: 0.5,
+  cooldownMs: 2000,
+})
+```
+
+If the package provides a way to copy assets automatically via a postinstall script or vite plugin, use that instead.
+
+**Step 5 — Keep tap-to-talk working:**
+
+The existing tap-to-talk functionality (clicking the orb) must continue working exactly as before. Wake word detection is additive — it adds a new way to trigger listening, it does not replace the orb tap. Both work simultaneously.
+
+---
+
+## NON-NEGOTIABLE REQUIREMENTS
+
+- Do not touch any other page — Horizon, Timeline, Ask, Prompts, Links, Images, Messages, Context, Websites, Desktop, Insights must all work exactly as before
+- Do not change the JARVIS UI layout or visual design — only logic and new invisible features
+- Zero TypeScript errors after all changes
+- Zero new npm packages except `kokoro-js` and `openwakeword-wasm-browser`
+- Every Supabase call wrapped in try/catch
+- Kokoro failure must gracefully fall back to browser TTS — never crash
+- OpenWakeWord failure must gracefully degrade to tap-to-talk — never crash
+- Tap-to-talk on mobile continues working exactly as before
+- No `// TODO` comments left in submitted code
+- Console should show zero errors after all fixes on JARVIS page load
+
+---
+
+## BUILD ORDER
+
+Implement in exactly this order:
+
+1. Part 1 — SVG fix (smallest, verify first)
+2. Part 4 — WebSocket fix
+3. Part 2 + 3 — Session spam + History fixes
+4. Part 5 + 6 — Audio state machine + interrupt listener
+5. Part 7 — Markdown cleaner
+6. Part 8 + 9 — Search + intent fixes
+7. Part 10 — Morning briefing styling
+8. Part 11 — Kokoro TTS (new worker file first, then manager, then TTSQueue update)
+9. Part 12 — OpenWakeWord (last — most complex, has asset dependencies)
+
+After each part, mentally verify it doesn't break anything before moving to the next.
