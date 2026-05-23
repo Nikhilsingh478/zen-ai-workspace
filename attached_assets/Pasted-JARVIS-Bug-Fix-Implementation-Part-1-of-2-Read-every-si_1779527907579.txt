@@ -1,0 +1,310 @@
+JARVIS — Bug Fix Implementation (Part 1 of 2)
+Read every single file mentioned before writing one line of code. This is a multi-part implementation touching several files. Build in the exact order listed. Do not skip any section.
+
+CONTEXT
+This is a production React 19 + Vite 7 personal AI OS. The JARVIS subsystem has several bugs identified through testing. This prompt fixes them in one shot.
+Files you will touch:
+
+src/components/jarvis/ai-core.tsx
+src/lib/jarvis.ts
+src/lib/horizon.ts
+src/lib/gemini.ts
+src/routes/jarvis.tsx
+
+Files you must NOT touch:
+
+Any other page or route
+src/lib/supabase.ts
+src/lib/timeline.ts
+src/routes/horizon.tsx
+src/routes/ask.tsx
+Any other existing lib or route file
+
+
+PART 1 — SVG CIRCLE r UNDEFINED (PERMANENT FIX)
+File: src/components/jarvis/ai-core.tsx
+Problem: Every page load throws Error: <circle> attribute r: Expected length, "undefined" multiple times. This happens because motion.circle elements have their r attribute only in the animate prop — Framer Motion doesn't inject it before first paint so SVG receives r="undefined".
+Fix: Find every single motion.circle element in this file. For each one without exception:
+
+Add a concrete numeric r prop directly on the JSX element
+Add the same value in initial={{ r: N }}
+Never leave any motion.circle without both of these
+
+After this fix zero circle errors on any load or refresh. Check all animated circles — there are likely 2-4 of them. Fix every single one.
+
+PART 2 — SESSION SPAM FIX
+File: src/lib/jarvis.ts and src/routes/jarvis.tsx
+Problem: Every single page mount creates a new row in jarvis_sessions even with zero messages. User has 70+ sessions with 0 messages polluting the history tab. Sessions are created on mount instead of on first actual message.
+Fix Part A — src/lib/jarvis.ts:
+In startSession(), add a module-level flag:
+typescriptlet _sessionStartedThisVisit = false
+Update startSession():
+typescriptexport async function startSession(): Promise<string> {
+  if (_sessionStartedThisVisit && _state.currentSessionId) {
+    return _state.currentSessionId
+  }
+  // existing session creation logic
+  _sessionStartedThisVisit = true
+  // return session id
+}
+Update endSession(sessionId): if message_count === 0, delete the session row entirely instead of saving an empty summary:
+typescriptexport async function endSession(sessionId: string): Promise<void> {
+  try {
+    // count messages first
+    const { count } = await supabase
+      .from('jarvis_messages')
+      .select('*', { count: 'exact', head: true })
+      .eq('session_id', sessionId)
+
+    if (!count || count === 0) {
+      // delete empty session — never persist empty sessions
+      await supabase.from('jarvis_sessions').delete().eq('id', sessionId)
+      return
+    }
+    // existing summary generation and save logic for sessions with messages
+  } catch (err) {
+    console.error('[JARVIS] endSession error:', err)
+  }
+}
+Reset _sessionStartedThisVisit = false when endSession is called.
+Fix Part B — src/routes/jarvis.tsx:
+Remove startSession() from the mount useEffect. Instead set currentSessionId to null on mount. In the message send handler, before calling saveMessage() for the first time:
+typescriptlet sessionId = currentSessionId
+if (!sessionId) {
+  sessionId = await startSession()
+  setCurrentSessionId(sessionId)
+}
+// now use sessionId for saveMessage calls
+This guarantees sessions are only created when the user actually sends a message.
+
+PART 3 — HISTORY TAB FIXES
+File: src/routes/jarvis.tsx and Supabase query in src/lib/jarvis.ts
+Problem 1: History tab shows dozens of 0-message sessions cluttering the view.
+Fix: In the Supabase query that fetches sessions for the History tab, filter out empty ones:
+typescriptconst { data } = await supabase
+  .from('jarvis_sessions')
+  .select('*')
+  .gt('message_count', 0)
+  .order('started_at', { ascending: false })
+  .limit(20)
+Also add a one-time cleanup query that runs on mount to delete all existing 0-message sessions:
+typescript// Run once on JARVIS page mount — cleans up historical spam
+await supabase
+  .from('jarvis_sessions')
+  .delete()
+  .eq('message_count', 0)
+Problem 2: Current active conversation never appears in History tab.
+Fix: After every complete message exchange (both user message and Jarvis response saved to Supabase), if History tab is currently active, refresh the session list. Add a refreshHistory() function that re-fetches and updates the history list state. Call it after each message pair is saved.
+Also update message_count in jarvis_sessions after every saveMessage() call:
+typescriptconst { count } = await supabase
+  .from('jarvis_messages')
+  .select('*', { count: 'exact', head: true })
+  .eq('session_id', sessionId)
+
+await supabase
+  .from('jarvis_sessions')
+  .update({ message_count: count ?? 0 })
+  .eq('id', sessionId)
+
+PART 4 — WEBSOCKET TEARDOWN FIX (PERMANENT)
+File: src/lib/horizon.ts
+Problem: WebSocket connection closed before established — appears on every load. Subscription setup and teardown is happening too fast on rapid mount/unmount cycles.
+Fix: Find setupRealtime(). Wrap with mounted guard and delay:
+typescriptlet _realtimeMounted = true
+let _realtimeTimer: ReturnType<typeof setTimeout> | null = null
+let _realtimeChannel: ReturnType<typeof supabase.channel> | null = null
+
+function setupRealtime() {
+  _realtimeMounted = true
+  _realtimeTimer = setTimeout(() => {
+    if (!_realtimeMounted) return
+    _realtimeChannel = supabase
+      .channel('horizon_tasks_realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'horizon_tasks' },
+        (payload) => {
+          if (!_realtimeMounted) return
+          // existing handler logic unchanged
+        }
+      )
+      .subscribe()
+  }, 150)
+}
+
+function teardownRealtime() {
+  _realtimeMounted = false
+  if (_realtimeTimer) {
+    clearTimeout(_realtimeTimer)
+    _realtimeTimer = null
+  }
+  if (_realtimeChannel) {
+    supabase.removeChannel(_realtimeChannel)
+    _realtimeChannel = null
+  }
+}
+
+PART 5 — AUDIO STATE MACHINE: STUCK IN RESPONDING + NO IDLE RETURN
+File: src/lib/jarvis.ts
+Problem 1: After speaking finishes, state gets stuck in speaking/responding forever. Browser TTS onend event is unreliable — Chrome has a known bug where speechSynthesis pauses after ~15 seconds and onend never fires.
+Fix: Replace the entire TTSQueue.playNext() method:
+typescriptprivate playNext(): void {
+  if (this.queue.length === 0) {
+    this.isPlaying = false
+    transitionAudioState('idle')
+    return
+  }
+
+  const sentence = this.queue.shift()!
+  const utterance = new SpeechSynthesisUtterance(sentence)
+  utterance.rate = 1.0
+  utterance.pitch = 1.0
+
+  // Estimated duration + buffer for timeout fallback
+  const estimatedMs = Math.max((sentence.length / 12) * 1000, 3000) + 4000
+  let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+    window.speechSynthesis.cancel()
+    this.queue = []
+    this.isPlaying = false
+    transitionAudioState('idle')
+  }, estimatedMs)
+
+  const cleanup = () => {
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+      timeoutId = null
+    }
+  }
+
+  utterance.onend = () => {
+    cleanup()
+    this.playNext()
+  }
+
+  utterance.onerror = () => {
+    cleanup()
+    this.isPlaying = false
+    transitionAudioState('idle')
+  }
+
+  window.speechSynthesis.speak(utterance)
+}
+Problem 2: Chrome speechSynthesis pauses mid-speech after ~15s.
+Fix: Add keepalive in TTSQueue:
+typescriptprivate startKeepAlive(): void {
+  this.keepAliveInterval = setInterval(() => {
+    if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
+      window.speechSynthesis.pause()
+      window.speechSynthesis.resume()
+    }
+  }, 10000)
+}
+
+private stopKeepAlive(): void {
+  if (this.keepAliveInterval) {
+    clearInterval(this.keepAliveInterval)
+    this.keepAliveInterval = null
+  }
+}
+Call startKeepAlive() when first sentence starts playing, stopKeepAlive() when queue empties or is interrupted.
+
+PART 6 — INTERRUPT WORDS NOT WORKING
+File: src/lib/jarvis.ts
+Problem: "stop", "wait" etc don't interrupt Jarvis while speaking because no SpeechRecognition instance is listening during the speaking state.
+Fix: Add a dedicated interrupt listener that activates whenever state transitions to speaking:
+typescriptlet _interruptRecognition: SpeechRecognition | null = null
+
+function startInterruptListener(): void {
+  if (!('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)) return
+  try {
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    _interruptRecognition = new SR()
+    _interruptRecognition!.continuous = false
+    _interruptRecognition!.interimResults = false
+    _interruptRecognition!.lang = 'en-US'
+    _interruptRecognition!.maxAlternatives = 1
+
+    _interruptRecognition!.onresult = (event: SpeechRecognitionEvent) => {
+      const transcript = event.results[0][0].transcript.toLowerCase().trim()
+      const INTERRUPT_WORDS = ['stop', 'wait', 'hold on', 'shut up', 'pause', 'enough', 'quiet']
+      if (INTERRUPT_WORDS.some(word => transcript.includes(word))) {
+        ttsQueue.interrupt()
+        stopInterruptListener()
+        transitionAudioState('interrupted')
+        setTimeout(() => {
+          if (_state.audioState === 'interrupted') {
+            transitionAudioState('idle')
+          }
+        }, 800)
+      }
+    }
+
+    _interruptRecognition!.onerror = () => {
+      // silent fail — interrupt listener is best-effort
+    }
+
+    _interruptRecognition!.onend = () => {
+      // restart if still speaking
+      if (_state.audioState === 'speaking') {
+        try { _interruptRecognition?.start() } catch (e) {}
+      }
+    }
+
+    _interruptRecognition!.start()
+  } catch (e) {
+    console.warn('[JARVIS] Interrupt listener failed to start:', e)
+  }
+}
+
+function stopInterruptListener(): void {
+  if (_interruptRecognition) {
+    try { _interruptRecognition.stop() } catch (e) {}
+    _interruptRecognition = null
+  }
+}
+In transitionAudioState():
+
+When transitioning TO speaking → call startInterruptListener()
+When transitioning AWAY from speaking → call stopInterruptListener()
+
+
+PART 7 — MARKDOWN ASTERISKS BEING READ ALOUD
+File: src/lib/jarvis.ts
+Problem: Gemini responses contain markdown (**bold**, *italic*, ##headings, bullet points) which get passed raw to TTS and read aloud as "asterisk asterisk bold asterisk asterisk".
+Fix: Add cleanTextForSpeech() function:
+typescriptfunction cleanTextForSpeech(text: string): string {
+  return text
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/\*(.*?)\*/g, '$1')
+    .replace(/#{1,6}\s+/g, '')
+    .replace(/`{3}[\s\S]*?`{3}/g, 'code block omitted')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/^\s*\d+\.\s+/gm, '')
+    .replace(/\n{2,}/g, '. ')
+    .replace(/\n/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+}
+Call this on EVERY text string before passing to ttsQueue.enqueue(). No exceptions — morning briefing, search results, regular replies, task confirmations, all of it.
+
+NON-NEGOTIABLE REQUIREMENTS (Part 1)
+
+Do not touch any other page — Horizon, Timeline, Ask, Prompts, Links, Images, Messages, Context, Websites, Desktop, Insights must all work exactly as before
+Do not change the JARVIS UI layout or visual design — only logic and new invisible features
+Zero TypeScript errors after all changes
+Every Supabase call wrapped in try/catch
+No // TODO comments left in submitted code
+Console should show zero errors after all fixes on JARVIS page load
+
+
+BUILD ORDER (Part 1)
+Implement in exactly this order:
+
+Part 1 — SVG fix (smallest, verify first)
+Part 4 — WebSocket fix
+Part 2 + 3 — Session spam + History fixes
+Part 5 + 6 — Audio state machine + interrupt listener
+Part 7 — Markdown cleaner
+

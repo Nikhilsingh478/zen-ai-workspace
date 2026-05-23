@@ -120,6 +120,9 @@ let _state: JarvisState = {
   systemPrompt: "",
 };
 
+// Session creation guard — prevents duplicate sessions within the same visit
+let _sessionStartedThisVisit = false;
+
 function emit() {
   listeners.forEach((fn) => fn());
 }
@@ -161,11 +164,117 @@ export function canTransitionTo(
   return true;
 }
 
-function setAudioState(next: JarvisAudioState) {
-  if (canTransitionTo(_state.voiceState, next)) {
-    patch({ voiceState: next });
-  } else {
-    patch({ voiceState: next });
+/**
+ * Central voice state transition. Handles interrupt listener lifecycle:
+ * - Starts interrupt listener when entering `speaking`
+ * - Stops interrupt listener when leaving `speaking`
+ * Pass `extra` to patch additional state fields atomically.
+ */
+function transitionAudioState(
+  next: JarvisAudioState,
+  extra?: Partial<Omit<JarvisState, "voiceState">>,
+): void {
+  const prev = _state.voiceState;
+
+  // Leaving speaking state — tear down interrupt listener
+  if (prev === "speaking" && next !== "speaking") {
+    stopInterruptListener();
+  }
+
+  patch({ voiceState: next, ...extra });
+
+  // Entering speaking state — start interrupt listener
+  if (next === "speaking" && prev !== "speaking") {
+    startInterruptListener();
+  }
+}
+
+// ─── Text cleaner for TTS ─────────────────────────────────────────────────────
+
+/**
+ * Strips markdown syntax before passing text to TTS so it doesn't read
+ * "asterisk asterisk bold asterisk asterisk" aloud.
+ */
+function cleanTextForSpeech(text: string): string {
+  return text
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/\*(.*?)\*/g, "$1")
+    .replace(/#{1,6}\s+/g, "")
+    .replace(/`{3}[\s\S]*?`{3}/g, "code block omitted")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/^\s*[-*+]\s+/gm, "")
+    .replace(/^\s*\d+\.\s+/gm, "")
+    .replace(/\n{2,}/g, ". ")
+    .replace(/\n/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+// ─── Interrupt listener ───────────────────────────────────────────────────────
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _interruptRecognition: any = null;
+
+const INTERRUPT_WORDS = ["stop", "wait", "hold on", "shut up", "pause", "enough", "quiet"];
+
+function startInterruptListener(): void {
+  if (!SpeechRecognitionCtor) return;
+  if (_interruptRecognition) return;
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    _interruptRecognition = new SR();
+    _interruptRecognition.continuous = false;
+    _interruptRecognition.interimResults = false;
+    _interruptRecognition.lang = "en-US";
+    _interruptRecognition.maxAlternatives = 1;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    _interruptRecognition.onresult = (event: any) => {
+      const transcript: string = event.results[0][0].transcript.toLowerCase().trim();
+      if (INTERRUPT_WORDS.some((w) => transcript.includes(w))) {
+        ttsQueue.interrupt();
+        stopInterruptListener();
+        transitionAudioState("interrupted");
+        setTimeout(() => {
+          if (_state.voiceState === "interrupted") {
+            transitionAudioState("idle");
+          }
+        }, 800);
+      }
+    };
+
+    _interruptRecognition.onerror = () => {
+      // Best-effort — silent fail
+    };
+
+    _interruptRecognition.onend = () => {
+      // Restart if JARVIS is still speaking
+      if (_state.voiceState === "speaking" && _interruptRecognition) {
+        try {
+          _interruptRecognition.start();
+        } catch {
+          // Ignore — recognition may already be starting
+        }
+      }
+    };
+
+    _interruptRecognition.start();
+  } catch (e) {
+    console.warn("[JARVIS] Interrupt listener failed to start:", e);
+  }
+}
+
+function stopInterruptListener(): void {
+  if (_interruptRecognition) {
+    try {
+      _interruptRecognition.stop();
+    } catch {
+      // Ignore
+    }
+    _interruptRecognition = null;
   }
 }
 
@@ -175,24 +284,29 @@ class TTSQueue {
   private queue: string[] = [];
   private isPlaying = false;
   private onDoneCallback: (() => void) | null = null;
+  private keepAliveInterval: ReturnType<typeof setInterval> | null = null;
 
   enqueue(text: string, onDone?: () => void): void {
     this.onDoneCallback = onDone ?? null;
     const sentences = this.splitIntoSentences(text);
     this.queue.push(...sentences);
-    if (!this.isPlaying) this.playNext();
+    if (!this.isPlaying) {
+      this.isPlaying = true;
+      this.startKeepAlive();
+      this.playNext();
+    }
   }
 
   private playNext(): void {
     if (this.queue.length === 0) {
       this.isPlaying = false;
-      patch({ voiceState: "idle", isAwake: false, transcript: "" });
+      this.stopKeepAlive();
+      transitionAudioState("idle", { isAwake: false, transcript: "" });
       this.onDoneCallback?.();
       this.onDoneCallback = null;
       return;
     }
 
-    this.isPlaying = true;
     const sentence = this.queue.shift()!;
 
     if (!("speechSynthesis" in window)) {
@@ -200,11 +314,11 @@ class TTSQueue {
       return;
     }
 
-    const utt = new SpeechSynthesisUtterance(sentence);
-    utt.rate = 0.95;
-    utt.pitch = 0.9;
-    utt.volume = 1;
-    utt.lang = "en-US";
+    const utterance = new SpeechSynthesisUtterance(sentence);
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+    utterance.volume = 1;
+    utterance.lang = "en-US";
 
     const voices = window.speechSynthesis.getVoices();
     const pref =
@@ -214,20 +328,77 @@ class TTSQueue {
           v.lang.startsWith("en") &&
           (v.name.includes("Google") || v.name.includes("Daniel") || v.name.includes("Alex")),
       );
-    if (pref) utt.voice = pref;
+    if (pref) utterance.voice = pref;
 
-    utt.onend = () => this.playNext();
-    utt.onerror = () => this.playNext();
-    window.speechSynthesis.speak(utt);
+    // Timeout fallback — Chrome's onend is unreliable, especially after ~15s.
+    // Estimate based on character count + generous buffer.
+    const estimatedMs = Math.max((sentence.length / 12) * 1000, 3000) + 4000;
+    let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+      window.speechSynthesis.cancel();
+      this.queue = [];
+      this.isPlaying = false;
+      this.stopKeepAlive();
+      transitionAudioState("idle", { isAwake: false, transcript: "" });
+    }, estimatedMs);
+
+    const cleanup = () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+    };
+
+    utterance.onend = () => {
+      cleanup();
+      this.playNext();
+    };
+
+    utterance.onerror = () => {
+      cleanup();
+      this.isPlaying = false;
+      this.stopKeepAlive();
+      transitionAudioState("idle", { isAwake: false, transcript: "" });
+    };
+
+    window.speechSynthesis.speak(utterance);
+  }
+
+  /**
+   * Chrome has a known bug where speechSynthesis pauses after ~15s and never
+   * resumes. This keepalive nudges it every 10s to prevent the hang.
+   */
+  private startKeepAlive(): void {
+    if (this.keepAliveInterval) return;
+    this.keepAliveInterval = setInterval(() => {
+      if (
+        typeof window !== "undefined" &&
+        "speechSynthesis" in window &&
+        window.speechSynthesis.speaking &&
+        !window.speechSynthesis.paused
+      ) {
+        window.speechSynthesis.pause();
+        window.speechSynthesis.resume();
+      }
+    }, 10000);
+  }
+
+  private stopKeepAlive(): void {
+    if (this.keepAliveInterval) {
+      clearInterval(this.keepAliveInterval);
+      this.keepAliveInterval = null;
+    }
   }
 
   interrupt(): void {
     this.queue = [];
     this.isPlaying = false;
+    this.stopKeepAlive();
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
-    patch({ voiceState: "interrupted" });
+    transitionAudioState("interrupted");
     setTimeout(() => {
-      patch({ voiceState: "listening" });
+      if (_state.voiceState === "interrupted") {
+        transitionAudioState("listening");
+      }
     }, 800);
   }
 
@@ -246,6 +417,22 @@ const ttsQueue = new TTSQueue();
 export function classifyIntent(message: string): IntentType {
   const lower = message.toLowerCase();
 
+  // Task query — expanded patterns for natural phrasing
+  const taskQueryPatterns = [
+    /what('?s| is) (up |on |my )?(for )?today/i,
+    /what (do i|have i) (have|got) today/i,
+    /what all (have|do) (we|i) (got|have)/i,
+    /today'?s tasks?/i,
+    /my (tasks?|schedule|agenda|plan) (for )?today/i,
+    /what('?s| is) (pending|due|scheduled)/i,
+    /show (me )?(my )?(tasks?|schedule|agenda)/i,
+    /tasks? for today/i,
+    /what (should|do) i (do|work on) today/i,
+    /highest priority/i,
+    /what'?s (on )?my (plate|list)/i,
+  ];
+  if (taskQueryPatterns.some((p) => p.test(message))) return "task_query";
+
   if (
     /remind me|add task|schedule|don't forget|dont forget|need to|set a reminder|create a task|appointment|deadline|due (on|by|at)|tomorrow at|today at|book a|meeting at/.test(lower)
   )
@@ -262,6 +449,26 @@ export function classifyIntent(message: string): IntentType {
 
   if (/delete (task|reminder)|remove (task|reminder)|reschedule|update (task|reminder)|change (the|my) (task|reminder|schedule)|cancel (task|reminder|meeting)|move (the|my) (task|meeting)/.test(lower))
     return "task_management";
+
+  // Search — broad pattern set including "what is X" definitional queries
+  const searchPatterns = [
+    /^what is\b/i,
+    /^what are\b/i,
+    /^who is\b/i,
+    /^who are\b/i,
+    /^when (was|did|is|are)\b/i,
+    /^where (is|are|was)\b/i,
+    /^why (is|are|did|does)\b/i,
+    /^how (does|do|did|much|many|long|far)\b/i,
+    /latest|recent|current|breaking|today'?s news/i,
+    /search for|look up|look it up|find out|google|tell me about/i,
+    /news about|what happened|update on/i,
+    /price of|how much (is|does|do)/i,
+    /weather|temperature|forecast/i,
+    /vs\b|versus|compare|difference between/i,
+    /search for|look up|find out|what's the latest|tell me about|news about|current events|price of|who won|latest on|what are the|any updates on/.test(lower) ? /.*/ : /(?!)/,
+  ];
+  if (searchPatterns.some((p) => p.test(message))) return "search_query";
 
   if (
     /search for|look up|find out|what's the latest|tell me about|google|news about|current events|today's news|price of|how much is|who won|what happened|latest on|what are the|any updates on/.test(lower)
@@ -316,7 +523,11 @@ function buildMorningBriefingPrompt(tasks: HorizonTask[]): string {
   return `Today is ${dateStr}. Generate a short morning briefing for the user. ${taskSection}. Rules: vary the greeting (not always "Good morning"), reference the actual date and day, mention high-priority tasks by name first, end with one honest non-cheesy motivational line relevant to their tasks. Keep it under 100 words. Tone: warm but direct, like a sharp friend. No markdown, no asterisks, plain spoken text only.`;
 }
 
-export async function deliverMorningBriefing(sessionId: string): Promise<void> {
+/**
+ * Delivers the morning briefing if not already delivered today.
+ * Lazily creates a session if needed so the briefing is persisted.
+ */
+export async function deliverMorningBriefing(): Promise<void> {
   if (!shouldDeliverMorningBriefing()) return;
 
   const today = new Date().toISOString().split("T")[0];
@@ -324,14 +535,20 @@ export async function deliverMorningBriefing(sessionId: string): Promise<void> {
   const todayTasks = allTasks.filter((t) => t.taskDate === today && !t.completed);
   const prompt = buildMorningBriefingPrompt(todayTasks);
 
-  patch({ voiceState: "processing" });
+  transitionAudioState("processing");
 
   try {
     const text = await geminiAPI.generateContent(prompt, []);
     if (!text || text.startsWith("API key")) {
-      patch({ voiceState: "idle" });
+      transitionAudioState("idle");
       return;
     }
+
+    // Lazy session creation — morning briefing counts as first interaction
+    if (!_state.currentSessionId) {
+      await startSession();
+    }
+    const sessionId = _state.currentSessionId ?? "";
 
     const msg: JarvisMessage = {
       id: crypto.randomUUID(),
@@ -341,26 +558,34 @@ export async function deliverMorningBriefing(sessionId: string): Promise<void> {
       type: "morning_briefing",
     };
 
-    patch({ messages: [..._state.messages, msg], voiceState: "speaking" });
+    patch({ messages: [..._state.messages, msg] });
+    transitionAudioState("speaking");
+
     saveMessage(sessionId, "assistant", text, "morning_briefing").catch(() => null);
 
-    ttsQueue.enqueue(text, () => {
-      patch({ voiceState: "idle", isAwake: false, transcript: "" });
-      if (_state.enabled) {
-        setTimeout(() => startRecognition("passive"), 400);
-      }
+    ttsQueue.enqueue(cleanTextForSpeech(text), () => {
+      transitionAudioState("idle", { isAwake: false, transcript: "" });
+      if (_state.enabled) setTimeout(() => startRecognition("passive"), 400);
     });
 
     markBriefingDelivered();
   } catch (err) {
     console.warn("[JARVIS] Morning briefing failed:", err);
-    patch({ voiceState: "idle" });
+    transitionAudioState("idle");
   }
 }
 
 // ─── Session Management ───────────────────────────────────────────────────────
 
+/**
+ * Creates a new session row. Idempotent within a single page visit —
+ * if a session was already created this visit, returns the existing ID.
+ */
 export async function startSession(): Promise<string> {
+  if (_sessionStartedThisVisit && _state.currentSessionId) {
+    return _state.currentSessionId;
+  }
+
   try {
     const { data, error } = await supabase
       .from("jarvis_sessions")
@@ -369,6 +594,7 @@ export async function startSession(): Promise<string> {
       .single();
     if (error) throw error;
     const sessionId = (data as { id: string }).id;
+    _sessionStartedThisVisit = true;
     patch({ currentSessionId: sessionId });
     return sessionId;
   } catch (err) {
@@ -377,9 +603,25 @@ export async function startSession(): Promise<string> {
   }
 }
 
+/**
+ * Ends a session. If the session has zero messages it is deleted outright
+ * (never persist ghost sessions). Otherwise a summary is generated and saved.
+ */
 export async function endSession(sessionId: string): Promise<void> {
   if (!sessionId) return;
+  _sessionStartedThisVisit = false;
+
   try {
+    const { count } = await supabase
+      .from("jarvis_messages")
+      .select("*", { count: "exact", head: true })
+      .eq("session_id", sessionId);
+
+    if (!count || count === 0) {
+      await supabase.from("jarvis_sessions").delete().eq("id", sessionId);
+      return;
+    }
+
     const messages = _state.messages;
     const messageCount = messages.length;
     let summary: string | null = null;
@@ -408,7 +650,28 @@ export async function endSession(sessionId: string): Promise<void> {
       })
       .eq("id", sessionId);
   } catch (err) {
-    console.warn("[JARVIS] endSession error:", err);
+    console.error("[JARVIS] endSession error:", err);
+  }
+}
+
+/**
+ * Updates message_count on the session row to reflect the actual count in DB.
+ * Fire-and-forget — caller should not await.
+ */
+async function updateSessionMessageCount(sessionId: string): Promise<void> {
+  if (!sessionId) return;
+  try {
+    const { count } = await supabase
+      .from("jarvis_messages")
+      .select("*", { count: "exact", head: true })
+      .eq("session_id", sessionId);
+
+    await supabase
+      .from("jarvis_sessions")
+      .update({ message_count: count ?? 0 })
+      .eq("id", sessionId);
+  } catch {
+    // Non-critical — ignore
   }
 }
 
@@ -492,11 +755,16 @@ export async function getRecentMemories(limit = 20): Promise<Memory[]> {
   }
 }
 
+/**
+ * Fetches sessions for the History tab. Filters out empty sessions and
+ * paginates with `page` / `perPage`.
+ */
 export async function getSessions(page = 0, perPage = 10): Promise<JarvisSession[]> {
   try {
     const { data, error } = await supabase
       .from("jarvis_sessions")
       .select("*")
+      .gt("message_count", 0)
       .order("started_at", { ascending: false })
       .range(page * perPage, (page + 1) * perPage - 1);
     if (error) throw error;
@@ -640,7 +908,6 @@ let latestInterimText = "";
 
 const SILENCE_THRESHOLD_MS = 1200;
 const MAX_LISTEN_MS = 20000;
-const INTERRUPT_WORDS = ["stop", "wait", "hold on", "shut up", "pause"];
 
 function clearSilenceTimer() {
   clearTimeout(silenceTimer);
@@ -657,12 +924,14 @@ function armSilenceTimer() {
       if (stripped.length > 1) {
         handleCommand(stripped);
       } else {
-        patch({ isAwake: false, voiceState: "idle", transcript: "" });
+        patch({ isAwake: false, transcript: "" });
+        transitionAudioState("idle");
         if (_state.enabled) startRecognition("passive");
       }
     } else {
       stopRecognition();
-      patch({ isAwake: false, voiceState: "idle", transcript: "" });
+      patch({ isAwake: false, transcript: "" });
+      transitionAudioState("idle");
       if (_state.enabled) startRecognition("passive");
     }
   }, SILENCE_THRESHOLD_MS);
@@ -672,7 +941,8 @@ function startRecognition(mode: "passive" | "command" = "passive") {
   if (!SpeechRecognitionCtor) return;
   if (recRef) return;
   if (mode === "passive" && isMobileUA()) {
-    patch({ voiceState: "idle", isAwake: false });
+    patch({ isAwake: false });
+    transitionAudioState("idle");
     return;
   }
 
@@ -699,7 +969,7 @@ function startRecognition(mode: "passive" | "command" = "passive") {
       const isFinal: boolean = event.results[i].isFinal;
       const lower = text.toLowerCase();
 
-      // Interrupt detection while speaking
+      // Interrupt detection while speaking (main recognition path)
       if (_state.voiceState === "speaking") {
         if (INTERRUPT_WORDS.some((w) => lower.includes(w))) {
           ttsQueue.interrupt();
@@ -719,7 +989,8 @@ function startRecognition(mode: "passive" | "command" = "passive") {
         const woke = WAKE_WORDS.some((w) => lower.includes(w));
         if (woke) {
           currentMode = "command";
-          patch({ isAwake: true, voiceState: "listening", transcript: "" });
+          patch({ isAwake: true, transcript: "" });
+          transitionAudioState("listening");
           const inlineCmd = stripWakeWord(text);
           if (isFinal) {
             if (inlineCmd.length > 3) {
@@ -744,7 +1015,8 @@ function startRecognition(mode: "passive" | "command" = "passive") {
               if (fullText.length > 1) {
                 handleCommand(stripWakeWord(fullText));
               } else {
-                patch({ isAwake: false, voiceState: "idle", transcript: "" });
+                patch({ isAwake: false, transcript: "" });
+                transitionAudioState("idle");
                 if (_state.enabled) startRecognition("passive");
               }
             }
@@ -772,7 +1044,8 @@ function startRecognition(mode: "passive" | "command" = "passive") {
             if (fullText.length > 1) {
               handleCommand(stripWakeWord(fullText));
             } else {
-              patch({ isAwake: false, voiceState: "idle", transcript: "" });
+              patch({ isAwake: false, transcript: "" });
+              transitionAudioState("idle");
               if (_state.enabled) startRecognition("passive");
             }
           }
@@ -786,7 +1059,8 @@ function startRecognition(mode: "passive" | "command" = "passive") {
     if (recRef !== rec) return;
     if (e.error === "not-allowed" || e.error === "service-not-allowed") {
       stopRecognition();
-      patch({ voiceState: "idle", isAwake: false });
+      patch({ isAwake: false });
+      transitionAudioState("idle");
     }
   };
 
@@ -825,7 +1099,11 @@ function stopRecognition() {
   latestInterimText = "";
   if (recRef) {
     intentionalStop = true;
-    try { recRef.abort(); } catch { /* ignore */ }
+    try {
+      recRef.abort();
+    } catch {
+      /* ignore */
+    }
     recRef = null;
   }
 }
@@ -840,7 +1118,7 @@ function stripWakeWord(text: string): string {
   return text;
 }
 
-// ─── Markdown stripper ────────────────────────────────────────────────────────
+// ─── Markdown stripper (for display, not TTS) ─────────────────────────────────
 
 function stripMarkdown(text: string): string {
   return text
@@ -874,7 +1152,14 @@ let conversationHistory: GeminiMessage[] = [];
 async function handleCommand(commandText: string) {
   if (!commandText.trim()) return;
 
-  patch({ voiceState: "processing", isAwake: true });
+  // Lazy session creation — only when user actually sends a message
+  if (!_state.currentSessionId) {
+    await startSession();
+  }
+  const sessionId = _state.currentSessionId ?? "";
+
+  patch({ isAwake: true });
+  transitionAudioState("processing");
 
   const userMsg: JarvisMessage = {
     id: crypto.randomUUID(),
@@ -885,8 +1170,9 @@ async function handleCommand(commandText: string) {
   };
   patch({ messages: [..._state.messages, userMsg], transcript: commandText });
 
-  const sessionId = _state.currentSessionId ?? "";
-  saveMessage(sessionId, "user", commandText, "conversation").catch(() => null);
+  saveMessage(sessionId, "user", commandText, "conversation").then(() => {
+    updateSessionMessageCount(sessionId).catch(() => null);
+  }).catch(() => null);
 
   try {
     await ensureBooted();
@@ -925,14 +1211,19 @@ async function handleCommand(commandText: string) {
         metadata: { sources: searchResult.sources, searchType: searchResult.searchType },
       };
 
-      patch({ messages: [..._state.messages, jarvisMsg], voiceState: "speaking" });
+      patch({ messages: [..._state.messages, jarvisMsg] });
+      transitionAudioState("speaking");
+
       saveMessage(sessionId, "assistant", searchResult.text, "search_result", {
         sources: searchResult.sources,
         searchType: searchResult.searchType,
+      }).then(() => {
+        updateSessionMessageCount(sessionId).catch(() => null);
+        window.dispatchEvent(new CustomEvent("jarvis:history-refresh"));
       }).catch(() => null);
 
-      ttsQueue.enqueue(searchResult.text, () => {
-        patch({ voiceState: "idle", isAwake: false, transcript: "" });
+      ttsQueue.enqueue(cleanTextForSpeech(searchResult.text), () => {
+        transitionAudioState("idle", { isAwake: false, transcript: "" });
         if (_state.enabled) setTimeout(() => startRecognition("passive"), 400);
       });
 
@@ -975,12 +1266,16 @@ async function handleCommand(commandText: string) {
       type: "text",
     };
 
-    patch({ messages: [..._state.messages, jarvisMsg], voiceState: "speaking" });
+    patch({ messages: [..._state.messages, jarvisMsg] });
+    transitionAudioState("speaking");
 
-    saveMessage(sessionId, "assistant", clean, "conversation").catch(() => null);
+    saveMessage(sessionId, "assistant", clean, "conversation").then(() => {
+      updateSessionMessageCount(sessionId).catch(() => null);
+      window.dispatchEvent(new CustomEvent("jarvis:history-refresh"));
+    }).catch(() => null);
 
-    ttsQueue.enqueue(clean, () => {
-      patch({ voiceState: "idle", isAwake: false, transcript: "" });
+    ttsQueue.enqueue(cleanTextForSpeech(clean), () => {
+      transitionAudioState("idle", { isAwake: false, transcript: "" });
       if (_state.enabled) {
         setTimeout(() => startRecognition("passive"), 400);
       }
@@ -997,29 +1292,38 @@ async function handleCommand(commandText: string) {
     };
     patch({
       messages: [..._state.messages, errMsg],
-      voiceState: "idle",
       isAwake: false,
       transcript: "",
     });
+    transitionAudioState("idle");
     if (_state.enabled) startRecognition("passive");
   }
 }
 
-// ─── Session initializer (called from UI on mount) ────────────────────────────
+// ─── Context initializer (called from UI on mount) ────────────────────────────
 
-export async function initJarvisSession(): Promise<string> {
+/**
+ * Loads memories, session summaries, and builds the system prompt.
+ * Does NOT create a session — session creation is deferred until first message.
+ * Also cleans up any legacy empty sessions on first call.
+ */
+export async function initJarvisSession(): Promise<void> {
   try {
-    const [sessionId, memories, summaries] = await Promise.all([
-      startSession(),
+    // Clean up legacy empty sessions from before the lazy-session fix
+    void supabase
+      .from("jarvis_sessions")
+      .delete()
+      .eq("message_count", 0)
+      .then(() => null, () => null);
+
+    const [memories, summaries] = await Promise.all([
       getRecentMemories(20),
       getRecentSessionSummaries(3),
     ]);
     const systemPrompt = buildJarvisSystemPrompt(memories, summaries);
-    patch({ currentSessionId: sessionId, recentMemories: memories, sessionSummaries: summaries, systemPrompt });
-    return sessionId;
+    patch({ recentMemories: memories, sessionSummaries: summaries, systemPrompt });
   } catch (err) {
     console.warn("[JARVIS] initJarvisSession failed:", err);
-    return "";
   }
 }
 
@@ -1027,24 +1331,35 @@ export async function initJarvisSession(): Promise<string> {
 
 export const jarvis = {
   enable() {
-    try { localStorage.setItem("jarvis:enabled", "true"); } catch { /* ignore */ }
-    patch({ enabled: true, voiceState: "idle" });
+    try {
+      localStorage.setItem("jarvis:enabled", "true");
+    } catch {
+      /* ignore */
+    }
+    patch({ enabled: true });
+    transitionAudioState("idle");
     startRecognition("passive");
   },
 
   disable() {
-    try { localStorage.setItem("jarvis:enabled", "false"); } catch { /* ignore */ }
+    try {
+      localStorage.setItem("jarvis:enabled", "false");
+    } catch {
+      /* ignore */
+    }
     stopRecognition();
     ttsQueue.interrupt();
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
-    patch({ enabled: false, voiceState: "idle", isAwake: false, transcript: "" });
+    patch({ enabled: false, isAwake: false, transcript: "" });
+    transitionAudioState("idle");
   },
 
   activate() {
     stopRecognition();
     accumulatedFinalText = "";
     latestInterimText = "";
-    patch({ isAwake: true, voiceState: "listening", transcript: "" });
+    patch({ isAwake: true, transcript: "" });
+    transitionAudioState("listening");
     startRecognition("command");
     commandTimeout = setTimeout(() => {
       if (_state.voiceState === "listening") {
@@ -1054,7 +1369,8 @@ export const jarvis = {
         if (fullText.length > 1) {
           handleCommand(stripWakeWord(fullText));
         } else {
-          patch({ isAwake: false, voiceState: "idle", transcript: "" });
+          patch({ isAwake: false, transcript: "" });
+          transitionAudioState("idle");
           if (_state.enabled) startRecognition("passive");
         }
       }
@@ -1070,7 +1386,8 @@ export const jarvis = {
     ttsQueue.interrupt();
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
     stopRecognition();
-    patch({ isAwake: false, voiceState: "idle", transcript: "" });
+    patch({ isAwake: false, transcript: "" });
+    transitionAudioState("idle");
     if (_state.enabled) startRecognition("passive");
   },
 
@@ -1084,8 +1401,13 @@ export const jarvis = {
 
     const doStart = () => {
       if (!_state.enabled) {
-        try { localStorage.setItem("jarvis:enabled", "true"); } catch { /* ignore */ }
-        patch({ enabled: true, voiceState: "idle" });
+        try {
+          localStorage.setItem("jarvis:enabled", "true");
+        } catch {
+          /* ignore */
+        }
+        patch({ enabled: true });
+        transitionAudioState("idle");
       }
       if (!recRef) startRecognition("passive");
     };
@@ -1095,9 +1417,13 @@ export const jarvis = {
         .query({ name: "microphone" as PermissionName })
         .then((r) => {
           if (r.state === "granted") doStart();
-          r.onchange = () => { if (r.state === "granted") doStart(); };
+          r.onchange = () => {
+            if (r.state === "granted") doStart();
+          };
         })
-        .catch(() => { if (_state.enabled) startRecognition("passive"); });
+        .catch(() => {
+          if (_state.enabled) startRecognition("passive");
+        });
     } else if (_state.enabled) {
       startRecognition("passive");
     }

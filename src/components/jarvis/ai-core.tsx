@@ -344,6 +344,7 @@ export function AICore({ voiceState, isAwake, size = 300 }: AICoreProps) {
         <motion.circle
           cx={C} cy={C} r={96}
           fill="url(#jv-field)"
+          initial={{ r: 96, opacity: 0.4 }}
           animate={{ opacity: isActive ? 1 : 0.4, scale: isActive ? 1.05 : 1 }}
           transition={{ duration: 1, ease: "easeInOut" }}
           style={{ originX: "50%", originY: "50%" }}
@@ -389,6 +390,7 @@ export function AICore({ voiceState, isAwake, size = 300 }: AICoreProps) {
           cx={C} cy={C} r={24}
           fill={`rgba(125,211,252,${isActive ? 0.55 : 0.3})`}
           filter="url(#jv-bloom)"
+          initial={{ r: 24, opacity: 0.5 }}
           animate={{ r: isListening ? 28 : 24, opacity: isActive ? 1 : 0.5 }}
           transition={{ type: "spring", stiffness: 180, damping: 18 }}
         />
@@ -398,6 +400,7 @@ export function AICore({ voiceState, isAwake, size = 300 }: AICoreProps) {
           cx={C} cy={C} r={22}
           fill="url(#jv-orb)"
           filter="url(#jv-inner)"
+          initial={{ r: 22 }}
           animate={{
             r: isListening ? 26 : isProcessing ? [22, 24, 22] : 22,
             filter: isActive

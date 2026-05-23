@@ -362,6 +362,13 @@ function HistoryPanel() {
     loadPage(0);
   }, []);
 
+  // Refresh history after any message exchange
+  useEffect(() => {
+    const handler = () => loadPage(0);
+    window.addEventListener("jarvis:history-refresh", handler);
+    return () => window.removeEventListener("jarvis:history-refresh", handler);
+  }, []);
+
   async function loadPage(p: number) {
     setLoading(true);
     const data = await getSessions(p, PER_PAGE);
@@ -738,7 +745,7 @@ const STATE_DISPLAY: Record<string, { text: string; sub: string }> = {
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 function JarvisPage() {
-  const { voiceState, isAwake, messages, transcript, enabled } = useJarvis();
+  const { voiceState, isAwake, messages, transcript, enabled, currentSessionId } = useJarvis();
   const navigate = useNavigate();
   const [input, setInput] = useState("");
   const [showChat, setShowChat] = useState(false);
@@ -757,16 +764,19 @@ function JarvisPage() {
     return () => obs.disconnect();
   }, []);
 
-  // Init session on mount
+  // Sync currentSessionId from store into ref for unmount/beforeunload cleanup
   useEffect(() => {
-    initJarvisSession().then(async (id) => {
-      sessionIdRef.current = id;
-      await deliverMorningBriefing(id);
+    sessionIdRef.current = currentSessionId ?? "";
+  }, [currentSessionId]);
+
+  // Init on mount — loads memories/context, no session created until first message
+  useEffect(() => {
+    initJarvisSession().then(() => {
+      deliverMorningBriefing();
     });
 
     jarvis.autoStartIfEnabled();
 
-    // End session on page leave
     const handleBeforeUnload = () => {
       if (sessionIdRef.current) {
         endSession(sessionIdRef.current);

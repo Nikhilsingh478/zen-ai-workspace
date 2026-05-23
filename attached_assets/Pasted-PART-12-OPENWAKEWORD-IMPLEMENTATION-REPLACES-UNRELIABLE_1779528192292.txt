@@ -1,0 +1,220 @@
+PART 12 — OPENWAKEWORD IMPLEMENTATION (REPLACES UNRELIABLE WEB SPEECH WAKE WORD)
+File: src/lib/jarvis.ts
+What OpenWakeWord is: A completely free, open-source wake word detection library that runs in the browser via WebAssembly. Uses ONNX neural network models. Has hey_jarvis as a pre-trained built-in model. Zero API key. Zero signup. Zero cost. Significantly more reliable than the current Web Speech API wake word scanning loop.
+Step 1 — Install:
+npm install openwakeword-wasm-browser
+Step 2 — Replace wake word logic:
+Remove the existing Web Speech API passive listening loop that scans for "jarvis", "hey jarvis", "okay jarvis" using SpeechRecognition. Replace with:
+typescriptimport WakeWordEngine from 'openwakeword-wasm-browser'
+
+let _wakeWordEngine: InstanceType<typeof WakeWordEngine> | null = null
+let _wakeWordActive = false
+
+async function startWakeWordDetection(): Promise<void> {
+  // Only on desktop — mobile uses tap-to-talk
+  if (isMobile()) return
+  if (_wakeWordActive || _wakeWordEngine) return
+
+  try {
+    _wakeWordEngine = new WakeWordEngine({
+      baseAssetUrl: '/openwakeword/models',
+      keywords: ['hey_jarvis'],
+      detectionThreshold: 0.5,
+      cooldownMs: 2000,
+    })
+
+    await _wakeWordEngine.load()
+
+    _wakeWordEngine.on('detect', ({ keyword, score }: { keyword: string; score: number }) => {
+      console.log(`[WakeWord] Detected: ${keyword} (score: ${score.toFixed(2)})`)
+      if (_state.audioState === 'idle' && _state.enabled) {
+        transitionAudioState('listening')
+        startCommandListening()
+      }
+    })
+
+    _wakeWordEngine.on('error', (err: Error) => {
+      console.warn('[WakeWord] Error:', err)
+    })
+
+    await _wakeWordEngine.start()
+    _wakeWordActive = true
+    console.log('[JARVIS] Wake word detection active — say "Hey Jarvis"')
+  } catch (err) {
+    console.warn('[WakeWord] Failed to initialize:', err)
+    // Graceful degradation — tap-to-talk still works
+  }
+}
+
+async function stopWakeWordDetection(): Promise<void> {
+  if (_wakeWordEngine) {
+    try { await _wakeWordEngine.stop() } catch (e) {}
+    _wakeWordEngine = null
+  }
+  _wakeWordActive = false
+}
+Step 3 — Wire into enable/disable:
+
+When jarvis.enable() is called → call startWakeWordDetection()
+When jarvis.disable() is called → call stopWakeWordDetection()
+On JARVIS page unmount → call stopWakeWordDetection()
+
+Step 4 — Asset files:
+After installing the package, copy the model files to the Vite public directory. In vite.config.ts, add:
+typescriptimport { viteStaticCopy } from 'vite-plugin-static-copy'
+
+// Inside plugins array:
+viteStaticCopy({
+  targets: [
+    {
+      src: 'node_modules/openwakeword-wasm-browser/models/*',
+      dest: 'openwakeword/models'
+    }
+  ]
+})
+If vite-plugin-static-copy is not already installed, add it. Otherwise manually copy the contents of node_modules/openwakeword-wasm-browser/models/ to public/openwakeword/models/.
+Step 5 — Keep tap-to-talk working:
+The existing tap-to-talk functionality (clicking the orb) must continue working exactly as before. Wake word detection is purely additive — it adds a new trigger path, it does not replace or interfere with the orb tap. Both work simultaneously on desktop. Mobile uses tap-to-talk exclusively.
+
+NON-NEGOTIABLE REQUIREMENTS (Part 2)
+
+Do not touch any other page — Horizon, Timeline, Ask, Prompts, Links, Images, Messages, Context, Websites, Desktop, Insights must all work exactly as before
+Do not change the JARVIS UI layout or visual design — only logic and new invisible features
+Zero TypeScript errors after all changes
+Zero new npm packages except kokoro-js, openwakeword-wasm-browser, and vite-plugin-static-copy
+Every Supabase call wrapped in try/catch
+Kokoro failure must gracefully fall back to browser TTS — never crash
+OpenWakeWord failure must gracefully degrade to tap-to-talk — never crash
+Tap-to-talk on mobile continues working exactly as before
+No // TODO comments left in submitted code
+Console must show zero errors on JARVIS page load after all changes
+
+
+BUILD ORDER (Part 2)
+Implement in exactly this order:
+
+Part 8 + 9 — Search + intent fixes
+Part 10 — Morning briefing styling
+Part 11 — Kokoro TTS (new worker file first, then manager, then TTSQueue update)
+Part 12 — OpenWakeWord (last — most complex, has asset dependencies)
+
+
+DOCUMENTATION UPDATE
+After all implementation is complete, update the project documentation with full, hyperdetailed accuracy. This is not optional and not a summary — it is a living technical reference for the entire JARVIS subsystem.
+What to document:
+1. Architecture Overview
+Write a complete, accurate description of the JARVIS subsystem architecture as it exists after all changes. Cover every module, every class, every major function, and how they connect. No hand-waving. If a function calls another function, say so. If a class owns a worker, say so. The reader should be able to understand the full system without reading source code.
+2. Audio Pipeline
+Document the complete audio pipeline end-to-end:
+
+How text reaches the TTS queue
+How cleanTextForSpeech() transforms it before synthesis
+How KokoroManager hands off to the worker
+How the Web Audio API plays the result
+How browser TTS fallback activates and under what conditions
+How the keepalive timer prevents Chrome's 15s pause bug
+How interrupt() tears everything down cleanly
+Every state transition in transitionAudioState() with valid from/to pairs
+
+3. Wake Word System
+Document the full wake word pipeline:
+
+OpenWakeWord initialization sequence
+Model asset loading from /openwakeword/models/
+Detection event → transitionAudioState('listening') → startCommandListening() flow
+Cooldown logic and threshold configuration
+Why the old Web Speech API loop was replaced and what was wrong with it
+Graceful degradation path when OpenWakeWord fails to load
+Mobile exclusion logic and why it exists
+
+4. Session Lifecycle
+Document the exact lifecycle of a JARVIS session:
+
+Mount: currentSessionId = null, no DB write
+First message sent: startSession() called, row created in jarvis_sessions
+_sessionStartedThisVisit flag — what it prevents and why it exists
+Each message saved: saveMessage() called, message_count updated in jarvis_sessions
+Tab change or unmount: endSession() called
+Empty session cleanup: if message_count === 0, row deleted — never persisted
+Historical cleanup: one-time delete().eq('message_count', 0) on page mount
+
+5. Intent Classification
+Document every intent type the classifier can return, with the full list of patterns that trigger each one. Include:
+
+task_query — all patterns
+search_query — all patterns
+conversation — when this is the fallback
+morning_briefing — trigger conditions
+How classifySearchType() in gemini.ts subdivides search intents into definition, news, general etc.
+
+6. Search Pipeline
+Document the full search flow:
+
+How generateWithSearch() is called
+The 25-second AbortController timeout and what happens on abort
+The maxOutputTokens: 4096 change and why it was needed
+How search results flow back to the chat as a SearchResult component vs plain text
+
+7. State Machine
+Document every valid audio state (idle, listening, responding, speaking, interrupted) with:
+
+What triggers the transition into that state
+What UI changes on that state
+What side effects fire (interrupt listener start/stop, keepalive start/stop, wake word pause/resume)
+What transitions are valid out of that state
+
+8. Error Handling & Fallbacks
+Document every failure mode and its fallback:
+
+Kokoro worker fails to load → browser TTS
+Kokoro synthesis throws → browser TTS for that sentence
+OpenWakeWord fails to initialize → tap-to-talk only, no crash
+Search request times out after 25s → user-facing error message
+WebSocket closes before established → 150ms delay guard prevents this
+speechSynthesis.onend never fires → estimated duration timeout cleans up
+
+9. Component Reference
+For every exported function and class in src/lib/jarvis.ts, write a one-paragraph description of what it does, what it takes as input, what it returns, and what side effects it has.
+Format requirements:
+
+Use proper Markdown with clear H2 and H3 headings
+Every code reference in backticks
+No filler sentences — every line adds information
+No "this function handles X" without explaining HOW it handles X
+Version the document: add a Last updated timestamp at the top reflecting the changes in this implementation
+Save to docs/jarvis.md — create the file if it doesn't exist, overwrite completely if it does
+
+
+CODE QUALITY STANDARDS
+Every line of code written in this implementation must meet the following bar without exception:
+Structure & Naming
+
+All functions named with clear verb-noun intent: startWakeWordDetection, cleanTextForSpeech, transitionAudioState — never handleThing, doStuff, process
+No magic numbers — every threshold, timeout value, and constant gets a named const at the top of its scope with a comment explaining why that value was chosen
+No inline object literals repeated in multiple places — extract to a named constant
+
+TypeScript
+
+No any except at unavoidable browser API boundaries (window as any for SpeechRecognition) — and those must have an inline comment explaining why
+Every function has explicit return type annotations
+Every class property typed — no implicit any from missing annotations
+No non-null assertions (!) without a preceding runtime guard that makes them safe
+
+Error Handling
+
+Every async function that touches external state (Supabase, Web Audio, Worker, SpeechRecognition) wrapped in try/catch
+Every catch block either re-throws with context, logs with [MODULE] prefix, or silently swallows with an inline comment explaining why silence is correct
+No empty catch blocks without a comment
+
+React
+
+No useEffect without a complete dependency array
+No state updates after unmount — every effect that sets state checks a mounted ref or cleans up properly
+No prop drilling past 2 levels — lift state or use the existing state module
+
+General
+
+No commented-out code in the final output
+No console.log left in production paths — only console.warn for degraded states and console.error for genuine failures
+Every file ends with a newline
+Imports sorted: external packages first, then internal modules, then relative paths
