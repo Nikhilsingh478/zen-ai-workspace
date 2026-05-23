@@ -278,6 +278,112 @@ function stopInterruptListener(): void {
   }
 }
 
+// ─── Kokoro TTS Manager ───────────────────────────────────────────────────────
+
+class KokoroManager {
+  private worker: Worker | null = null;
+  private isReady: boolean = false;
+  private isLoading: boolean = false;
+  private pendingCallbacks: Map<
+    string,
+    {
+      resolve: (value: { audioData: Float32Array; sampleRate: number }) => void;
+      reject: (err: Error) => void;
+    }
+  > = new Map();
+  private onLoadingCallback: ((msg: string) => void) | null = null;
+
+  initialize(onLoading?: (msg: string) => void): void {
+    if (this.worker || this.isLoading) return;
+    this.onLoadingCallback = onLoading ?? null;
+    this.isLoading = true;
+
+    try {
+      this.worker = new Worker(
+        new URL("../workers/kokoro-worker.js", import.meta.url),
+        { type: "module" },
+      );
+
+      this.worker.onmessage = (event) => {
+        const { type, id, audioData, sampleRate, error, message, ready } = event.data;
+
+        if (type === "loading") {
+          this.onLoadingCallback?.(message as string);
+        }
+
+        if (type === "load_status") {
+          this.isReady = ready as boolean;
+          this.isLoading = false;
+        }
+
+        if (type === "load_error") {
+          this.isReady = false;
+          this.isLoading = false;
+          console.warn("[Kokoro] Failed to load model:", error);
+        }
+
+        if (type === "synth_result") {
+          const cb = this.pendingCallbacks.get(id as string);
+          if (cb) {
+            this.pendingCallbacks.delete(id as string);
+            cb.resolve({ audioData: new Float32Array(audioData as ArrayBuffer), sampleRate: sampleRate as number });
+          }
+        }
+
+        if (type === "synth_error") {
+          const cb = this.pendingCallbacks.get(id as string);
+          if (cb) {
+            this.pendingCallbacks.delete(id as string);
+            cb.reject(new Error(error as string));
+          }
+        }
+      };
+
+      this.worker.onerror = (err) => {
+        console.warn("[Kokoro] Worker error:", err);
+        this.isReady = false;
+        this.isLoading = false;
+      };
+
+      this.worker.postMessage({ type: "load" });
+    } catch (err) {
+      console.warn("[Kokoro] Failed to initialize worker:", err);
+      this.isLoading = false;
+    }
+  }
+
+  async synthesize(
+    text: string,
+    voice = "am_adam",
+  ): Promise<{ audioData: Float32Array; sampleRate: number }> {
+    if (!this.worker || !this.isReady) {
+      throw new Error("Kokoro not ready");
+    }
+    const id = `synth_${Date.now()}_${Math.random()}`;
+    return new Promise((resolve, reject) => {
+      this.pendingCallbacks.set(id, { resolve, reject });
+      this.worker!.postMessage({ type: "synthesize", text, voice, id });
+    });
+  }
+
+  get ready(): boolean {
+    return this.isReady;
+  }
+
+  get loading(): boolean {
+    return this.isLoading;
+  }
+
+  destroy(): void {
+    this.worker?.terminate();
+    this.worker = null;
+    this.isReady = false;
+    this.pendingCallbacks.clear();
+  }
+}
+
+export const kokoroManager = new KokoroManager();
+
 // ─── TTSQueue ─────────────────────────────────────────────────────────────────
 
 class TTSQueue {
@@ -285,6 +391,7 @@ class TTSQueue {
   private isPlaying = false;
   private onDoneCallback: (() => void) | null = null;
   private keepAliveInterval: ReturnType<typeof setInterval> | null = null;
+  private currentSource: AudioBufferSourceNode | null = null;
 
   enqueue(text: string, onDone?: () => void): void {
     this.onDoneCallback = onDone ?? null;
@@ -293,11 +400,11 @@ class TTSQueue {
     if (!this.isPlaying) {
       this.isPlaying = true;
       this.startKeepAlive();
-      this.playNext();
+      void this.playNext();
     }
   }
 
-  private playNext(): void {
+  private async playNext(): Promise<void> {
     if (this.queue.length === 0) {
       this.isPlaying = false;
       this.stopKeepAlive();
@@ -309,8 +416,33 @@ class TTSQueue {
 
     const sentence = this.queue.shift()!;
 
+    // Try Kokoro neural TTS first — much better quality than browser TTS
+    if (kokoroManager.ready) {
+      try {
+        const { audioData, sampleRate } = await kokoroManager.synthesize(sentence);
+        const audioContext = new AudioContext();
+        const buffer = audioContext.createBuffer(1, audioData.length, sampleRate);
+        buffer.getChannelData(0).set(audioData);
+        const source = audioContext.createBufferSource();
+        source.buffer = buffer;
+        source.connect(audioContext.destination);
+        source.onended = () => {
+          audioContext.close();
+          this.currentSource = null;
+          void this.playNext();
+        };
+        source.start(0);
+        this.currentSource = source;
+        return;
+      } catch (err) {
+        console.warn("[Kokoro] Synthesis failed, falling back to browser TTS:", err);
+        // fall through to browser TTS
+      }
+    }
+
+    // Browser TTS fallback
     if (!("speechSynthesis" in window)) {
-      this.playNext();
+      void this.playNext();
       return;
     }
 
@@ -350,7 +482,7 @@ class TTSQueue {
 
     utterance.onend = () => {
       cleanup();
-      this.playNext();
+      void this.playNext();
     };
 
     utterance.onerror = () => {
@@ -393,6 +525,10 @@ class TTSQueue {
     this.queue = [];
     this.isPlaying = false;
     this.stopKeepAlive();
+    if (this.currentSource) {
+      try { this.currentSource.stop(); } catch { /* ignore — already stopped */ }
+      this.currentSource = null;
+    }
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
     transitionAudioState("interrupted");
     setTimeout(() => {
@@ -450,7 +586,7 @@ export function classifyIntent(message: string): IntentType {
   if (/delete (task|reminder)|remove (task|reminder)|reschedule|update (task|reminder)|change (the|my) (task|reminder|schedule)|cancel (task|reminder|meeting)|move (the|my) (task|meeting)/.test(lower))
     return "task_management";
 
-  // Search — broad pattern set including "what is X" definitional queries
+  // Search queries — broad pattern set including "what is X" definitional queries
   const searchPatterns = [
     /^what is\b/i,
     /^what are\b/i,
@@ -466,14 +602,8 @@ export function classifyIntent(message: string): IntentType {
     /price of|how much (is|does|do)/i,
     /weather|temperature|forecast/i,
     /vs\b|versus|compare|difference between/i,
-    /search for|look up|find out|what's the latest|tell me about|news about|current events|price of|who won|latest on|what are the|any updates on/.test(lower) ? /.*/ : /(?!)/,
   ];
   if (searchPatterns.some((p) => p.test(message))) return "search_query";
-
-  if (
-    /search for|look up|find out|what's the latest|tell me about|google|news about|current events|today's news|price of|how much is|who won|what happened|latest on|what are the|any updates on/.test(lower)
-  )
-    return "search_query";
 
   return "conversation";
 }

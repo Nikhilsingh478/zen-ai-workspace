@@ -335,7 +335,8 @@ function classifySearchType(responseText: string, userQuery: string): SearchType
   if (/news|latest|today|happened|update|current events/.test(q)) return "news";
   if (/\bvs\b|versus|compare|difference|better|which is/.test(q)) return "comparison";
   if (/how to|how do|steps|guide|tutorial|setup/.test(q)) return "howto";
-  if (/what is|define|meaning|explain|who is/.test(q)) return "definition";
+  // Anchored definition check runs before general fallback
+  if (/^what is\b|^what are\b|^who is\b|^who are\b|define\b|meaning of\b|explain\b/.test(q)) return "definition";
   if (/near me|nearby|restaurant|hotel|place|location|where/.test(q)) return "local";
   if (/code|error|bug|function|syntax|javascript|python|react/.test(q)) return "code";
   if (/calculate|percent|formula|math|equation|\d+\s*[+\-*/]/.test(q)) return "math";
@@ -403,6 +404,7 @@ class GeminiAPI {
   private async _rawRequest(
     apiKey: string,
     body: GeminiRequest,
+    signal?: AbortSignal,
   ): Promise<{ ok: boolean; data: GeminiResponse | null; status: number }> {
     try {
       const res = await fetch(
@@ -411,6 +413,7 @@ class GeminiAPI {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
+          signal,
         },
       );
 
@@ -558,13 +561,29 @@ class GeminiAPI {
     const body: GeminiRequest = {
       contents: fullHistory,
       tools: [{ googleSearch: {} }],
-      generationConfig: { temperature: 0.7, topK: 40, topP: 0.95, maxOutputTokens: 8192 },
+      generationConfig: { temperature: 0.5, topK: 40, topP: 0.95, maxOutputTokens: 4096 },
     };
 
-    let raw = this.primaryKey ? await this._rawRequest(this.primaryKey, body) : null;
-    if (!raw?.ok && this.fallbackKey) {
-      console.warn("[Gemini] Primary key failed for search — retrying with fallback.");
-      raw = await this._rawRequest(this.fallbackKey, body);
+    // 25-second hard timeout — search grounding requests can hang
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 25000);
+
+    let raw: { ok: boolean; data: GeminiResponse | null; status: number } | null = null;
+    try {
+      raw = this.primaryKey
+        ? await this._rawRequest(this.primaryKey, body, controller.signal)
+        : null;
+      if (!raw?.ok && this.fallbackKey) {
+        console.warn("[Gemini] Primary key failed for search — retrying with fallback.");
+        raw = await this._rawRequest(this.fallbackKey, body, controller.signal);
+      }
+      clearTimeout(timeout);
+    } catch (err) {
+      clearTimeout(timeout);
+      if ((err as Error).name === "AbortError") {
+        return { text: "Search request timed out. Try a shorter query.", sources: [], searchType: "general" };
+      }
+      throw err;
     }
 
     if (!raw?.ok || !raw.data) {

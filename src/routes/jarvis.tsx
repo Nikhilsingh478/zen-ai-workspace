@@ -7,7 +7,7 @@ import {
   ChevronDown, X, MessageSquare, Database, Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useJarvis, jarvis, initJarvisSession, endSession, getSessions, deleteSession, getAllMemories, deleteMemory, deliverMorningBriefing } from "@/lib/jarvis";
+import { useJarvis, jarvis, initJarvisSession, endSession, getSessions, deleteSession, getAllMemories, deleteMemory, deliverMorningBriefing, kokoroManager } from "@/lib/jarvis";
 import type { JarvisSession, Memory } from "@/lib/jarvis";
 import type { SearchSource, SearchType } from "@/lib/gemini";
 import { useHorizon } from "@/lib/horizon";
@@ -749,6 +749,7 @@ function JarvisPage() {
   const navigate = useNavigate();
   const [input, setInput] = useState("");
   const [showChat, setShowChat] = useState(false);
+  const [kokoroLoading, setKokoroLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const coreRef = useRef<HTMLDivElement>(null);
   const [coreSize, setCoreSize] = useState(260);
@@ -769,11 +770,31 @@ function JarvisPage() {
     sessionIdRef.current = currentSessionId ?? "";
   }, [currentSessionId]);
 
+  // Poll Kokoro ready state every 2s — clears once loaded
+  useEffect(() => {
+    if (!kokoroLoading) return;
+    const id = setInterval(() => {
+      if (kokoroManager.ready) {
+        setKokoroLoading(false);
+        clearInterval(id);
+      }
+    }, 2000);
+    return () => clearInterval(id);
+  }, [kokoroLoading]);
+
   // Init on mount — loads memories/context, no session created until first message
   useEffect(() => {
     initJarvisSession().then(() => {
       deliverMorningBriefing();
     });
+
+    // Initialize Kokoro TTS in background — non-blocking, falls back to browser TTS
+    if (!kokoroManager.ready) {
+      setKokoroLoading(true);
+      kokoroManager.initialize((msg) => {
+        console.log("[Kokoro]", msg);
+      });
+    }
 
     jarvis.autoStartIfEnabled();
 
@@ -968,6 +989,11 @@ function JarvisPage() {
         className="relative z-10 shrink-0 px-3 py-2.5"
         style={{ borderTop: "1px solid rgba(125,211,252,0.07)", background: "rgba(5,6,9,0.7)", backdropFilter: "blur(14px)" }}
       >
+        {kokoroLoading && (
+          <div style={{ fontFamily: "'Space Mono', monospace", fontSize: 9, color: "rgba(125,211,252,0.3)", textAlign: "center", paddingBottom: 6, letterSpacing: "0.12em" }}>
+            Loading voice model…
+          </div>
+        )}
         <form onSubmit={handleSubmit} style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <motion.button
             type="button"
