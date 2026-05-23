@@ -7,7 +7,7 @@ import {
   ChevronDown, X, MessageSquare, Database, Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useJarvis, jarvis, initJarvisSession, endSession, getSessions, deleteSession, getAllMemories, deleteMemory, deliverMorningBriefing, kokoroManager } from "@/lib/jarvis";
+import { useJarvis, jarvis, initJarvisSession, endSession, getSessions, deleteSession, getAllMemories, deleteMemory, deliverMorningBriefing, kokoroManager, stopWakeWordDetection } from "@/lib/jarvis";
 import type { JarvisSession, Memory } from "@/lib/jarvis";
 import type { SearchSource, SearchType } from "@/lib/gemini";
 import { useHorizon } from "@/lib/horizon";
@@ -810,6 +810,7 @@ function JarvisPage() {
       if (sessionIdRef.current) {
         endSession(sessionIdRef.current);
       }
+      void stopWakeWordDetection();
     };
   }, []);
 

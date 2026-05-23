@@ -5,6 +5,7 @@
  */
 
 import { useSyncExternalStore } from "react";
+import { WakeWordEngine } from "openwakeword-wasm-browser";
 import { geminiAPI } from "@/lib/gemini";
 import type { GeminiMessage } from "@/lib/gemini";
 import { getHorizonTasks, ensureBooted } from "@/lib/horizon";
@@ -92,6 +93,16 @@ const SpeechRecognitionCtor: (new () => unknown) | undefined =
 export const isJarvisSupported = Boolean(SpeechRecognitionCtor);
 
 const WAKE_WORDS = ["jarvis", "hey jarvis", "okay jarvis"];
+
+// ─── OpenWakeWord constants ───────────────────────────────────────────────────
+
+// 0.5 balances sensitivity vs false-positive rate for hey_jarvis model
+const WAKE_DETECT_THRESHOLD = 0.5;
+// Minimum ms between wake-word triggers to prevent double-firing on echo
+const WAKE_COOL_MS = 2000;
+
+let _wakeWordEngine: InstanceType<typeof WakeWordEngine> | null = null;
+let _wakeWordActive = false;
 
 function isMobileUA(): boolean {
   if (typeof navigator === "undefined") return false;
@@ -695,7 +706,7 @@ export async function deliverMorningBriefing(): Promise<void> {
 
     ttsQueue.enqueue(cleanTextForSpeech(text), () => {
       transitionAudioState("idle", { isAwake: false, transcript: "" });
-      if (_state.enabled) setTimeout(() => startRecognition("passive"), 400);
+      if (_state.enabled) setTimeout(() => void startWakeWordDetection(), 400);
     });
 
     markBriefingDelivered();
@@ -1024,12 +1035,78 @@ ${summariesSection}
 ${taskSection}`;
 }
 
+// ─── OpenWakeWord engine ──────────────────────────────────────────────────────
+
+async function startWakeWordDetection(): Promise<void> {
+  // Only on desktop — mobile users tap-to-talk exclusively
+  if (isMobileUA()) return;
+  if (_wakeWordActive || _wakeWordEngine) return;
+
+  try {
+    _wakeWordEngine = new WakeWordEngine({
+      baseAssetUrl: "/openwakeword/models",
+      keywords: ["hey_jarvis"],
+      detectionThreshold: WAKE_DETECT_THRESHOLD,
+      cooldownMs: WAKE_COOL_MS,
+    });
+
+    await _wakeWordEngine.load();
+
+    _wakeWordEngine.on("detect", ({ keyword, score }) => {
+      console.log(`[WakeWord] Detected: ${keyword} (score: ${score.toFixed(2)})`);
+      if (_state.voiceState === "idle" && _state.enabled) {
+        transitionAudioState("listening");
+        startCommandListening();
+      }
+    });
+
+    _wakeWordEngine.on("error", (err: Error) => {
+      console.warn("[WakeWord] Error:", err);
+    });
+
+    await _wakeWordEngine.start();
+    _wakeWordActive = true;
+    console.log('[JARVIS] Wake word detection active — say "Hey Jarvis"');
+  } catch (err) {
+    console.warn("[WakeWord] Failed to initialize:", err);
+    // Graceful degradation — tap-to-talk continues working
+  }
+}
+
+async function stopWakeWordDetection(): Promise<void> {
+  if (_wakeWordEngine) {
+    try { await _wakeWordEngine.stop(); } catch { /* ignore — engine may already be stopped */ }
+    _wakeWordEngine = null;
+  }
+  _wakeWordActive = false;
+}
+
+function startCommandListening(): void {
+  stopRecognition();
+  accumulatedFinalText = "";
+  latestInterimText = "";
+  patch({ isAwake: true, transcript: "" });
+  startRecognition();
+  commandTimeout = setTimeout(() => {
+    if (_state.voiceState === "listening") {
+      clearSilenceTimer();
+      const fullText = [accumulatedFinalText, latestInterimText].filter(Boolean).join(" ").trim();
+      stopRecognition();
+      if (fullText.length > 1) {
+        handleCommand(stripWakeWord(fullText));
+      } else {
+        patch({ isAwake: false, transcript: "" });
+        transitionAudioState("idle");
+      }
+    }
+  }, MAX_LISTEN_MS);
+}
+
 // ─── SpeechRecognition engine ─────────────────────────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let recRef: any = null;
 let intentionalStop = false;
-let currentMode: "passive" | "command" = "passive";
 let restartTimer: ReturnType<typeof setTimeout> | undefined;
 let commandTimeout: ReturnType<typeof setTimeout> | undefined;
 let silenceTimer: ReturnType<typeof setTimeout> | undefined;
@@ -1056,28 +1133,22 @@ function armSilenceTimer() {
       } else {
         patch({ isAwake: false, transcript: "" });
         transitionAudioState("idle");
-        if (_state.enabled) startRecognition("passive");
+        if (_state.enabled) void startWakeWordDetection();
       }
     } else {
       stopRecognition();
       patch({ isAwake: false, transcript: "" });
       transitionAudioState("idle");
-      if (_state.enabled) startRecognition("passive");
+      if (_state.enabled) void startWakeWordDetection();
     }
   }, SILENCE_THRESHOLD_MS);
 }
 
-function startRecognition(mode: "passive" | "command" = "passive") {
+function startRecognition(): void {
   if (!SpeechRecognitionCtor) return;
   if (recRef) return;
-  if (mode === "passive" && isMobileUA()) {
-    patch({ isAwake: false });
-    transitionAudioState("idle");
-    return;
-  }
 
   clearTimeout(restartTimer);
-  currentMode = mode;
   intentionalStop = false;
   accumulatedFinalText = "";
   latestInterimText = "";
@@ -1099,7 +1170,7 @@ function startRecognition(mode: "passive" | "command" = "passive") {
       const isFinal: boolean = event.results[i].isFinal;
       const lower = text.toLowerCase();
 
-      // Interrupt detection while speaking (main recognition path)
+      // Interrupt detection while speaking
       if (_state.voiceState === "speaking") {
         if (INTERRUPT_WORDS.some((w) => lower.includes(w))) {
           ttsQueue.interrupt();
@@ -1115,72 +1186,33 @@ function startRecognition(mode: "passive" | "command" = "passive") {
         }
       }
 
-      if (currentMode === "passive") {
-        const woke = WAKE_WORDS.some((w) => lower.includes(w));
-        if (woke) {
-          currentMode = "command";
-          patch({ isAwake: true, transcript: "" });
-          transitionAudioState("listening");
-          const inlineCmd = stripWakeWord(text);
-          if (isFinal) {
-            if (inlineCmd.length > 3) {
-              stopRecognition();
-              handleCommand(inlineCmd);
-              return;
-            } else {
-              accumulatedFinalText = "";
-              latestInterimText = "";
-            }
-          } else {
-            accumulatedFinalText = "";
-            latestInterimText = inlineCmd;
-            patch({ transcript: inlineCmd });
-          }
-          clearTimeout(commandTimeout);
-          commandTimeout = setTimeout(() => {
-            if (_state.voiceState === "listening") {
-              clearSilenceTimer();
-              const fullText = [accumulatedFinalText, latestInterimText].filter(Boolean).join(" ").trim();
-              stopRecognition();
-              if (fullText.length > 1) {
-                handleCommand(stripWakeWord(fullText));
-              } else {
-                patch({ isAwake: false, transcript: "" });
-                transitionAudioState("idle");
-                if (_state.enabled) startRecognition("passive");
-              }
-            }
-          }, MAX_LISTEN_MS);
-          continue;
-        }
-      } else if (currentMode === "command") {
-        clearTimeout(commandTimeout);
-        clearSilenceTimer();
-        const stripped = stripWakeWord(text);
-        if (isFinal) {
-          accumulatedFinalText = [accumulatedFinalText, stripped].filter(Boolean).join(" ").trim();
-          latestInterimText = "";
-          patch({ transcript: accumulatedFinalText });
-          armSilenceTimer();
-        } else {
-          latestInterimText = stripped;
-          patch({ transcript: [accumulatedFinalText, latestInterimText].filter(Boolean).join(" ") });
-        }
-        commandTimeout = setTimeout(() => {
-          if (_state.voiceState === "listening") {
-            clearSilenceTimer();
-            const fullText = [accumulatedFinalText, latestInterimText].filter(Boolean).join(" ").trim();
-            stopRecognition();
-            if (fullText.length > 1) {
-              handleCommand(stripWakeWord(fullText));
-            } else {
-              patch({ isAwake: false, transcript: "" });
-              transitionAudioState("idle");
-              if (_state.enabled) startRecognition("passive");
-            }
-          }
-        }, MAX_LISTEN_MS);
+      // Command mode — accumulate transcript and arm silence timer
+      clearTimeout(commandTimeout);
+      clearSilenceTimer();
+      const stripped = stripWakeWord(text);
+      if (isFinal) {
+        accumulatedFinalText = [accumulatedFinalText, stripped].filter(Boolean).join(" ").trim();
+        latestInterimText = "";
+        patch({ transcript: accumulatedFinalText });
+        armSilenceTimer();
+      } else {
+        latestInterimText = stripped;
+        patch({ transcript: [accumulatedFinalText, latestInterimText].filter(Boolean).join(" ") });
       }
+      commandTimeout = setTimeout(() => {
+        if (_state.voiceState === "listening") {
+          clearSilenceTimer();
+          const fullText = [accumulatedFinalText, latestInterimText].filter(Boolean).join(" ").trim();
+          stopRecognition();
+          if (fullText.length > 1) {
+            handleCommand(stripWakeWord(fullText));
+          } else {
+            patch({ isAwake: false, transcript: "" });
+            transitionAudioState("idle");
+            void startWakeWordDetection();
+          }
+        }
+      }, MAX_LISTEN_MS);
     }
   };
 
@@ -1198,26 +1230,21 @@ function startRecognition(mode: "passive" | "command" = "passive") {
     if (recRef !== rec) return;
     recRef = null;
     if (intentionalStop) return;
-    if (currentMode === "command") {
-      clearSilenceTimer();
-      const fullText = [accumulatedFinalText, latestInterimText].filter(Boolean).join(" ").trim();
-      if (fullText.length > 1) {
-        handleCommand(stripWakeWord(fullText));
-        return;
-      }
+    // Harvest any accumulated text before restarting wake word detection
+    clearSilenceTimer();
+    const fullText = [accumulatedFinalText, latestInterimText].filter(Boolean).join(" ").trim();
+    if (fullText.length > 1) {
+      handleCommand(stripWakeWord(fullText));
+      return;
     }
-    if (_state.enabled && !isMobileUA()) {
-      restartTimer = setTimeout(() => startRecognition("passive"), 500);
-    }
+    void startWakeWordDetection();
   };
 
   try {
     rec.start();
   } catch {
     recRef = null;
-    if (_state.enabled && !isMobileUA()) {
-      restartTimer = setTimeout(() => startRecognition(mode), 1000);
-    }
+    void startWakeWordDetection();
   }
 }
 
@@ -1354,7 +1381,7 @@ async function handleCommand(commandText: string) {
 
       ttsQueue.enqueue(cleanTextForSpeech(searchResult.text), () => {
         transitionAudioState("idle", { isAwake: false, transcript: "" });
-        if (_state.enabled) setTimeout(() => startRecognition("passive"), 400);
+        if (_state.enabled) setTimeout(() => void startWakeWordDetection(), 400);
       });
 
       return;
@@ -1407,7 +1434,7 @@ async function handleCommand(commandText: string) {
     ttsQueue.enqueue(cleanTextForSpeech(clean), () => {
       transitionAudioState("idle", { isAwake: false, transcript: "" });
       if (_state.enabled) {
-        setTimeout(() => startRecognition("passive"), 400);
+        setTimeout(() => void startWakeWordDetection(), 400);
       }
     });
   } catch (err) {
@@ -1426,7 +1453,7 @@ async function handleCommand(commandText: string) {
       transcript: "",
     });
     transitionAudioState("idle");
-    if (_state.enabled) startRecognition("passive");
+    if (_state.enabled) void startWakeWordDetection();
   }
 }
 
@@ -1468,7 +1495,7 @@ export const jarvis = {
     }
     patch({ enabled: true });
     transitionAudioState("idle");
-    startRecognition("passive");
+    void startWakeWordDetection();
   },
 
   disable() {
@@ -1477,6 +1504,7 @@ export const jarvis = {
     } catch {
       /* ignore */
     }
+    void stopWakeWordDetection();
     stopRecognition();
     ttsQueue.interrupt();
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
@@ -1490,7 +1518,7 @@ export const jarvis = {
     latestInterimText = "";
     patch({ isAwake: true, transcript: "" });
     transitionAudioState("listening");
-    startRecognition("command");
+    startRecognition();
     commandTimeout = setTimeout(() => {
       if (_state.voiceState === "listening") {
         clearSilenceTimer();
@@ -1501,7 +1529,7 @@ export const jarvis = {
         } else {
           patch({ isAwake: false, transcript: "" });
           transitionAudioState("idle");
-          if (_state.enabled) startRecognition("passive");
+          if (_state.enabled) void startWakeWordDetection();
         }
       }
     }, MAX_LISTEN_MS);
@@ -1518,7 +1546,7 @@ export const jarvis = {
     stopRecognition();
     patch({ isAwake: false, transcript: "" });
     transitionAudioState("idle");
-    if (_state.enabled) startRecognition("passive");
+    if (_state.enabled) void startWakeWordDetection();
   },
 
   clearMessages() {
@@ -1539,7 +1567,7 @@ export const jarvis = {
         patch({ enabled: true });
         transitionAudioState("idle");
       }
-      if (!recRef) startRecognition("passive");
+      if (!_wakeWordActive) void startWakeWordDetection();
     };
 
     if (navigator.permissions) {
@@ -1552,10 +1580,10 @@ export const jarvis = {
           };
         })
         .catch(() => {
-          if (_state.enabled) startRecognition("passive");
+          if (_state.enabled) void startWakeWordDetection();
         });
     } else if (_state.enabled) {
-      startRecognition("passive");
+      void startWakeWordDetection();
     }
   },
 } as const;
@@ -1565,3 +1593,5 @@ export const jarvis = {
 export function useJarvis() {
   return useSyncExternalStore(subscribeJarvis, getJarvisSnapshot, getJarvisSnapshot);
 }
+
+export { stopWakeWordDetection };
