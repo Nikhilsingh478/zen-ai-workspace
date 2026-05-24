@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { geminiAPI } from "@/lib/gemini";
 import { motion, AnimatePresence } from "framer-motion";
-import { useState, type ReactNode, type ComponentType } from "react";
+import { useState, useEffect, type ReactNode, type ComponentType } from "react";
 import { cn } from "@/lib/utils";
 import { SyncIndicator } from "@/components/sync-indicator";
 import {
@@ -132,6 +132,33 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [quickInput, setQuickInput] = useState("");
   const [quickResponse, setQuickResponse] = useState("");
   const [quickLoading, setQuickLoading] = useState(false);
+
+  // Broadcast sidebar state whenever it changes
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("jarvis:sidebar-state", {
+      detail: { isOpen: !collapsed },
+    }));
+  }, [collapsed]);
+
+  // Listen for programmatic collapse/expand from JARVIS page
+  useEffect(() => {
+    const handleJarvisCollapse = (e: Event) => {
+      const { collapse } = (e as CustomEvent).detail as { collapse: boolean };
+      setCollapsed(collapse);
+      saveCollapsed(collapse);
+    };
+    const handleRequestState = () => {
+      window.dispatchEvent(new CustomEvent("jarvis:sidebar-state", {
+        detail: { isOpen: !collapsed },
+      }));
+    };
+    window.addEventListener("jarvis:collapse-sidebar", handleJarvisCollapse);
+    window.addEventListener("jarvis:request-sidebar-state", handleRequestState);
+    return () => {
+      window.removeEventListener("jarvis:collapse-sidebar", handleJarvisCollapse);
+      window.removeEventListener("jarvis:request-sidebar-state", handleRequestState);
+    };
+  }, [collapsed]);
 
   function closeQuickJarvis() {
     setQuickJarvisOpen(false);

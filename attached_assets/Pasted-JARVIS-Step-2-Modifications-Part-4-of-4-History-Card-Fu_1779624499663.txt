@@ -1,0 +1,453 @@
+JARVIS — Step 2 Modifications — Part 4 of 4: History Card Full Chat View
+Read src/routes/jarvis.tsx and src/components/jarvis/extended-window.tsx completely before touching anything. Understand exactly how the History tab renders session cards, how sessions are fetched, how ExtendedWindow works from Part 2, and what props it accepts. Do not write a single line until you have read both files fully.
+Write every line as a super senior developer. Clean, typed, maintainable, single-responsibility, zero hacks, zero any types. Code a new developer can read and understand immediately.
+
+FILES TO TOUCH IN THIS PART
+
+src/routes/jarvis.tsx — history card click handler, session message loading
+src/components/jarvis/extended-window.tsx — extend to support history view mode
+src/lib/jarvis.ts — add loadSessionMessages function if not already exported
+
+Do NOT touch:
+
+src/components/app-shell.tsx
+src/lib/gemini.ts
+src/lib/horizon.ts
+Any other file
+
+
+WHAT IS BEING BUILT
+Currently history cards show:
+
+Date, time, message count, summary
+Delete button
+Nothing happens on click
+
+After this part:
+
+Clicking a history card loads that session's full messages
+Opens them in the ExtendedWindow component from Part 2
+Window shows the full past conversation in read-only mode
+Clearly labeled as a past session — not the live conversation
+Close button returns to normal history tab view
+Smooth animation — same cinematic sequence as Part 1
+
+
+PART A — EXTEND ExtendedWindow TO SUPPORT HISTORY MODE
+The window needs to know whether it is showing the live conversation or a past session. This changes the header label, the live indicator, and disables auto-scroll-to-bottom on history view.
+Update Props Interface
+In src/components/jarvis/extended-window.tsx, update the props interface:
+typescriptinterface ExtendedWindowProps {
+  content: string
+  messages: DisplayMessage[]
+  onClose: () => void
+  isOpen: boolean
+  // New props for history mode
+  mode?: 'live' | 'history'
+  historySession?: {
+    startedAt: Date
+    messageCount: number
+    summary: string | null
+  } | null
+}
+Update WindowHeader to Reflect Mode
+Update WindowHeaderProps to accept mode info:
+typescriptinterface WindowHeaderProps {
+  isFullscreen: boolean
+  onToggleFullscreen: () => void
+  onClose: () => void
+  messageCount: number
+  mode: 'live' | 'history'
+  sessionDate?: Date
+}
+Update WindowHeader rendering:
+tsxfunction WindowHeader({
+  isFullscreen,
+  onToggleFullscreen,
+  onClose,
+  messageCount,
+  mode,
+  sessionDate,
+}: WindowHeaderProps) {
+  const isHistory = mode === 'history'
+
+  return (
+    <div className="flex items-center justify-between px-5 py-3.5
+                    border-b border-zinc-800/60 flex-shrink-0">
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5">
+          <div className="w-2.5 h-2.5 rounded-full bg-zinc-700" />
+          <div className="w-2.5 h-2.5 rounded-full bg-zinc-700" />
+          <div className="w-2.5 h-2.5 rounded-full bg-zinc-700" />
+        </div>
+        <div className="w-px h-3.5 bg-zinc-800" />
+        <span className="text-[10px] font-mono text-zinc-500
+                         uppercase tracking-[0.2em]">
+          {isHistory ? 'Past Session' : 'J.A.R.V.I.S'}
+        </span>
+        {isHistory && sessionDate && (
+          <span className="text-[10px] text-zinc-700 font-mono">
+            {sessionDate.toLocaleDateString([], {
+              month: 'short',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            })}
+          </span>
+        )}
+        <span className="text-[10px] text-zinc-700 font-mono">
+          {messageCount} messages
+        </span>
+      </div>
+
+      <div className="flex items-center gap-1">
+        <motion.button
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={onToggleFullscreen}
+          className="w-7 h-7 rounded-md flex items-center justify-center
+                     text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800/60
+                     transition-colors duration-150"
+          title={isFullscreen ? 'Restore window' : 'Maximize window'}
+        >
+          {isFullscreen
+            ? <Minimize2 className="w-3.5 h-3.5" />
+            : <Maximize2 className="w-3.5 h-3.5" />
+          }
+        </motion.button>
+
+        <motion.button
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={onClose}
+          className="w-7 h-7 rounded-md flex items-center justify-center
+                     text-zinc-600 hover:text-red-400 hover:bg-red-950/30
+                     transition-colors duration-150"
+          title="Close"
+        >
+          <X className="w-3.5 h-3.5" />
+        </motion.button>
+      </div>
+    </div>
+  )
+}
+Update Main Component Logic
+In ExtendedWindow, update the useEffect for auto-scroll to only fire in live mode:
+typescript// Auto-scroll to bottom — only in live mode, not history
+useEffect(() => {
+  if (mode === 'history') return // don't auto-scroll past conversations
+  if (scrollRef.current) {
+    scrollRef.current.scrollTo({
+      top: scrollRef.current.scrollHeight,
+      behavior: 'smooth'
+    })
+  }
+}, [messages, mode])
+Update the bottom status bar to reflect mode:
+tsx{/* Bottom status bar */}
+<div className="flex items-center justify-between
+                px-5 py-2.5 border-t border-zinc-800/40
+                flex-shrink-0">
+  <div className="flex items-center gap-2">
+    {mode === 'live' ? (
+      <>
+        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/60
+                        animate-pulse" />
+        <span className="text-[10px] font-mono text-zinc-600
+                         uppercase tracking-widest">
+          Live
+        </span>
+      </>
+    ) : (
+      <>
+        <div className="w-1.5 h-1.5 rounded-full bg-zinc-600" />
+        <span className="text-[10px] font-mono text-zinc-600
+                         uppercase tracking-widest">
+          Read-only
+        </span>
+      </>
+    )}
+  </div>
+
+  {mode === 'history' && historySession?.summary && (
+    <span className="text-[10px] text-zinc-700 font-mono
+                     max-w-[300px] truncate"
+          title={historySession.summary}>
+      {historySession.summary}
+    </span>
+  )}
+
+  {mode === 'live' && (
+    <span className="text-[10px] text-zinc-700 font-mono">
+      {new Date().toLocaleDateString([], {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric'
+      })}
+    </span>
+  )}
+</div>
+Update the WindowHeader call inside the main return to pass new props:
+tsx<WindowHeader
+  isFullscreen={isFullscreen}
+  onToggleFullscreen={handleToggleFullscreen}
+  onClose={onClose}
+  messageCount={messages.length}
+  mode={mode ?? 'live'}
+  sessionDate={historySession?.startedAt}
+/>
+
+PART B — loadSessionMessages IN src/lib/jarvis.ts
+Check if loadSessionMessages is already exported. If it is, skip this section. If it is not, add it now:
+typescript/**
+ * Loads all messages for a specific past session from Supabase.
+ * Returns them formatted as DisplayMessage objects for rendering.
+ */
+export async function loadSessionMessages(
+  sessionId: string
+): Promise<DisplayMessage[]> {
+  try {
+    const { data, error } = await supabase
+      .from('jarvis_messages')
+      .select('*')
+      .eq('session_id', sessionId)
+      .order('created_at', { ascending: true })
+
+    if (error) {
+      console.error('[JARVIS] loadSessionMessages error:', error)
+      return []
+    }
+
+    if (!data || data.length === 0) return []
+
+    return data.map(row => ({
+      id: row.id as string,
+      role: row.role as 'user' | 'assistant',
+      content: row.content as string,
+      type: (row.message_type as string) ?? 'conversation',
+      timestamp: new Date(row.created_at as string),
+    }))
+  } catch (err) {
+    console.error('[JARVIS] loadSessionMessages unexpected error:', err)
+    return []
+  }
+}
+Also add the DisplayMessage type to src/lib/jarvis.ts exports if it isn't already there — the function above needs it:
+typescriptexport interface DisplayMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  type: string
+  timestamp: Date
+}
+If DisplayMessage already exists in jarvis.ts or is defined in jarvis.tsx, do not duplicate it. Import it where needed.
+
+PART C — HISTORY CARD CLICK HANDLER IN src/routes/jarvis.tsx
+New State Variables
+Add to the JarvisPage component state alongside existing state:
+typescript// History session viewer state
+const [historyViewOpen, setHistoryViewOpen] = useState(false)
+const [historyViewMessages, setHistoryViewMessages] = useState<DisplayMessage[]>([])
+const [historyViewSession, setHistoryViewSession] = useState<{
+  id: string
+  startedAt: Date
+  messageCount: number
+  summary: string | null
+} | null>(null)
+const [historyViewLoading, setHistoryViewLoading] = useState(false)
+Session Click Handler
+Add this function to the JarvisPage component:
+typescriptconst handleHistoryCardClick = useCallback(async (session: {
+  id: string
+  started_at: string
+  message_count: number
+  session_summary: string | null
+}) => {
+  if (historyViewLoading) return
+
+  setHistoryViewLoading(true)
+
+  try {
+    const messages = await loadSessionMessages(session.id)
+
+    setHistoryViewSession({
+      id: session.id,
+      startedAt: new Date(session.started_at),
+      messageCount: session.message_count,
+      summary: session.session_summary,
+    })
+
+    setHistoryViewMessages(messages)
+
+    // Use the same cinematic animation sequence from Part 1
+    // but open in history mode — reuse triggerExtendedWindowSequence
+    // We set historyViewOpen AFTER animation completes
+    await triggerExtendedWindowSequence('') // empty content — window uses messages prop
+    setHistoryViewOpen(true)
+  } catch (err) {
+    console.error('[JARVIS] Failed to load session messages:', err)
+  } finally {
+    setHistoryViewLoading(false)
+  }
+}, [historyViewLoading, triggerExtendedWindowSequence])
+
+const handleHistoryViewClose = useCallback(async () => {
+  setHistoryViewOpen(false)
+  setHistoryViewMessages([])
+  setHistoryViewSession(null)
+  await closeExtendedWindowSequence()
+}, [closeExtendedWindowSequence])
+Wire Close Into Extended Window Sequence
+Update closeExtendedWindowSequence to also handle history view close:
+typescriptconst closeExtendedWindowSequence = useCallback(async () => {
+  // Close both live window and history window
+  setExtendedWindowOpen(false)
+  setHistoryViewOpen(false)
+  await delay(200)
+
+  setIsAnimatingToExtended(false)
+  await delay(300)
+
+  setLeftColumnVisible(true)
+  await delay(300)
+
+  if (sidebarWasOpenBeforeExtended) {
+    window.dispatchEvent(new CustomEvent('jarvis:collapse-sidebar', {
+      detail: { collapse: false }
+    }))
+  }
+}, [sidebarWasOpenBeforeExtended])
+Update History Card JSX
+Find where history session cards are rendered in the History tab. Update each card to be clickable and show a loading state:
+tsx{sessions.map((session) => (
+  <motion.div
+    key={session.id}
+    whileHover={{ backgroundColor: 'rgba(255,255,255,0.02)' }}
+    transition={{ duration: 0.15 }}
+    className="group relative border-b border-zinc-800/50
+               last:border-b-0 px-1 py-3 rounded-lg cursor-pointer"
+    onClick={() => handleHistoryCardClick(session)}
+  >
+    {/* Loading overlay for this specific card */}
+    {historyViewLoading &&
+     historyViewSession?.id === session.id && (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="absolute inset-0 flex items-center justify-center
+                   bg-zinc-950/60 rounded-lg z-10"
+      >
+        <div className="flex items-center gap-2">
+          <div className="w-1 h-1 rounded-full bg-sky-400
+                          animate-bounce"
+               style={{ animationDelay: '0ms' }} />
+          <div className="w-1 h-1 rounded-full bg-sky-400
+                          animate-bounce"
+               style={{ animationDelay: '150ms' }} />
+          <div className="w-1 h-1 rounded-full bg-sky-400
+                          animate-bounce"
+               style={{ animationDelay: '300ms' }} />
+        </div>
+      </motion.div>
+    )}
+
+    {/* Existing card content — date, time, message count, summary */}
+    {/* Keep all existing content exactly as is */}
+    {/* Just wrap the outer div with motion and add onClick */}
+
+    {/* View indicator — appears on hover */}
+    <div className="absolute right-8 top-1/2 -translate-y-1/2
+                    opacity-0 group-hover:opacity-100
+                    transition-opacity duration-150
+                    pointer-events-none">
+      <span className="text-[10px] text-zinc-600 font-mono
+                       uppercase tracking-widest">
+        View →
+      </span>
+    </div>
+  </motion.div>
+))}
+Add History Window to JSX
+Below the existing <ExtendedWindow> for live chat, add the history window:
+tsx{/* History Session Viewer */}
+<ExtendedWindow
+  content=""
+  messages={historyViewMessages}
+  onClose={handleHistoryViewClose}
+  isOpen={historyViewOpen}
+  mode="history"
+  historySession={historyViewSession
+    ? {
+        startedAt: historyViewSession.startedAt,
+        messageCount: historyViewSession.messageCount,
+        summary: historyViewSession.summary,
+      }
+    : null
+  }
+/>
+Make sure loadSessionMessages and DisplayMessage are imported from src/lib/jarvis.ts.
+
+PART D — EMPTY STATE FOR HISTORY SESSIONS WITH NO MESSAGES
+When a session is clicked but has no saved messages, show a clear empty state in the window instead of a blank view:
+In ExtendedWindow, in the messages rendering section, update the empty state:
+tsx{relevantMessages.length === 0 ? (
+  <div className="h-full flex flex-col items-center justify-center gap-3">
+    <div className="w-8 h-8 rounded-full bg-zinc-900 border border-zinc-800
+                    flex items-center justify-center">
+      <span className="text-zinc-600 text-xs font-mono">J</span>
+    </div>
+    <p className="text-zinc-600 text-sm font-mono text-center">
+      {mode === 'history'
+        ? 'No messages saved for this session'
+        : 'Start talking to JARVIS'
+      }
+    </p>
+    {mode === 'history' && (
+      <p className="text-zinc-700 text-xs text-center max-w-48">
+        Messages are saved when JARVIS responds to your commands
+      </p>
+    )}
+  </div>
+) : (
+  relevantMessages.map(message => (
+    <WindowMessage key={message.id} message={message} />
+  ))
+)}
+
+NON-NEGOTIABLE REQUIREMENTS
+
+loadSessionMessages must handle empty results gracefully — return [], never throw to the UI
+handleHistoryCardClick must be wrapped in useCallback with correct dependencies
+historyViewLoading must be reset in both success and error paths — always in finally
+Only one ExtendedWindow can be open at a time — if live window is open and user clicks history card, the live window must close first before history opens. Handle this in handleHistoryCardClick:
+
+typescript  if (extendedWindowOpen) {
+    setExtendedWindowOpen(false)
+    await delay(250)
+  }
+
+The mode prop on ExtendedWindow defaults to 'live' — existing live window usage in Part 2 does not need to pass mode explicitly
+History window is read-only — WindowMessage in history mode should NOT show the copy/expand buttons. Add a check:
+
+typescript  // In WindowMessage, receive mode as prop
+  // Only show action buttons when mode === 'live'
+Update WindowMessageProps to include mode?: 'live' | 'history' and gate the button rendering
+
+The historyViewSession state check for loading indicator compares session.id — make sure the session object being mapped has an id field that matches
+Auto-scroll is disabled in history mode — verify the useEffect guard from Part A is in place
+Zero TypeScript errors
+Zero any types
+Do not change existing delete session functionality — delete button still works exactly as before
+Do not change the live ExtendedWindow usage from Part 2 — only add the new history window alongside it
+AnimatePresence must already be imported from Part 2 work — do not duplicate the import
+
+
+FINAL NOTE TO REPLIT
+This is Part 4 of 4. After completing this part, all four parts together deliver:
+
+Part 1 — Cinematic animation sequence infrastructure
+Part 2 — Extended window component with live chat view
+Part 3 — Conversational mode with auto-resume
+Part 4 — History card full chat viewer
+
+Do a final mental pass across all four parts after completing this one. Verify no TypeScript errors exist across any of the modified files. Verify the live extended window still works. Verify the history window opens and closes cleanly. Verify conversation mode auto-resumes correctly. Verify animation sequence runs without jitter.

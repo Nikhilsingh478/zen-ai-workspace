@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useRef, useState, useCallback } from "react";
 import {
   Mic, MicOff, Send, Trash2, Zap, CheckSquare,
-  Volume2, ChevronLeft, Radio, Brain, Clock, Tag,
+  Volume2, ChevronLeft, ChevronRight, Radio, Brain, Clock, Tag,
   ChevronDown, X, MessageSquare, Database, Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -736,6 +736,10 @@ const STATE_DISPLAY: Record<string, { text: string; sub: string }> = {
   error:       { text: "Error occurred.",     sub: "Please try again" },
 };
 
+// ─── Delay utility ────────────────────────────────────────────────────────────
+
+const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 function JarvisPage() {
@@ -748,6 +752,15 @@ function JarvisPage() {
   const coreRef = useRef<HTMLDivElement>(null);
   const [coreSize, setCoreSize] = useState(260);
   const sessionIdRef = useRef<string>("");
+
+  // Extended window state
+  const [extendedWindowOpen, setExtendedWindowOpen] = useState(false);
+  const [extendedWindowContent, setExtendedWindowContent] = useState<string>("");
+  const [isAnimatingToExtended, setIsAnimatingToExtended] = useState(false);
+  const [leftColumnVisible, setLeftColumnVisible] = useState(true);
+  const [sidebarWasOpenBeforeExtended, setSidebarWasOpenBeforeExtended] = useState(false);
+  const lastExtendedMsgId = useRef<string>("");
+  const EXTENDED_WINDOW_THRESHOLD = 500;
 
   useEffect(() => {
     if (!coreRef.current) return;
@@ -807,6 +820,81 @@ function JarvisPage() {
       void stopWakeWordDetection();
     };
   }, []);
+
+  // ── Extended window animation sequence ──────────────────────────────────────
+
+  const triggerExtendedWindowSequence = useCallback(async (content: string) => {
+    if (isAnimatingToExtended || extendedWindowOpen) return;
+    setIsAnimatingToExtended(true);
+
+    // Read current sidebar state via synchronous custom event round-trip
+    let sidebarCurrentlyOpen = false;
+    const handleSidebarState = (e: Event) => {
+      sidebarCurrentlyOpen = (e as CustomEvent).detail.isOpen as boolean;
+    };
+    window.addEventListener("jarvis:sidebar-state", handleSidebarState);
+    window.dispatchEvent(new CustomEvent("jarvis:request-sidebar-state"));
+    window.removeEventListener("jarvis:sidebar-state", handleSidebarState);
+
+    setSidebarWasOpenBeforeExtended(sidebarCurrentlyOpen);
+
+    // Step 1 — Collapse sidebar if expanded
+    if (sidebarCurrentlyOpen) {
+      window.dispatchEvent(new CustomEvent("jarvis:collapse-sidebar", {
+        detail: { collapse: true },
+      }));
+      await delay(250);
+    }
+
+    // Step 2 — Slide left column out
+    setLeftColumnVisible(false);
+    await delay(300);
+
+    // Step 3 — Center element animates up (driven by isAnimatingToExtended)
+    await delay(350);
+
+    // Step 4 — Open extended window
+    setExtendedWindowContent(content);
+    setExtendedWindowOpen(true);
+    setIsAnimatingToExtended(false);
+  }, [isAnimatingToExtended, extendedWindowOpen]);
+
+  const closeExtendedWindowSequence = useCallback(async () => {
+    // Close window first
+    setExtendedWindowOpen(false);
+    await delay(200);
+
+    // Reverse Step 3 — center returns to normal (extendedWindowOpen is now false)
+    setIsAnimatingToExtended(false);
+    await delay(300);
+
+    // Reverse Step 2 — left column slides back in
+    setLeftColumnVisible(true);
+    await delay(300);
+
+    // Reverse Step 1 — reopen sidebar if it was open before
+    if (sidebarWasOpenBeforeExtended) {
+      window.dispatchEvent(new CustomEvent("jarvis:collapse-sidebar", {
+        detail: { collapse: false },
+      }));
+    }
+  }, [sidebarWasOpenBeforeExtended]);
+
+  // Watch for long assistant replies — trigger extended window at 500+ chars
+  useEffect(() => {
+    if (messages.length === 0) return;
+    const lastMsg = messages[messages.length - 1];
+    if (
+      lastMsg.role === "jarvis" &&
+      lastMsg.content.length > EXTENDED_WINDOW_THRESHOLD &&
+      lastMsg.id !== lastExtendedMsgId.current
+    ) {
+      lastExtendedMsgId.current = lastMsg.id;
+      setTimeout(() => {
+        void triggerExtendedWindowSequence(lastMsg.content);
+      }, 600);
+    }
+  }, [messages, triggerExtendedWindowSequence]);
 
   const handleSubmit = useCallback(
     async (e?: React.FormEvent) => {
@@ -889,18 +977,64 @@ function JarvisPage() {
       <div className="relative z-10 flex-1 min-h-0 flex overflow-hidden">
 
         {/* Left status panel */}
-        <motion.div
-          initial={{ opacity: 0, x: -12 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-          className="hidden md:flex flex-col"
-          style={{ width: 200, flexShrink: 0, padding: 12, borderRight: "1px solid rgba(125,211,252,0.07)", overflowY: "auto", scrollbarWidth: "none", gap: 6 }}
-        >
-          <StatusPanel voiceState={voiceState} enabled={enabled} />
-        </motion.div>
+        <AnimatePresence>
+          {leftColumnVisible && (
+            <motion.div
+              key="left-column"
+              initial={{ opacity: 0, x: -12 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{
+                x: -320,
+                opacity: 0,
+                transition: { duration: 0.35, ease: [0.32, 0, 0.67, 0] },
+              }}
+              transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+              className="hidden md:flex flex-col"
+              style={{ width: 200, flexShrink: 0, padding: 12, borderRight: "1px solid rgba(125,211,252,0.07)", overflowY: "auto", scrollbarWidth: "none", gap: 6 }}
+            >
+              <StatusPanel voiceState={voiceState} enabled={enabled} />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Chevron toggle — shown only when left column is hidden */}
+        <AnimatePresence>
+          {!leftColumnVisible && (
+            <motion.button
+              key="left-column-toggle"
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -10 }}
+              transition={{ duration: 0.2, delay: 0.1 }}
+              onClick={() => setLeftColumnVisible(true)}
+              className="fixed left-0 top-1/2 -translate-y-1/2 z-40
+                         w-5 h-12 bg-zinc-900 border border-zinc-700/50
+                         border-l-0 rounded-r-lg
+                         hidden md:flex items-center justify-center
+                         hover:bg-zinc-800 hover:border-zinc-600
+                         transition-colors duration-150 group"
+              title="Show panel"
+            >
+              <ChevronRight className="w-3 h-3 text-zinc-600 group-hover:text-zinc-400" />
+            </motion.button>
+          )}
+        </AnimatePresence>
 
         {/* Center: orb + labels + freq bars */}
-        <div
+        <motion.div
+          animate={
+            isAnimatingToExtended || extendedWindowOpen
+              ? {
+                  scale: 0.45,
+                  y: -180,
+                  transition: { duration: 0.5, ease: [0.32, 0, 0.67, 0], delay: 0.1 },
+                }
+              : {
+                  scale: 1,
+                  y: 0,
+                  transition: { duration: 0.5, ease: [0.33, 1, 0.68, 1] },
+                }
+          }
           className="flex-1 min-w-0 flex flex-col items-center justify-center relative"
           style={{ padding: "20px 24px", overflow: "hidden" }}
           ref={coreRef}
@@ -965,7 +1099,7 @@ function JarvisPage() {
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
+        </motion.div>
 
         {/* Right panel with tabs */}
         <motion.div
@@ -978,6 +1112,23 @@ function JarvisPage() {
           <RightPanel messages={messages} />
         </motion.div>
       </div>
+
+      {/* Extended Window — built in Part 2 */}
+      {extendedWindowOpen && (
+        <div
+          data-extended-window="true"
+          className="fixed inset-0 z-50 pointer-events-none"
+        >
+          <div className="pointer-events-auto">
+            <button onClick={() => void closeExtendedWindowSequence()}>
+              Close (temporary)
+            </button>
+            <pre className="text-white text-xs p-4 max-w-2xl">
+              {extendedWindowContent}
+            </pre>
+          </div>
+        </div>
+      )}
 
       {/* ── Input bar ── */}
       <div
