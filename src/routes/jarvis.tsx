@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import ExtendedWindow from "@/components/jarvis/extended-window";
 import { cn } from "@/lib/utils";
-import { useJarvis, jarvis, initJarvisSession, endSession, getSessions, deleteSession, getAllMemories, deleteMemory, deliverMorningBriefing, kokoroManager, stopWakeWordDetection } from "@/lib/jarvis";
+import { useJarvis, jarvis, initJarvisSession, endSession, getSessions, deleteSession, getAllMemories, deleteMemory, deliverMorningBriefing, kokoroManager, stopWakeWordDetection, getConversationMode, getConversationTurnCount, forceEndConversation } from "@/lib/jarvis";
 import type { JarvisSession, Memory } from "@/lib/jarvis";
 import type { SearchSource, SearchType } from "@/lib/gemini";
 import { useHorizon } from "@/lib/horizon";
@@ -157,7 +157,19 @@ function StatRow({ icon, label, value, color = "#7DD3FC" }: { icon: React.ReactN
 
 // ─── Left status panel ────────────────────────────────────────────────────────
 
-function StatusPanel({ voiceState, enabled }: { voiceState: string; enabled: boolean }) {
+function StatusPanel({
+  voiceState,
+  enabled,
+  conversationMode,
+  conversationTurns,
+  onEndConversation,
+}: {
+  voiceState: string;
+  enabled: boolean;
+  conversationMode: "idle" | "active" | "cooling-down";
+  conversationTurns: number;
+  onEndConversation: () => void;
+}) {
   const { tasks } = useHorizon();
   const todayStr = new Date().toISOString().split("T")[0];
   const pendingToday = tasks.filter((t) => t.taskDate === todayStr && !t.completed).length;
@@ -200,6 +212,55 @@ function StatusPanel({ voiceState, enabled }: { voiceState: string; enabled: boo
           </motion.div>
         </AnimatePresence>
       </HudPanel>
+
+      {/* Conversation mode indicator */}
+      <AnimatePresence>
+        {conversationMode !== "idle" && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <HudPanel label="CONVERSATION">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      conversationMode === "active"
+                        ? "bg-sky-400 animate-pulse"
+                        : "bg-amber-400 animate-pulse"
+                    }`}
+                  />
+                  <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">
+                    {conversationMode === "active" ? "Conversing" : "Listening..."}
+                  </span>
+                </div>
+                {conversationTurns > 0 && (
+                  <span className="text-[10px] text-zinc-700 font-mono">
+                    {conversationTurns} turns
+                  </span>
+                )}
+              </div>
+
+              {conversationMode === "active" && (
+                <motion.button
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  onClick={onEndConversation}
+                  className="mt-2 w-full text-[10px] text-zinc-700
+                             hover:text-zinc-400 font-mono uppercase tracking-widest
+                             py-1.5 rounded-md border border-zinc-800/60
+                             hover:border-zinc-700 transition-all duration-150"
+                >
+                  End conversation
+                </motion.button>
+              )}
+            </HudPanel>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <HudPanel label="SYSTEM TIME"><LiveClock /></HudPanel>
 
@@ -828,6 +889,18 @@ function JarvisPage() {
   const [coreSize, setCoreSize] = useState(260);
   const sessionIdRef = useRef<string>("");
 
+  // Conversation mode state — polled from module-level runtime
+  const [conversationMode, setConversationMode] = useState<"idle" | "active" | "cooling-down">("idle");
+  const [conversationTurns, setConversationTurns] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setConversationMode(getConversationMode());
+      setConversationTurns(getConversationTurnCount());
+    }, 500);
+    return () => clearInterval(interval);
+  }, []);
+
   // Extended window state
   const [extendedWindowOpen, setExtendedWindowOpen] = useState(false);
   const [extendedWindowContent, setExtendedWindowContent] = useState<string>("");
@@ -1067,7 +1140,16 @@ function JarvisPage() {
               className="hidden md:flex flex-col"
               style={{ width: 200, flexShrink: 0, padding: 12, borderRight: "1px solid rgba(125,211,252,0.07)", overflowY: "auto", scrollbarWidth: "none", gap: 6 }}
             >
-              <StatusPanel voiceState={voiceState} enabled={enabled} />
+              <StatusPanel
+                voiceState={voiceState}
+                enabled={enabled}
+                conversationMode={conversationMode}
+                conversationTurns={conversationTurns}
+                onEndConversation={() => {
+                  forceEndConversation();
+                  setConversationMode("idle");
+                }}
+              />
             </motion.div>
           )}
         </AnimatePresence>
@@ -1135,9 +1217,26 @@ function JarvisPage() {
             initial={{ opacity: 0, scale: 0.88 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-            style={{ flexShrink: 0 }}
+            style={{ flexShrink: 0, position: "relative" }}
           >
             <AICore voiceState={voiceState} isAwake={isActive} size={coreSize} />
+
+            {/* Cooldown ring — visible only during conversation cooldown */}
+            <AnimatePresence>
+              {conversationMode === "cooling-down" && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  transition={{ duration: 0.3 }}
+                  className="absolute inset-0 rounded-full pointer-events-none"
+                  style={{
+                    border: "1px solid rgba(56, 189, 248, 0.2)",
+                    boxShadow: "0 0 20px rgba(56, 189, 248, 0.06)",
+                  }}
+                />
+              )}
+            </AnimatePresence>
           </motion.div>
 
           <div style={{ textAlign: "center", flexShrink: 0, marginTop: 12 }}>

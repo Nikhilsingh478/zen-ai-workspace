@@ -62,6 +62,29 @@ export type JarvisSession = {
   tags: string[];
 };
 
+// ─── Conversational Runtime ───────────────────────────────────────────────────
+
+type ConversationMode = "idle" | "active" | "cooling-down";
+// idle         — no active conversation, wake word required to start
+// active       — in the middle of a conversation, auto-resumes after each reply
+// cooling-down — reply finished, waiting N seconds for follow-up before ending
+
+type DialoguePolicy =
+  | "answering"       // giving a direct answer
+  | "clarifying"      // asking a clarifying question
+  | "task-executing"  // creating a task or saving memory
+  | "conversational"  // casual back and forth
+  | "closing";        // user is wrapping up
+
+interface ConversationRuntimeState {
+  mode: ConversationMode;
+  policy: DialoguePolicy;
+  turnCount: number;            // how many exchanges in current conversation
+  lastUserMessageAt: number;    // timestamp of last user message
+  lastReplyAt: number;          // timestamp of last Jarvis reply
+  cooldownTimeoutId: ReturnType<typeof setTimeout> | null;
+}
+
 export type IntentType =
   | "task_creation"
   | "memory_capture"
@@ -134,6 +157,28 @@ let _state: JarvisState = {
   systemPrompt: "",
 };
 
+// ─── Conversational runtime state ─────────────────────────────────────────────
+
+const _conversationRuntime: ConversationRuntimeState = {
+  mode: "idle",
+  policy: "answering",
+  turnCount: 0,
+  lastUserMessageAt: 0,
+  lastReplyAt: 0,
+  cooldownTimeoutId: null,
+};
+
+// How long to wait for follow-up before ending conversation (ms)
+const CONVERSATION_COOLDOWN_MS = 8000;
+
+// Phrases that signal the user wants to end the conversation
+const CONVERSATION_END_PHRASES = [
+  "goodbye", "bye", "bye bye", "that's all", "thats all",
+  "thank you", "thanks", "that's it", "thats it",
+  "i'm done", "im done", "stop", "exit", "end",
+  "nothing else", "no more", "we're done", "were done",
+];
+
 // Session creation guard — prevents duplicate sessions within the same visit
 let _sessionStartedThisVisit = false;
 // Briefing guard — prevents double-fire from React StrictMode double-invocation
@@ -202,6 +247,12 @@ function transitionAudioState(
   // Entering speaking state — start interrupt listener
   if (next === "speaking" && prev !== "speaking") {
     startInterruptListener();
+  }
+
+  // When returning to idle after speaking, if conversation cooldown is active
+  // the cooldown timer is managing the auto-resume — do not restart wake word.
+  if (next === "idle" && _conversationRuntime.mode === "cooling-down") {
+    return;
   }
 }
 
@@ -1063,7 +1114,18 @@ IMPORTANT RULES:
 - If the user's request is ambiguous, make a reasonable assumption and state what you assumed.
 ${memoriesSection}
 ${summariesSection}
-${taskSection}`;
+${taskSection}
+
+CONVERSATIONAL BEHAVIOR:
+- You are in a live voice conversation, not a chat interface.
+- After answering, if the topic has natural follow-up potential, ask ONE short follow-up question to keep the conversation going.
+- Do NOT ask follow-up questions after task creation or memory saves — just confirm briefly and stop.
+- Do NOT ask follow-up questions if the user seems to be wrapping up.
+- Keep conversational replies short — 1 to 3 sentences max unless the user explicitly asked for detail.
+- If the user gives a short follow-up like "why?" or "how?" or "really?" — you know they're continuing the conversation. Respond naturally, briefly.
+- Never start a response with "As an AI" or "I should mention" or similar.
+- Current conversation turn: ${_conversationRuntime.turnCount}
+- Current dialogue mode: ${_conversationRuntime.policy}`;
 }
 
 // ─── OpenWakeWord engine ──────────────────────────────────────────────────────
@@ -1332,6 +1394,139 @@ function parseNavigate(text: string): { clean: string; route: string | null } {
   return { clean, route };
 }
 
+// ─── Conversation Runtime Functions ───────────────────────────────────────────
+
+/**
+ * Starts an active conversation session.
+ * Called when user first speaks after wake word or tap.
+ */
+function startConversation(): void {
+  if (_conversationRuntime.cooldownTimeoutId) {
+    clearTimeout(_conversationRuntime.cooldownTimeoutId);
+    _conversationRuntime.cooldownTimeoutId = null;
+  }
+
+  _conversationRuntime.mode = "active";
+  _conversationRuntime.turnCount = 0;
+  _conversationRuntime.lastUserMessageAt = Date.now();
+
+  console.log("[JARVIS] Conversation started");
+}
+
+/**
+ * Ends the active conversation and returns to idle wake-word mode.
+ * Called after cooldown expires or user says goodbye.
+ */
+function endConversation(): void {
+  if (_conversationRuntime.cooldownTimeoutId) {
+    clearTimeout(_conversationRuntime.cooldownTimeoutId);
+    _conversationRuntime.cooldownTimeoutId = null;
+  }
+
+  _conversationRuntime.mode = "idle";
+  _conversationRuntime.policy = "answering";
+  _conversationRuntime.turnCount = 0;
+
+  if (_state.voiceState !== "idle") {
+    transitionAudioState("idle");
+  }
+
+  console.log("[JARVIS] Conversation ended — returning to wake word mode");
+}
+
+/**
+ * Called after JARVIS finishes speaking a reply.
+ * Starts cooldown timer — if user speaks within CONVERSATION_COOLDOWN_MS,
+ * conversation continues. Otherwise ends.
+ */
+function startConversationCooldown(): void {
+  if (_conversationRuntime.mode !== "active") return;
+
+  _conversationRuntime.mode = "cooling-down";
+  _conversationRuntime.lastReplyAt = Date.now();
+
+  if (_conversationRuntime.cooldownTimeoutId) {
+    clearTimeout(_conversationRuntime.cooldownTimeoutId);
+  }
+
+  _conversationRuntime.cooldownTimeoutId = setTimeout(() => {
+    console.log("[JARVIS] Cooldown expired — ending conversation");
+    endConversation();
+  }, CONVERSATION_COOLDOWN_MS);
+
+  // Auto-resume listening for follow-up.
+  // Small delay so TTS audio fully stops before mic opens.
+  setTimeout(() => {
+    if (
+      _conversationRuntime.mode === "cooling-down" &&
+      _state.enabled &&
+      _state.voiceState === "idle"
+    ) {
+      console.log("[JARVIS] Auto-resuming — listening for follow-up");
+      transitionAudioState("listening");
+      startCommandListening();
+    }
+  }, 400);
+}
+
+/**
+ * Called when user speaks during cooldown or active mode.
+ * Resets cooldown and marks conversation as active again.
+ */
+function onUserFollowUp(): void {
+  if (_conversationRuntime.cooldownTimeoutId) {
+    clearTimeout(_conversationRuntime.cooldownTimeoutId);
+    _conversationRuntime.cooldownTimeoutId = null;
+  }
+
+  _conversationRuntime.mode = "active";
+  _conversationRuntime.turnCount += 1;
+  _conversationRuntime.lastUserMessageAt = Date.now();
+}
+
+/**
+ * Detects if the user's message signals they want to end the conversation.
+ */
+function isConversationEndingMessage(message: string): boolean {
+  const normalized = message.toLowerCase().trim();
+  return CONVERSATION_END_PHRASES.some(
+    (phrase) => normalized === phrase || normalized.startsWith(phrase + " "),
+  );
+}
+
+/**
+ * Classifies the dialogue policy for the current exchange.
+ * Used to hint Gemini on how to respond.
+ */
+function classifyDialoguePolicy(
+  userMessage: string,
+  intentType: IntentType,
+): DialoguePolicy {
+  const normalized = userMessage.toLowerCase();
+
+  if (isConversationEndingMessage(normalized)) return "closing";
+
+  if (intentType === "task_creation" || intentType === "memory_capture") {
+    return "task-executing";
+  }
+
+  if (intentType === "task_query" || intentType === "memory_query") {
+    return "answering";
+  }
+
+  // Short messages in active conversation = likely follow-up or casual reply
+  if (_conversationRuntime.mode === "active" && userMessage.length < 30) {
+    return "conversational";
+  }
+
+  // Questions without clear intent may need clarification
+  if (/\?$/.test(normalized) && userMessage.length < 60) {
+    return "clarifying";
+  }
+
+  return "answering";
+}
+
 // ─── Conversation history (module-level) ──────────────────────────────────────
 
 let conversationHistory: GeminiMessage[] = [];
@@ -1340,6 +1535,40 @@ let conversationHistory: GeminiMessage[] = [];
 
 async function handleCommand(commandText: string) {
   if (!commandText.trim()) return;
+
+  // ── Conversation runtime tracking ────────────────────────────────────────────
+  if (_conversationRuntime.mode === "idle") {
+    startConversation();
+  } else {
+    onUserFollowUp();
+  }
+
+  // Detect farewell — speak goodbye and end conversation
+  if (isConversationEndingMessage(commandText)) {
+    const farewell = "Goodbye. I'll be here when you need me.";
+    patch({
+      messages: [
+        ..._state.messages,
+        {
+          id: `jarvis_${Date.now()}`,
+          role: "jarvis" as const,
+          content: farewell,
+          timestamp: Date.now(),
+          type: "text" as const,
+        },
+      ],
+    });
+    ttsQueue.enqueue(cleanTextForSpeech(farewell));
+    endConversation();
+    return;
+  }
+
+  // Classify dialogue policy for Gemini context
+  const dialoguePolicy = classifyDialoguePolicy(
+    commandText,
+    classifyIntent(commandText),
+  );
+  _conversationRuntime.policy = dialoguePolicy;
 
   // Lazy session creation — only when user actually sends a message
   if (!_state.currentSessionId) {
@@ -1413,8 +1642,11 @@ async function handleCommand(commandText: string) {
 
       ttsQueue.enqueue(cleanTextForSpeech(searchResult.text), () => {
         transitionAudioState("idle", { isAwake: false, transcript: "" });
-        if (_state.enabled) setTimeout(() => void startWakeWordDetection(), 400);
+        if (_state.enabled && _conversationRuntime.mode === "idle") {
+          setTimeout(() => void startWakeWordDetection(), 400);
+        }
       });
+      startConversationCooldown();
 
       return;
     }
@@ -1465,10 +1697,11 @@ async function handleCommand(commandText: string) {
 
     ttsQueue.enqueue(cleanTextForSpeech(clean), () => {
       transitionAudioState("idle", { isAwake: false, transcript: "" });
-      if (_state.enabled) {
+      if (_state.enabled && _conversationRuntime.mode === "idle") {
         setTimeout(() => void startWakeWordDetection(), 400);
       }
     });
+    startConversationCooldown();
   } catch (err) {
     console.error("[JARVIS] handleCommand error:", err);
     toast.error("JARVIS encountered an error", { duration: 3000 });
@@ -1517,6 +1750,20 @@ export async function initJarvisSession(): Promise<void> {
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
+
+// ─── Conversational runtime exports ───────────────────────────────────────────
+
+export function getConversationMode(): ConversationMode {
+  return _conversationRuntime.mode;
+}
+
+export function getConversationTurnCount(): number {
+  return _conversationRuntime.turnCount;
+}
+
+export function forceEndConversation(): void {
+  endConversation();
+}
 
 export const jarvis = {
   enable() {
