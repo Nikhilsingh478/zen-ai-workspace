@@ -1,0 +1,471 @@
+JARVIS — Fix Kokoro Loading, Wake Word, Morning Briefing, Mini Icon + Cleanup
+Read every file mentioned completely before touching anything. No shortcuts.
+Files you will touch:
+
+src/workers/kokoro-worker.js
+src/lib/jarvis.ts
+src/routes/jarvis.tsx
+src/components/app-shell.tsx (for mini icon)
+
+Files you must NOT touch:
+
+Any other route or lib file
+src/lib/gemini.ts
+src/lib/horizon.ts
+src/lib/supabase.ts
+Any page other than jarvis
+
+
+FIX 1 — Kokoro HuggingFace Auth Error (Critical)
+Problem: KokoroTTS.from_pretrained() is trying to fetch model files directly from huggingface.co which requires authentication tokens in Replit's sandboxed environment. This fails silently and falls back to browser TTS.
+Fix: Switch to loading Kokoro via the @huggingface/transformers CDN approach using a public mirror, OR use the kokoro-js package with explicit dtype and a public CDN base URL that doesn't require auth.
+In src/workers/kokoro-worker.js, replace the from_pretrained call:
+javascriptimport { KokoroTTS } from 'kokoro-js'
+
+let tts = null
+let isLoading = false
+
+self.onmessage = async (event) => {
+  const { type, text, voice, id } = event.data
+
+  if (type === 'load') {
+    if (tts || isLoading) {
+      self.postMessage({ type: 'load_status', ready: !!tts })
+      return
+    }
+
+    isLoading = true
+    self.postMessage({ type: 'loading', message: 'Loading voice model...' })
+
+    try {
+      // Use fp32 dtype which has better CDN availability
+      // Use explicit model_id with revision for stability
+      tts = await KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-v1.0', {
+        dtype: 'q8', // quantized 8-bit — smaller download, works without auth
+        progress_callback: (progress) => {
+          if (progress.status === 'progress') {
+            self.postMessage({
+              type: 'loading',
+              message: `Loading voice model... ${Math.round(progress.progress || 0)}%`
+            })
+          }
+        }
+      })
+
+      isLoading = false
+      self.postMessage({ type: 'load_status', ready: true })
+      console.log('[Kokoro Worker] Model loaded successfully')
+    } catch (err) {
+      isLoading = false
+      console.error('[Kokoro Worker] Load failed:', err.message)
+      self.postMessage({ type: 'load_error', error: err.message })
+    }
+  }
+
+  if (type === 'synthesize') {
+    if (!tts) {
+      self.postMessage({ type: 'synth_error', id, error: 'Model not loaded' })
+      return
+    }
+
+    try {
+      // am_adam = American male voice — deep, natural, NOT robotic female
+      const result = await tts.generate(text, {
+        voice: voice || 'am_adam'
+      })
+
+      // result.audio is Float32Array, result.sampling_rate is number
+      const audioData = result.audio instanceof Float32Array
+        ? result.audio
+        : new Float32Array(result.audio)
+
+      self.postMessage(
+        {
+          type: 'synth_result',
+          id,
+          audioData: audioData.buffer,
+          sampleRate: result.sampling_rate ?? 24000
+        },
+        [audioData.buffer]
+      )
+    } catch (err) {
+      self.postMessage({ type: 'synth_error', id, error: err.message })
+    }
+  }
+}
+Also update vite.config.ts to ensure the worker file is properly handled. Add the worker to the optimizeDeps exclude list so Vite doesn't try to pre-bundle it:
+typescriptoptimizeDeps: {
+  exclude: ['kokoro-js', 'openwakeword-wasm-browser']
+}
+If the q8 model also fails with auth errors, try the following fallback chain in the worker — try q8 first, then fp16, then fp32:
+javascriptconst dtypes = ['q8', 'fp16', 'fp32']
+let loadError = null
+
+for (const dtype of dtypes) {
+  try {
+    tts = await KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-v1.0', { dtype })
+    loadError = null
+    break
+  } catch (err) {
+    loadError = err
+    console.warn(`[Kokoro Worker] Failed with dtype ${dtype}:`, err.message)
+  }
+}
+
+if (!tts) {
+  throw loadError
+}
+
+FIX 2 — Browser TTS Fallback: Force Male Voice
+Problem: When Kokoro isn't ready, browser TTS picks a random voice — sometimes female, sometimes mixed. This is jarring and sounds wrong.
+Fix: In src/lib/jarvis.ts, in TTSQueue.playNext(), when falling back to browser SpeechSynthesis, explicitly select the best available male voice:
+typescriptfunction getBestMaleVoice(): SpeechSynthesisVoice | null {
+  const voices = window.speechSynthesis.getVoices()
+  
+  // Priority order for male voices
+  const malePriority = [
+    'Google UK English Male',
+    'Microsoft David Desktop',
+    'Microsoft Mark Desktop',
+    'Alex',                      // macOS male
+    'Daniel',                    // macOS UK male
+    'Google US English',         // Usually male
+  ]
+  
+  for (const name of malePriority) {
+    const match = voices.find(v => v.name.includes(name))
+    if (match) return match
+  }
+  
+  // Fallback — find any voice with 'male' in the name
+  const maleByName = voices.find(v => v.name.toLowerCase().includes('male'))
+  if (maleByName) return maleByName
+  
+  // Last resort — first English voice
+  return voices.find(v => v.lang.startsWith('en')) ?? null
+}
+In the browser TTS fallback section of playNext():
+typescriptconst utterance = new SpeechSynthesisUtterance(sentence)
+utterance.rate = 0.95
+utterance.pitch = 0.9   // slightly lower pitch — sounds more masculine
+
+// Wait for voices to load if not ready
+if (window.speechSynthesis.getVoices().length === 0) {
+  await new Promise<void>(resolve => {
+    window.speechSynthesis.onvoiceschanged = () => resolve()
+    setTimeout(resolve, 1000) // don't wait forever
+  })
+}
+
+const maleVoice = getBestMaleVoice()
+if (maleVoice) utterance.voice = maleVoice
+
+window.speechSynthesis.speak(utterance)
+
+FIX 3 — OpenWakeWord: load() Before start() Race Condition
+Problem: [WakeWord] Failed to initialize: Error: Call load() before start() — the implementation calls engine.start() before engine.load() resolves. This is a race condition.
+Fix: In src/lib/jarvis.ts, in startWakeWordDetection(), ensure strict sequential async execution:
+typescriptasync function startWakeWordDetection(): Promise<void> {
+  if (isMobile()) return
+  if (_wakeWordActive || _wakeWordEngine) return
+
+  try {
+    _wakeWordEngine = new WakeWordEngine({
+      baseAssetUrl: '/openwakeword/models',
+      keywords: ['hey_jarvis'],
+      detectionThreshold: 0.35, // LOWERED from 0.5 — more sensitive, picks up normal voice
+      cooldownMs: 2500,
+    })
+
+    // CRITICAL: Must fully await load() before calling start()
+    // Do NOT call start() in a .then() chain — await sequentially
+    self.postMessage?.({ type: 'status', msg: 'Loading wake word model...' })
+    await _wakeWordEngine.load()
+    
+    // Only wire up events AFTER load completes
+    _wakeWordEngine.on('detect', ({ keyword, score }: { keyword: string, score: number }) => {
+      console.log(`[WakeWord] Detected: ${keyword} (score: ${score.toFixed(2)})`)
+      if (_state.audioState === 'idle' && _state.enabled) {
+        transitionAudioState('listening')
+        startCommandListening()
+      }
+    })
+
+    _wakeWordEngine.on('error', (err: Error) => {
+      console.warn('[WakeWord] Runtime error:', err.message)
+    })
+
+    // Only call start() after load() AND event wiring is complete
+    await _wakeWordEngine.start()
+    _wakeWordActive = true
+
+    console.log('[JARVIS] Wake word active — say "Hey Jarvis" in normal voice')
+  } catch (err) {
+    console.warn('[WakeWord] Init failed — tap-to-talk still works:', (err as Error).message)
+    _wakeWordEngine = null
+    _wakeWordActive = false
+  }
+}
+Also ensure the model asset files are properly copied. Add a vite.config.ts plugin or a postinstall step that copies the ONNX model files. Check if public/openwakeword/models/ contains these files:
+
+hey_jarvis_v0.1.onnx
+melspectrogram.onnx
+embedding_model.onnx
+silero_vad.onnx
+
+If these files are missing, copy them from node_modules/openwakeword-wasm-browser/models/ to public/openwakeword/models/. Add this as a Vite plugin in vite.config.ts:
+typescriptimport { copyFileSync, mkdirSync, existsSync, readdirSync } from 'fs'
+import { resolve } from 'path'
+
+// Custom plugin to copy OpenWakeWord model assets
+const copyWakeWordAssets = {
+  name: 'copy-wakeword-assets',
+  buildStart() {
+    const src = resolve('node_modules/openwakeword-wasm-browser/models')
+    const dest = resolve('public/openwakeword/models')
+    
+    if (!existsSync(src)) return
+    
+    mkdirSync(dest, { recursive: true })
+    
+    for (const file of readdirSync(src)) {
+      const srcFile = resolve(src, file)
+      const destFile = resolve(dest, file)
+      if (!existsSync(destFile)) {
+        copyFileSync(srcFile, destFile)
+        console.log(`[vite] Copied wake word asset: ${file}`)
+      }
+    }
+  }
+}
+Add copyWakeWordAssets to the plugins array in vite.config.ts.
+
+FIX 4 — Wake Word Sensitivity
+Already covered in Fix 3 — threshold lowered from 0.5 to 0.35. This means normal speaking voice at normal distance from microphone will be detected. 0.35 is the recommended value for desktop use with ambient noise.
+Also add sensitivity explanation as a comment:
+typescript// detectionThreshold: 0.0-1.0
+// 0.5 = default (requires raised voice in noisy environments)  
+// 0.35 = recommended for desktop normal use
+// 0.2 = very sensitive (may false-trigger on similar words)
+detectionThreshold: 0.35,
+
+FIX 5 — Morning Briefing Firing Twice
+Problem: Morning briefing fires, Jarvis responds, which triggers a re-render or re-mount, which fires the briefing again.
+Fix: The localStorage guard exists but isn't being set BEFORE the async Gemini call — only after. If the component re-renders between the check and the mark, it fires twice.
+In src/routes/jarvis.tsx, in the mount useEffect, fix the guard timing:
+typescript// CORRECT order — mark FIRST, then generate
+// This prevents double-fire even if component re-renders mid-generation
+if (shouldDeliverMorningBriefing()) {
+  // Mark as delivered IMMEDIATELY before any async work
+  markBriefingDelivered()
+  
+  // Now do the async generation — even if this fails, won't fire again today
+  try {
+    const tasks = await getHorizonTasks()
+    const todayStr = new Date().toISOString().split('T')[0]
+    const todayTasks = tasks.filter(t => t.taskDate === todayStr && !t.completed)
+    const briefingPrompt = buildMorningBriefingPrompt(todayTasks)
+    
+    setIsProcessing(true)
+    const briefingText = await geminiAPI.generate(
+      [{ role: 'user', parts: [{ text: briefingPrompt }] }],
+      systemPrompt
+    )
+    
+    if (briefingText) {
+      addDisplayMessage({
+        id: `briefing_${Date.now()}`,
+        role: 'assistant',
+        content: briefingText,
+        type: 'morning_briefing',
+        timestamp: new Date()
+      })
+      ttsQueue.enqueue(cleanTextForSpeech(briefingText))
+      
+      if (currentSessionId) {
+        await saveMessage(currentSessionId, 'assistant', briefingText, 'morning_briefing')
+      }
+    }
+  } catch (err) {
+    console.warn('[JARVIS] Morning briefing failed:', err)
+    // Don't reset the localStorage flag — if it fails, don't retry today
+  } finally {
+    setIsProcessing(false)
+  }
+}
+Also add a module-level flag as a second guard against React StrictMode double-invocation:
+typescript// In src/lib/jarvis.ts
+let _briefingDeliveredThisSession = false
+
+export function shouldDeliverMorningBriefing(): boolean {
+  if (_briefingDeliveredThisSession) return false
+  
+  const lastDate = localStorage.getItem('jarvis:last-briefing-date')
+  const today = new Date().toISOString().split('T')[0]
+  return lastDate !== today
+}
+
+export function markBriefingDelivered(): void {
+  _briefingDeliveredThisSession = true
+  localStorage.setItem('jarvis:last-briefing-date', new Date().toISOString().split('T')[0])
+}
+
+FIX 6 — JARVIS Mini Icon on All Pages (Make It Work)
+Problem: There's a floating JARVIS icon visible in the bottom right of every page. Currently it does nothing when clicked. It should open a quick command overlay so the user can talk to JARVIS from any page without navigating away.
+File: src/components/app-shell.tsx
+Find where the mini JARVIS icon/button is rendered. Wire it up with a quick command overlay:
+Add state to AppShell:
+typescriptconst [quickJarvisOpen, setQuickJarvisOpen] = useState(false)
+const [quickInput, setQuickInput] = useState('')
+const [quickResponse, setQuickResponse] = useState('')
+const [quickLoading, setQuickLoading] = useState(false)
+Replace the existing non-functional icon with a working button + overlay:
+tsx{/* Floating JARVIS quick-access button */}
+<button
+  onClick={() => setQuickJarvisOpen(true)}
+  className="fixed bottom-6 right-6 w-10 h-10 rounded-full 
+             bg-zinc-900 border border-zinc-700 hover:border-sky-500/50
+             flex items-center justify-center z-50
+             transition-all duration-200 hover:shadow-lg hover:shadow-sky-500/10
+             group"
+  title="Quick JARVIS command"
+>
+  <span className="text-[10px] font-mono text-zinc-400 group-hover:text-sky-400 
+                   transition-colors font-bold">
+    J
+  </span>
+</button>
+
+{/* Quick command overlay */}
+{quickJarvisOpen && (
+  <div 
+    className="fixed inset-0 z-50 flex items-end justify-end p-6"
+    onClick={(e) => { if (e.target === e.currentTarget) setQuickJarvisOpen(false) }}
+  >
+    <div className="w-80 bg-zinc-950 border border-zinc-800 rounded-2xl 
+                    shadow-2xl shadow-black/50 overflow-hidden
+                    animate-in slide-in-from-bottom-4 duration-200">
+      
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 
+                      border-b border-zinc-800/60">
+        <div className="flex items-center gap-2">
+          <div className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
+          <span className="text-xs font-mono text-zinc-400 tracking-widest uppercase">
+            Jarvis
+          </span>
+        </div>
+        <button 
+          onClick={() => {
+            setQuickJarvisOpen(false)
+            setQuickResponse('')
+            setQuickInput('')
+          }}
+          className="text-zinc-600 hover:text-zinc-400 transition-colors"
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      {/* Response area */}
+      {quickResponse && (
+        <div className="px-4 py-3 text-sm text-zinc-300 border-b border-zinc-800/60
+                        max-h-40 overflow-y-auto leading-relaxed">
+          {quickResponse}
+        </div>
+      )}
+
+      {quickLoading && (
+        <div className="px-4 py-3 flex items-center gap-2">
+          <div className="w-1 h-1 rounded-full bg-zinc-500 animate-bounce" 
+               style={{ animationDelay: '0ms' }} />
+          <div className="w-1 h-1 rounded-full bg-zinc-500 animate-bounce" 
+               style={{ animationDelay: '150ms' }} />
+          <div className="w-1 h-1 rounded-full bg-zinc-500 animate-bounce" 
+               style={{ animationDelay: '300ms' }} />
+        </div>
+      )}
+
+      {/* Input */}
+      <div className="flex items-center gap-2 px-4 py-3">
+        <input
+          type="text"
+          value={quickInput}
+          onChange={(e) => setQuickInput(e.target.value)}
+          onKeyDown={async (e) => {
+            if (e.key === 'Enter' && quickInput.trim() && !quickLoading) {
+              const query = quickInput.trim()
+              setQuickInput('')
+              setQuickLoading(true)
+              setQuickResponse('')
+              
+              try {
+                // Use jarvis.sendText if available, otherwise direct gemini call
+                const response = await geminiAPI.generate(
+                  [{ role: 'user', parts: [{ text: query }] }],
+                  'You are JARVIS, a sharp personal AI assistant. Answer concisely in 1-3 sentences max. No markdown.'
+                )
+                setQuickResponse(response)
+              } catch (err) {
+                setQuickResponse('Something went wrong. Try the main JARVIS page.')
+              } finally {
+                setQuickLoading(false)
+              }
+            }
+            if (e.key === 'Escape') {
+              setQuickJarvisOpen(false)
+              setQuickResponse('')
+              setQuickInput('')
+            }
+          }}
+          placeholder="Ask anything..."
+          autoFocus
+          className="flex-1 bg-transparent text-sm text-zinc-200 
+                     placeholder:text-zinc-600 outline-none"
+        />
+        <kbd className="text-[10px] text-zinc-600 font-mono">↵</kbd>
+      </div>
+      
+      {/* Footer hint */}
+      <div className="px-4 pb-3 flex items-center justify-between">
+        <span className="text-[10px] text-zinc-700">
+          Press Esc to close
+        </span>
+        <button
+          onClick={() => {
+            setQuickJarvisOpen(false)
+            // Navigate to JARVIS page
+            window.location.href = '/jarvis'
+          }}
+          className="text-[10px] text-zinc-600 hover:text-sky-400 transition-colors"
+        >
+          Open full JARVIS →
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+Make sure geminiAPI is imported from src/lib/gemini.ts in app-shell.tsx and X is imported from lucide-react.
+
+FIX 7 — Remove WAKE PHRASES Block From Left Column
+File: src/routes/jarvis.tsx
+Find the section in the left status panel that renders:
+WAKE PHRASES
+"Jarvis"
+"Hey Jarvis"  
+"Okay Jarvis"
+Delete this entire block completely. Do not replace it with anything. The left panel should flow cleanly without it.
+
+NON-NEGOTIABLE REQUIREMENTS
+
+Do not touch any file not listed above
+Do not change any other page's functionality
+Zero TypeScript errors after all changes
+Kokoro failure must still gracefully fall back to browser TTS — never crash the app
+OpenWakeWord failure must still gracefully degrade to tap-to-talk — never crash
+Morning briefing must fire exactly once per calendar day — test the guard logic carefully
+The mini JARVIS overlay must close on Escape key and on clicking outside it
+Wake word threshold must be 0.35 — not 0.5
+Kokoro voice must be am_adam — American male, never female voices
+No // TODO comments left in code
+Build order: Fix 5 (morning briefing) → Fix 1 (Kokoro) → Fix 2 (browser TTS voice) → Fix 3+4 (wake word) → Fix 6 (mini icon) → Fix 7 (remove wake phrases block)

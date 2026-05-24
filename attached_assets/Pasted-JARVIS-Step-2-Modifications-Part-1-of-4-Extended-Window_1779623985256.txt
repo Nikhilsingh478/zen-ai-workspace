@@ -1,0 +1,260 @@
+JARVIS — Step 2 Modifications — Part 1 of 4: Extended Window Animation Sequence
+Read src/routes/jarvis.tsx and src/components/app-shell.tsx completely before touching anything. Understand the existing layout structure, sidebar state management, and Framer Motion patterns already in use. Do not write a single line until you have read both files fully.
+
+CONTEXT
+This is Part 1 of a 4-part modification. This part only handles the animation sequence and layout changes. The actual window component comes in Part 2. Do not build the window UI yet — only prepare the animation infrastructure and state management that the window will use.
+Files you will touch in this part:
+
+src/routes/jarvis.tsx
+src/components/app-shell.tsx
+
+Files you must NOT touch:
+
+src/lib/jarvis.ts
+src/lib/gemini.ts
+src/lib/horizon.ts
+Any other page or component
+
+
+WHAT IS BEING BUILT
+When a Jarvis reply exceeds 500 characters, a cinematic animation sequence triggers:
+Step 1 — Sidebar collapses (if open)
+         ↓ 150ms delay
+Step 2 — Left column slides out to the left
+         ↓ 150ms delay  
+Step 3 — Jarvis center element scales down + moves to top
+         ↓ 200ms delay
+Step 4 — Extended window opens (Part 2 will build this)
+When the window closes, everything reverses:
+Window closes
+     ↓
+Jarvis element scales back + moves to center
+     ↓ 150ms delay
+Left column slides back in
+     ↓ 150ms delay
+Sidebar reopens (only if it was open before trigger)
+All transitions use Framer Motion. No CSS transitions. No jitter. Everything smooth.
+
+STEP 1 — ADD EXTENDED WINDOW STATE TO JARVIS PAGE
+In src/routes/jarvis.tsx, add these state variables at the top of the JarvisPage component. Add them alongside existing state, do not replace anything:
+typescript// Extended window state
+const [extendedWindowOpen, setExtendedWindowOpen] = useState(false)
+const [extendedWindowContent, setExtendedWindowContent] = useState<string>('')
+const [isAnimatingToExtended, setIsAnimatingToExtended] = useState(false)
+const [leftColumnVisible, setLeftColumnVisible] = useState(true)
+const [sidebarWasOpenBeforeExtended, setSidebarWasOpenBeforeExtended] = useState(false)
+
+// Character threshold for auto-triggering extended view
+const EXTENDED_WINDOW_THRESHOLD = 500
+
+STEP 2 — SIDEBAR COLLAPSE COMMUNICATION
+The sidebar lives in app-shell.tsx. The JARVIS page needs to be able to programmatically collapse it. The cleanest way to do this without prop drilling is a custom DOM event.
+In src/components/app-shell.tsx:
+Find where the sidebar open/close state is managed. Add a listener for a custom event jarvis:collapse-sidebar:
+typescriptuseEffect(() => {
+  const handleJarvisCollapse = (e: CustomEvent) => {
+    const { collapse } = e.detail as { collapse: boolean }
+    // collapse = true means close sidebar
+    // collapse = false means reopen sidebar
+    setSidebarOpen(!collapse) // or whatever the existing setter is called
+  }
+
+  window.addEventListener('jarvis:collapse-sidebar', handleJarvisCollapse as EventListener)
+  return () => {
+    window.removeEventListener('jarvis:collapse-sidebar', handleJarvisCollapse as EventListener)
+  }
+}, [])
+Also expose current sidebar state via a custom event so JARVIS page can read it before triggering:
+typescript// When sidebar state changes, broadcast it
+useEffect(() => {
+  window.dispatchEvent(new CustomEvent('jarvis:sidebar-state', {
+    detail: { isOpen: sidebarOpen } // use actual state variable name
+  }))
+}, [sidebarOpen])
+Make sure to match the exact variable name used in the existing sidebar state in that file.
+
+STEP 3 — ANIMATION TRIGGER FUNCTION
+In src/routes/jarvis.tsx, add the animation orchestration function. This must be called after a long Jarvis reply is added to the display list:
+typescriptconst triggerExtendedWindowSequence = useCallback(async (content: string) => {
+  if (isAnimatingToExtended || extendedWindowOpen) return
+  setIsAnimatingToExtended(true)
+
+  // Read current sidebar state
+  let sidebarCurrentlyOpen = false
+  const handleSidebarState = (e: Event) => {
+    sidebarCurrentlyOpen = (e as CustomEvent).detail.isOpen
+  }
+  window.addEventListener('jarvis:sidebar-state', handleSidebarState)
+  // Trigger a state broadcast
+  window.dispatchEvent(new CustomEvent('jarvis:request-sidebar-state'))
+  window.removeEventListener('jarvis:sidebar-state', handleSidebarState)
+
+  setSidebarWasOpenBeforeExtended(sidebarCurrentlyOpen)
+
+  // Step 1 — Collapse sidebar if open
+  if (sidebarCurrentlyOpen) {
+    window.dispatchEvent(new CustomEvent('jarvis:collapse-sidebar', {
+      detail: { collapse: true }
+    }))
+    await delay(250) // wait for sidebar animation
+  }
+
+  // Step 2 — Slide left column out
+  setLeftColumnVisible(false)
+  await delay(300) // wait for left column animation
+
+  // Step 3 — Jarvis center element moves up and scales down
+  // This is controlled by isAnimatingToExtended state which drives
+  // the Framer Motion animate prop on the center element
+  await delay(350) // wait for center element animation
+
+  // Step 4 — Open extended window
+  setExtendedWindowContent(content)
+  setExtendedWindowOpen(true)
+  setIsAnimatingToExtended(false)
+}, [isAnimatingToExtended, extendedWindowOpen])
+
+const closeExtendedWindowSequence = useCallback(async () => {
+  // Close window first
+  setExtendedWindowOpen(false)
+  await delay(200)
+
+  // Reverse Step 3 — center element returns to normal
+  setIsAnimatingToExtended(false)
+  await delay(300)
+
+  // Reverse Step 2 — left column slides back in
+  setLeftColumnVisible(true)
+  await delay(300)
+
+  // Reverse Step 1 — reopen sidebar if it was open before
+  if (sidebarWasOpenBeforeExtended) {
+    window.dispatchEvent(new CustomEvent('jarvis:collapse-sidebar', {
+      detail: { collapse: false }
+    }))
+  }
+}, [sidebarWasOpenBeforeExtended])
+
+// Utility
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+STEP 4 — WIRE INTO MESSAGE HANDLING
+In src/routes/jarvis.tsx, find where Jarvis responses are added to the display message list. After adding the assistant message, add this check:
+typescript// After adding jarvis response to display messages:
+if (jarvisResponseText.length > EXTENDED_WINDOW_THRESHOLD) {
+  // Small delay so message renders in chat first before animation starts
+  setTimeout(() => {
+    triggerExtendedWindowSequence(jarvisResponseText)
+  }, 600)
+}
+
+STEP 5 — ANIMATE LEFT COLUMN
+In src/routes/jarvis.tsx, find the left status panel / left column JSX. Wrap it with a Framer Motion motion.div that animates based on leftColumnVisible:
+tsx<AnimatePresence>
+  {leftColumnVisible && (
+    <motion.div
+      key="left-column"
+      initial={{ x: 0, opacity: 1 }}
+      animate={{ x: 0, opacity: 1 }}
+      exit={{
+        x: -320,
+        opacity: 0,
+        transition: {
+          duration: 0.35,
+          ease: [0.32, 0, 0.67, 0] // ease-in cubic — feels like it's being pulled away
+        }
+      }}
+      // Entrance animation when coming back
+      transition={{
+        duration: 0.4,
+        ease: [0.33, 1, 0.68, 1] // ease-out cubic — smooth return
+      }}
+      className="existing-left-column-classes-here" // keep all existing classes
+    >
+      {/* existing left column content unchanged */}
+    </motion.div>
+  )}
+</AnimatePresence>
+Also add a collapsed left column toggle button that appears when left column is hidden. This button attaches to the right edge of wherever the sidebar ends:
+tsx{!leftColumnVisible && (
+  <motion.button
+    initial={{ opacity: 0, x: -10 }}
+    animate={{ opacity: 1, x: 0 }}
+    exit={{ opacity: 0, x: -10 }}
+    transition={{ duration: 0.2, delay: 0.1 }}
+    onClick={() => setLeftColumnVisible(true)}
+    className="fixed left-0 top-1/2 -translate-y-1/2 z-40
+               w-5 h-12 bg-zinc-900 border border-zinc-700/50
+               border-l-0 rounded-r-lg
+               flex items-center justify-center
+               hover:bg-zinc-800 hover:border-zinc-600
+               transition-colors duration-150 group"
+    title="Show panel"
+  >
+    <ChevronRight className="w-3 h-3 text-zinc-600 group-hover:text-zinc-400" />
+  </motion.button>
+)}
+Make sure ChevronRight is imported from lucide-react.
+
+STEP 6 — ANIMATE CENTER JARVIS ELEMENT
+In src/routes/jarvis.tsx, find the center column JSX — the div that contains the AICore orb and transcript. Wrap it or update its existing motion wrapper to respond to isAnimatingToExtended:
+tsx<motion.div
+  animate={
+    isAnimatingToExtended || extendedWindowOpen
+      ? {
+          scale: 0.45,
+          y: -180, // moves upward toward top of screen
+          transition: {
+            duration: 0.5,
+            ease: [0.32, 0, 0.67, 0], // ease-in — purposeful downward energy
+            delay: 0.1
+          }
+        }
+      : {
+          scale: 1,
+          y: 0,
+          transition: {
+            duration: 0.5,
+            ease: [0.33, 1, 0.68, 1], // ease-out — smooth return
+          }
+        }
+  }
+  className="existing-center-column-classes" // keep all existing classes
+>
+  {/* existing center content unchanged */}
+</motion.div>
+If the center element already has a motion.div wrapper, update its animate prop — don't add a second wrapper.
+
+STEP 7 — PLACEHOLDER FOR EXTENDED WINDOW
+Add a placeholder in the JSX where the extended window will be rendered in Part 2. Place it after the 3-column layout, at the same level:
+tsx{/* Extended Window — built in Part 2 */}
+{extendedWindowOpen && (
+  <div
+    data-extended-window="true"
+    className="fixed inset-0 z-50 pointer-events-none"
+  >
+    {/* Part 2 will replace this */}
+    <div className="pointer-events-auto">
+      <button onClick={closeExtendedWindowSequence}>
+        Close (temporary)
+      </button>
+      <pre className="text-white text-xs p-4 max-w-2xl">
+        {extendedWindowContent}
+      </pre>
+    </div>
+  </div>
+)}
+This placeholder ensures the close sequence works and can be tested before Part 2 arrives.
+
+NON-NEGOTIABLE REQUIREMENTS
+
+Do not build the extended window UI yet — that is Part 2
+Do not touch any file except src/routes/jarvis.tsx and src/components/app-shell.tsx
+Do not change any existing JARVIS functionality — conversation, voice, memory, sessions all unchanged
+All animations must use Framer Motion — no raw CSS transitions on animated elements
+AnimatePresence must wrap any element that conditionally renders/unrenders
+The delay() utility function must be defined inside the component or as a module-level pure function — not imported from anywhere
+Zero TypeScript errors
+The left column toggle chevron button must only appear when leftColumnVisible === false
+Make sure ChevronRight and AnimatePresence are imported if not already present
+Do not change the sidebar's existing open/close UI or behavior for normal use — only add the event listener mechanism

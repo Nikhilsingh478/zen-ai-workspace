@@ -15,7 +15,9 @@ import {
   GitBranch,
   ChevronLeft,
   ChevronRight,
+  X,
 } from "lucide-react";
+import { geminiAPI } from "@/lib/gemini";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, type ReactNode, type ComponentType } from "react";
 import { cn } from "@/lib/utils";
@@ -126,6 +128,34 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(getSavedCollapsed);
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
+  const [quickJarvisOpen, setQuickJarvisOpen] = useState(false);
+  const [quickInput, setQuickInput] = useState("");
+  const [quickResponse, setQuickResponse] = useState("");
+  const [quickLoading, setQuickLoading] = useState(false);
+
+  function closeQuickJarvis() {
+    setQuickJarvisOpen(false);
+    setQuickResponse("");
+    setQuickInput("");
+  }
+
+  async function handleQuickSubmit() {
+    const query = quickInput.trim();
+    if (!query || quickLoading) return;
+    setQuickInput("");
+    setQuickLoading(true);
+    setQuickResponse("");
+    try {
+      const response = await geminiAPI.generateContent(
+        `You are JARVIS, a sharp personal AI assistant. Answer the following in 1-3 sentences max. No markdown.\n\nUser: ${query}`,
+      );
+      setQuickResponse(response ?? "No response.");
+    } catch {
+      setQuickResponse("Something went wrong. Try the main JARVIS page.");
+    } finally {
+      setQuickLoading(false);
+    }
+  }
 
   const isActive = (to: string) => (to === "/" ? pathname === "/" : pathname.startsWith(to));
   const moreActive = MOBILE_SECONDARY.some((i) => isActive(i.to));
@@ -357,6 +387,140 @@ export function AppShell({ children }: { children: ReactNode }) {
       >
         <main className="flex-1 min-h-0 overflow-y-auto">{children}</main>
       </div>
+
+      {/* ── Floating JARVIS quick-access button — hidden on /jarvis page ── */}
+      {pathname !== "/jarvis" && (
+        <button
+          onClick={() => setQuickJarvisOpen(true)}
+          className="fixed bottom-6 right-6 w-10 h-10 rounded-full flex items-center justify-center z-50 transition-all duration-200 group"
+          style={{
+            background: "rgba(9,9,11,0.95)",
+            border: "1px solid rgba(113,113,122,0.5)",
+            boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLElement).style.borderColor = "rgba(125,211,252,0.45)";
+            (e.currentTarget as HTMLElement).style.boxShadow = "0 4px 20px rgba(125,211,252,0.12)";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLElement).style.borderColor = "rgba(113,113,122,0.5)";
+            (e.currentTarget as HTMLElement).style.boxShadow = "0 4px 20px rgba(0,0,0,0.4)";
+          }}
+          title="Quick JARVIS command"
+        >
+          <span
+            className="text-[10px] font-mono font-bold transition-colors duration-200"
+            style={{ color: "rgba(161,161,170,0.7)" }}
+          >
+            J
+          </span>
+        </button>
+      )}
+
+      {/* ── Quick JARVIS command overlay ── */}
+      {quickJarvisOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-end p-6"
+          onClick={(e) => { if (e.target === e.currentTarget) closeQuickJarvis(); }}
+        >
+          <div
+            className="w-80 rounded-2xl overflow-hidden"
+            style={{
+              background: "rgba(5,5,8,0.98)",
+              border: "1px solid rgba(39,39,42,0.9)",
+              boxShadow: "0 24px 60px rgba(0,0,0,0.7)",
+              animation: "slide-in-from-bottom 0.18s ease",
+            }}
+          >
+            {/* Header */}
+            <div
+              className="flex items-center justify-between px-4 py-3"
+              style={{ borderBottom: "1px solid rgba(39,39,42,0.7)" }}
+            >
+              <div className="flex items-center gap-2">
+                <div
+                  className="w-1.5 h-1.5 rounded-full"
+                  style={{ background: "#7DD3FC", boxShadow: "0 0 6px rgba(125,211,252,0.7)", animation: "pulse 2s infinite" }}
+                />
+                <span
+                  className="text-xs font-mono tracking-widest uppercase"
+                  style={{ color: "rgba(125,211,252,0.5)" }}
+                >
+                  Jarvis
+                </span>
+              </div>
+              <button
+                onClick={closeQuickJarvis}
+                className="transition-colors duration-150"
+                style={{ color: "rgba(113,113,122,0.7)", background: "none", border: "none", cursor: "pointer", padding: 2 }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "rgba(161,161,170,1)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "rgba(113,113,122,0.7)"; }}
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Response area */}
+            {quickResponse && (
+              <div
+                className="px-4 py-3 text-sm leading-relaxed max-h-40 overflow-y-auto"
+                style={{ color: "rgba(212,212,216,0.9)", borderBottom: "1px solid rgba(39,39,42,0.7)" }}
+              >
+                {quickResponse}
+              </div>
+            )}
+
+            {quickLoading && (
+              <div className="px-4 py-3 flex items-center gap-1.5" style={{ borderBottom: "1px solid rgba(39,39,42,0.7)" }}>
+                {[0, 150, 300].map((delay) => (
+                  <div
+                    key={delay}
+                    className="w-1 h-1 rounded-full"
+                    style={{ background: "rgba(113,113,122,0.7)", animation: `bounce 1s ${delay}ms infinite` }}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Input */}
+            <div className="flex items-center gap-2 px-4 py-3">
+              <input
+                type="text"
+                value={quickInput}
+                onChange={(e) => setQuickInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void handleQuickSubmit();
+                  if (e.key === "Escape") closeQuickJarvis();
+                }}
+                placeholder="Ask anything..."
+                autoFocus
+                className="flex-1 bg-transparent text-sm outline-none"
+                style={{ color: "rgba(228,228,231,0.9)" }}
+              />
+              <kbd className="text-[10px] font-mono" style={{ color: "rgba(82,82,91,0.9)" }}>↵</kbd>
+            </div>
+
+            {/* Footer */}
+            <div
+              className="px-4 pb-3 flex items-center justify-between"
+              style={{ borderTop: "1px solid rgba(39,39,42,0.5)" }}
+            >
+              <span className="text-[10px]" style={{ color: "rgba(63,63,70,0.9)", fontFamily: "monospace" }}>
+                Esc to close
+              </span>
+              <button
+                onClick={() => { closeQuickJarvis(); window.location.href = "/jarvis"; }}
+                className="text-[10px] transition-colors duration-150"
+                style={{ color: "rgba(82,82,91,0.9)", background: "none", border: "none", cursor: "pointer", fontFamily: "monospace" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "rgba(125,211,252,0.7)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "rgba(82,82,91,0.9)"; }}
+              >
+                Open full JARVIS →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Mobile bottom nav ── */}
       <nav

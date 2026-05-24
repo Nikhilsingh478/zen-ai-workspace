@@ -220,12 +220,6 @@ function StatusPanel({ voiceState, enabled }: { voiceState: string; enabled: boo
         </div>
       </HudPanel>
 
-      <HudPanel label="WAKE PHRASES">
-        {["Jarvis", "Hey Jarvis", "Okay Jarvis"].map((w) => (
-          <p key={w} style={{ fontSize: 10, color: "rgba(125,211,252,0.42)", letterSpacing: "0.04em", padding: "2px 0" }}>"{w}"</p>
-        ))}
-      </HudPanel>
-
       <HudPanel label="QUICK COMMANDS">
         {["What's pending today?", "Open Horizon", "Schedule a meeting", "Open Ask"].map((cmd) => (
           <motion.button

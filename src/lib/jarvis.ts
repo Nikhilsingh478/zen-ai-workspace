@@ -96,10 +96,13 @@ const WAKE_WORDS = ["jarvis", "hey jarvis", "okay jarvis"];
 
 // ─── OpenWakeWord constants ───────────────────────────────────────────────────
 
-// 0.5 balances sensitivity vs false-positive rate for hey_jarvis model
-const WAKE_DETECT_THRESHOLD = 0.5;
+// detectionThreshold: 0.0–1.0
+// 0.5 = default (requires raised voice in noisy environments)
+// 0.35 = recommended for desktop normal use
+// 0.2 = very sensitive (may false-trigger on similar words)
+const WAKE_DETECT_THRESHOLD = 0.35;
 // Minimum ms between wake-word triggers to prevent double-firing on echo
-const WAKE_COOL_MS = 2000;
+const WAKE_COOL_MS = 2500;
 
 let _wakeWordEngine: InstanceType<typeof WakeWordEngine> | null = null;
 let _wakeWordActive = false;
@@ -133,6 +136,8 @@ let _state: JarvisState = {
 
 // Session creation guard — prevents duplicate sessions within the same visit
 let _sessionStartedThisVisit = false;
+// Briefing guard — prevents double-fire from React StrictMode double-invocation
+let _briefingDeliveredThisSession = false;
 
 function emit() {
   listeners.forEach((fn) => fn());
@@ -395,6 +400,31 @@ class KokoroManager {
 
 export const kokoroManager = new KokoroManager();
 
+// ─── Browser TTS voice selector ───────────────────────────────────────────────
+
+function getBestMaleVoice(): SpeechSynthesisVoice | null {
+  const voices = window.speechSynthesis.getVoices();
+
+  const malePriority = [
+    "Google UK English Male",
+    "Microsoft David Desktop",
+    "Microsoft Mark Desktop",
+    "Alex",
+    "Daniel",
+    "Google US English",
+  ];
+
+  for (const name of malePriority) {
+    const match = voices.find((v) => v.name.includes(name));
+    if (match) return match;
+  }
+
+  const maleByName = voices.find((v) => v.name.toLowerCase().includes("male"));
+  if (maleByName) return maleByName;
+
+  return voices.find((v) => v.lang.startsWith("en")) ?? null;
+}
+
 // ─── TTSQueue ─────────────────────────────────────────────────────────────────
 
 class TTSQueue {
@@ -458,20 +488,20 @@ class TTSQueue {
     }
 
     const utterance = new SpeechSynthesisUtterance(sentence);
-    utterance.rate = 1.0;
-    utterance.pitch = 1.0;
+    utterance.rate = 0.95;
+    utterance.pitch = 0.9;
     utterance.volume = 1;
     utterance.lang = "en-US";
 
-    const voices = window.speechSynthesis.getVoices();
-    const pref =
-      voices.find((v) => v.lang.startsWith("en") && v.name.includes("Natural")) ||
-      voices.find(
-        (v) =>
-          v.lang.startsWith("en") &&
-          (v.name.includes("Google") || v.name.includes("Daniel") || v.name.includes("Alex")),
-      );
-    if (pref) utterance.voice = pref;
+    if (window.speechSynthesis.getVoices().length === 0) {
+      await new Promise<void>((resolve) => {
+        window.speechSynthesis.onvoiceschanged = () => resolve();
+        setTimeout(resolve, 1000);
+      });
+    }
+
+    const maleVoice = getBestMaleVoice();
+    if (maleVoice) utterance.voice = maleVoice;
 
     // Timeout fallback — Chrome's onend is unreliable, especially after ~15s.
     // Estimate based on character count + generous buffer.
@@ -622,6 +652,7 @@ export function classifyIntent(message: string): IntentType {
 // ─── Morning Briefing ─────────────────────────────────────────────────────────
 
 export function shouldDeliverMorningBriefing(): boolean {
+  if (_briefingDeliveredThisSession) return false;
   try {
     const last = localStorage.getItem("jarvis:last-briefing-date");
     const today = new Date().toISOString().split("T")[0];
@@ -632,9 +663,9 @@ export function shouldDeliverMorningBriefing(): boolean {
 }
 
 function markBriefingDelivered(): void {
+  _briefingDeliveredThisSession = true;
   try {
-    const today = new Date().toISOString().split("T")[0];
-    localStorage.setItem("jarvis:last-briefing-date", today);
+    localStorage.setItem("jarvis:last-briefing-date", new Date().toISOString().split("T")[0]);
   } catch {
     /* ignore */
   }
@@ -670,6 +701,8 @@ function buildMorningBriefingPrompt(tasks: HorizonTask[]): string {
  */
 export async function deliverMorningBriefing(): Promise<void> {
   if (!shouldDeliverMorningBriefing()) return;
+  // Mark BEFORE any async work — prevents double-fire even on re-render mid-generation
+  markBriefingDelivered();
 
   const today = new Date().toISOString().split("T")[0];
   const allTasks = getHorizonTasks();
@@ -708,8 +741,6 @@ export async function deliverMorningBriefing(): Promise<void> {
       transitionAudioState("idle", { isAwake: false, transcript: "" });
       if (_state.enabled) setTimeout(() => void startWakeWordDetection(), 400);
     });
-
-    markBriefingDelivered();
   } catch (err) {
     console.warn("[JARVIS] Morning briefing failed:", err);
     transitionAudioState("idle");
@@ -1068,8 +1099,9 @@ async function startWakeWordDetection(): Promise<void> {
     _wakeWordActive = true;
     console.log('[JARVIS] Wake word detection active — say "Hey Jarvis"');
   } catch (err) {
-    console.warn("[WakeWord] Failed to initialize:", err);
-    // Graceful degradation — tap-to-talk continues working
+    console.warn("[WakeWord] Init failed — tap-to-talk still works:", (err as Error).message);
+    _wakeWordEngine = null;
+    _wakeWordActive = false;
   }
 }
 

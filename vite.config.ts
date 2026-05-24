@@ -3,12 +3,32 @@ import react from "@vitejs/plugin-react";
 import tsconfigPaths from "vite-tsconfig-paths";
 import tailwindcss from "@tailwindcss/vite";
 import { viteStaticCopy } from "vite-plugin-static-copy";
+import { copyFileSync, mkdirSync, existsSync, readdirSync } from "fs";
+import { resolve } from "path";
+
+const copyWakeWordAssets = {
+  name: "copy-wakeword-assets",
+  buildStart() {
+    const src = resolve("node_modules/openwakeword-wasm-browser/models");
+    const dest = resolve("public/openwakeword/models");
+    if (!existsSync(src)) return;
+    mkdirSync(dest, { recursive: true });
+    for (const file of readdirSync(src)) {
+      const destFile = resolve(dest, file);
+      if (!existsSync(destFile)) {
+        copyFileSync(resolve(src, file), destFile);
+        console.log(`[vite] Copied wake word asset: ${file}`);
+      }
+    }
+  },
+};
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   
   return {
     plugins: [
+      copyWakeWordAssets,
       tailwindcss(),
       react(),
       tsconfigPaths({
@@ -48,7 +68,7 @@ export default defineConfig(({ mode }) => {
       emptyOutDir: true,
     },
     optimizeDeps: {
-      exclude: ["@tanstack/react-start", "@cloudflare/vite-plugin"],
+      exclude: ["@tanstack/react-start", "@cloudflare/vite-plugin", "kokoro-js", "openwakeword-wasm-browser"],
     },
   };
 });
