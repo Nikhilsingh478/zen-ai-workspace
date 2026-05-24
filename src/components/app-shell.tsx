@@ -392,26 +392,15 @@ export function AppShell({ children }: { children: ReactNode }) {
       {pathname !== "/jarvis" && (
         <button
           onClick={() => setQuickJarvisOpen(true)}
-          className="fixed bottom-6 right-6 w-10 h-10 rounded-full flex items-center justify-center z-50 transition-all duration-200 group"
-          style={{
-            background: "rgba(9,9,11,0.95)",
-            border: "1px solid rgba(113,113,122,0.5)",
-            boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
-          }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLElement).style.borderColor = "rgba(125,211,252,0.45)";
-            (e.currentTarget as HTMLElement).style.boxShadow = "0 4px 20px rgba(125,211,252,0.12)";
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLElement).style.borderColor = "rgba(113,113,122,0.5)";
-            (e.currentTarget as HTMLElement).style.boxShadow = "0 4px 20px rgba(0,0,0,0.4)";
-          }}
+          className="fixed bottom-6 right-6 w-10 h-10 rounded-full
+                     bg-zinc-900 border border-zinc-700 hover:border-sky-500/50
+                     flex items-center justify-center z-50
+                     transition-all duration-200 hover:shadow-lg hover:shadow-sky-500/10
+                     group"
           title="Quick JARVIS command"
         >
-          <span
-            className="text-[10px] font-mono font-bold transition-colors duration-200"
-            style={{ color: "rgba(161,161,170,0.7)" }}
-          >
+          <span className="text-[10px] font-mono text-zinc-400 group-hover:text-sky-400
+                           transition-colors font-bold">
             J
           </span>
         </button>
@@ -423,38 +412,22 @@ export function AppShell({ children }: { children: ReactNode }) {
           className="fixed inset-0 z-50 flex items-end justify-end p-6"
           onClick={(e) => { if (e.target === e.currentTarget) closeQuickJarvis(); }}
         >
-          <div
-            className="w-80 rounded-2xl overflow-hidden"
-            style={{
-              background: "rgba(5,5,8,0.98)",
-              border: "1px solid rgba(39,39,42,0.9)",
-              boxShadow: "0 24px 60px rgba(0,0,0,0.7)",
-              animation: "slide-in-from-bottom 0.18s ease",
-            }}
-          >
+          <div className="w-80 bg-zinc-950 border border-zinc-800 rounded-2xl
+                          shadow-2xl shadow-black/50 overflow-hidden">
+
             {/* Header */}
-            <div
-              className="flex items-center justify-between px-4 py-3"
-              style={{ borderBottom: "1px solid rgba(39,39,42,0.7)" }}
-            >
+            <div className="flex items-center justify-between px-4 py-3
+                            border-b border-zinc-800/60">
               <div className="flex items-center gap-2">
-                <div
-                  className="w-1.5 h-1.5 rounded-full"
-                  style={{ background: "#7DD3FC", boxShadow: "0 0 6px rgba(125,211,252,0.7)", animation: "pulse 2s infinite" }}
-                />
-                <span
-                  className="text-xs font-mono tracking-widest uppercase"
-                  style={{ color: "rgba(125,211,252,0.5)" }}
-                >
+                <div className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
+                <span className="text-xs font-mono text-zinc-400 tracking-widest uppercase">
                   Jarvis
                 </span>
               </div>
               <button
                 onClick={closeQuickJarvis}
-                className="transition-colors duration-150"
-                style={{ color: "rgba(113,113,122,0.7)", background: "none", border: "none", cursor: "pointer", padding: 2 }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "rgba(161,161,170,1)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "rgba(113,113,122,0.7)"; }}
+                className="text-zinc-600 hover:text-zinc-400 transition-colors cursor-pointer
+                           bg-transparent border-none p-0.5"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -462,23 +435,18 @@ export function AppShell({ children }: { children: ReactNode }) {
 
             {/* Response area */}
             {quickResponse && (
-              <div
-                className="px-4 py-3 text-sm leading-relaxed max-h-40 overflow-y-auto"
-                style={{ color: "rgba(212,212,216,0.9)", borderBottom: "1px solid rgba(39,39,42,0.7)" }}
-              >
+              <div className="px-4 py-3 text-sm text-zinc-300 border-b border-zinc-800/60
+                              max-h-40 overflow-y-auto leading-relaxed">
                 {quickResponse}
               </div>
             )}
 
+            {/* Loading dots */}
             {quickLoading && (
-              <div className="px-4 py-3 flex items-center gap-1.5" style={{ borderBottom: "1px solid rgba(39,39,42,0.7)" }}>
-                {[0, 150, 300].map((delay) => (
-                  <div
-                    key={delay}
-                    className="w-1 h-1 rounded-full"
-                    style={{ background: "rgba(113,113,122,0.7)", animation: `bounce 1s ${delay}ms infinite` }}
-                  />
-                ))}
+              <div className="px-4 py-3 flex items-center gap-2 border-b border-zinc-800/60">
+                <div className="w-1 h-1 rounded-full bg-zinc-500 animate-bounce [animation-delay:0ms]" />
+                <div className="w-1 h-1 rounded-full bg-zinc-500 animate-bounce [animation-delay:150ms]" />
+                <div className="w-1 h-1 rounded-full bg-zinc-500 animate-bounce [animation-delay:300ms]" />
               </div>
             )}
 
@@ -489,31 +457,28 @@ export function AppShell({ children }: { children: ReactNode }) {
                 value={quickInput}
                 onChange={(e) => setQuickInput(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") void handleQuickSubmit();
+                  if (e.key === "Enter" && quickInput.trim() && !quickLoading) {
+                    void handleQuickSubmit();
+                  }
                   if (e.key === "Escape") closeQuickJarvis();
                 }}
                 placeholder="Ask anything..."
                 autoFocus
-                className="flex-1 bg-transparent text-sm outline-none"
-                style={{ color: "rgba(228,228,231,0.9)" }}
+                className="flex-1 bg-transparent text-sm text-zinc-200
+                           placeholder:text-zinc-600 outline-none"
               />
-              <kbd className="text-[10px] font-mono" style={{ color: "rgba(82,82,91,0.9)" }}>↵</kbd>
+              <kbd className="text-[10px] text-zinc-600 font-mono">↵</kbd>
             </div>
 
             {/* Footer */}
-            <div
-              className="px-4 pb-3 flex items-center justify-between"
-              style={{ borderTop: "1px solid rgba(39,39,42,0.5)" }}
-            >
-              <span className="text-[10px]" style={{ color: "rgba(63,63,70,0.9)", fontFamily: "monospace" }}>
-                Esc to close
+            <div className="px-4 pb-3 flex items-center justify-between">
+              <span className="text-[10px] text-zinc-700">
+                Press Esc to close
               </span>
               <button
                 onClick={() => { closeQuickJarvis(); window.location.href = "/jarvis"; }}
-                className="text-[10px] transition-colors duration-150"
-                style={{ color: "rgba(82,82,91,0.9)", background: "none", border: "none", cursor: "pointer", fontFamily: "monospace" }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "rgba(125,211,252,0.7)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "rgba(82,82,91,0.9)"; }}
+                className="text-[10px] text-zinc-600 hover:text-sky-400 transition-colors
+                           bg-transparent border-none cursor-pointer"
               >
                 Open full JARVIS →
               </button>
