@@ -5,7 +5,9 @@ import {
   Mic, MicOff, Send, Trash2, Zap, CheckSquare,
   Volume2, ChevronLeft, ChevronRight, Radio, Brain, Clock, Tag,
   ChevronDown, X, MessageSquare, Database, Sparkles,
+  Copy, Check, Maximize2,
 } from "lucide-react";
+import ExtendedWindow from "@/components/jarvis/extended-window";
 import { cn } from "@/lib/utils";
 import { useJarvis, jarvis, initJarvisSession, endSession, getSessions, deleteSession, getAllMemories, deleteMemory, deliverMorningBriefing, kokoroManager, stopWakeWordDetection } from "@/lib/jarvis";
 import type { JarvisSession, Memory } from "@/lib/jarvis";
@@ -239,9 +241,56 @@ function StatusPanel({ voiceState, enabled }: { voiceState: string; enabled: boo
   );
 }
 
+// ─── CopyButton ───────────────────────────────────────────────────────────────
+
+function CopyButton({ content }: { content: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // clipboard API unavailable — silent fail
+    }
+  }, [content]);
+
+  return (
+    <motion.button
+      whileHover={{ scale: 1.05 }}
+      whileTap={{ scale: 0.95 }}
+      onClick={() => void handleCopy()}
+      className="flex items-center gap-1.5 px-2.5 py-1 rounded-md
+                 text-[10px] text-zinc-600 hover:text-zinc-300
+                 hover:bg-zinc-800/60 transition-all duration-150
+                 font-mono"
+      title="Copy message"
+    >
+      {copied ? (
+        <>
+          <Check className="w-3 h-3 text-emerald-400" />
+          <span className="text-emerald-400">COPIED</span>
+        </>
+      ) : (
+        <>
+          <Copy className="w-3 h-3" />
+          <span>COPY</span>
+        </>
+      )}
+    </motion.button>
+  );
+}
+
 // ─── Message bubble ───────────────────────────────────────────────────────────
 
-function MessageBubble({ msg }: { msg: ReturnType<typeof useJarvis>["messages"][number] }) {
+function MessageBubble({
+  msg,
+  onExpand,
+}: {
+  msg: ReturnType<typeof useJarvis>["messages"][number];
+  onExpand: (content: string) => void;
+}) {
   const isUser = msg.role === "user";
   const isInterrupted = msg.type === "interrupted";
   const isMorningBrief = msg.type === "morning_briefing";
@@ -309,7 +358,7 @@ function MessageBubble({ msg }: { msg: ReturnType<typeof useJarvis>["messages"][
       initial={{ opacity: 0, x: isUser ? 8 : -8, y: 4 }}
       animate={{ opacity: 1, x: 0, y: 0 }}
       transition={{ type: "spring", stiffness: 380, damping: 30 }}
-      className={cn("flex", isUser ? "justify-end" : "justify-start")}
+      className={cn("flex group", isUser ? "justify-end" : "justify-start")}
     >
       {!isUser && (
         <div style={{ width: 24, height: 24, borderRadius: 8, flexShrink: 0, background: "rgba(125,211,252,0.1)", border: "1px solid rgba(125,211,252,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Space Mono', monospace", fontSize: 9, color: "#7DD3FC", fontWeight: 700, marginRight: 7, alignSelf: "flex-end" }}>
@@ -337,6 +386,26 @@ function MessageBubble({ msg }: { msg: ReturnType<typeof useJarvis>["messages"][
         <p style={{ fontSize: 9, marginTop: 4, textAlign: "right", color: "rgba(125,211,252,0.22)", fontFamily: "'Space Mono', monospace" }}>
           {new Date(msg.timestamp).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
         </p>
+        {!isUser && (
+          <div className="flex items-center justify-end gap-1.5 mt-2 px-1
+                          opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+            <CopyButton content={msg.content} />
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => onExpand(msg.content)}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md
+                         text-[10px] text-zinc-600 hover:text-sky-400
+                         hover:bg-sky-950/30 border border-transparent
+                         hover:border-sky-900/40 transition-all duration-150
+                         font-mono"
+              title="Open in extended view"
+            >
+              <Maximize2 className="w-3 h-3" />
+              <span>EXPAND</span>
+            </motion.button>
+          </div>
+        )}
       </div>
     </motion.div>
   );
@@ -619,7 +688,13 @@ function MemoryPanel() {
 
 type RightTab = "chat" | "history" | "memory";
 
-function RightPanel({ messages }: { messages: ReturnType<typeof useJarvis>["messages"] }) {
+function RightPanel({
+  messages,
+  onExpand,
+}: {
+  messages: ReturnType<typeof useJarvis>["messages"];
+  onExpand: (content: string) => void;
+}) {
   const [activeTab, setActiveTab] = useState<RightTab>("chat");
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -690,7 +765,7 @@ function RightPanel({ messages }: { messages: ReturnType<typeof useJarvis>["mess
                     <p style={{ fontSize: 10, color: "rgba(125,211,252,0.16)" }}>Say "Hey Jarvis" or type below</p>
                   </motion.div>
                 ) : (
-                  messages.map((msg) => <MessageBubble key={msg.id} msg={msg} />)
+                  messages.map((msg) => <MessageBubble key={msg.id} msg={msg} onExpand={onExpand} />)
                 )}
               </AnimatePresence>
               <div ref={endRef} />
@@ -1095,7 +1170,7 @@ function JarvisPage() {
                 className="md:hidden absolute inset-0 flex flex-col overflow-hidden"
                 style={{ background: "rgba(5,6,9,0.97)", backdropFilter: "blur(16px)", zIndex: 20 }}
               >
-                <RightPanel messages={messages} />
+                <RightPanel messages={messages} onExpand={(content) => void triggerExtendedWindowSequence(content)} />
               </motion.div>
             )}
           </AnimatePresence>
@@ -1109,26 +1184,17 @@ function JarvisPage() {
           className="hidden md:flex flex-col"
           style={{ width: 280, flexShrink: 0, borderLeft: "1px solid rgba(125,211,252,0.07)", minHeight: 0, overflow: "hidden" }}
         >
-          <RightPanel messages={messages} />
+          <RightPanel messages={messages} onExpand={(content) => void triggerExtendedWindowSequence(content)} />
         </motion.div>
       </div>
 
-      {/* Extended Window — built in Part 2 */}
-      {extendedWindowOpen && (
-        <div
-          data-extended-window="true"
-          className="fixed inset-0 z-50 pointer-events-none"
-        >
-          <div className="pointer-events-auto">
-            <button onClick={() => void closeExtendedWindowSequence()}>
-              Close (temporary)
-            </button>
-            <pre className="text-white text-xs p-4 max-w-2xl">
-              {extendedWindowContent}
-            </pre>
-          </div>
-        </div>
-      )}
+      {/* Extended Window */}
+      <ExtendedWindow
+        content={extendedWindowContent}
+        messages={messages}
+        onClose={() => void closeExtendedWindowSequence()}
+        isOpen={extendedWindowOpen}
+      />
 
       {/* ── Input bar ── */}
       <div
