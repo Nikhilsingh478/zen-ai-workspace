@@ -9,7 +9,8 @@ import {
 } from "lucide-react";
 import ExtendedWindow from "@/components/jarvis/extended-window";
 import { cn } from "@/lib/utils";
-import { useJarvis, jarvis, initJarvisSession, endSession, getSessions, deleteSession, getAllMemories, deleteMemory, deliverMorningBriefing, kokoroManager, stopWakeWordDetection, getConversationMode, getConversationTurnCount, forceEndConversation } from "@/lib/jarvis";
+import { useJarvis, jarvis, initJarvisSession, endSession, getSessions, deleteSession, getAllMemories, deleteMemory, deliverMorningBriefing, kokoroManager, stopWakeWordDetection, getConversationMode, getConversationTurnCount, forceEndConversation, loadSessionMessages } from "@/lib/jarvis";
+import type { DisplayMessage } from "@/components/jarvis/extended-window";
 import type { JarvisSession, Memory } from "@/lib/jarvis";
 import type { SearchSource, SearchType } from "@/lib/gemini";
 import { useHorizon } from "@/lib/horizon";
@@ -474,7 +475,13 @@ function MessageBubble({
 
 // ─── History Panel ────────────────────────────────────────────────────────────
 
-function HistoryPanel() {
+function HistoryPanel({
+  onSessionClick,
+  loadingSessionId,
+}: {
+  onSessionClick: (session: JarvisSession) => void;
+  loadingSessionId: string | null;
+}) {
   const [sessions, setSessions] = useState<JarvisSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
@@ -541,8 +548,28 @@ function HistoryPanel() {
                 key={session.id}
                 initial={{ opacity: 0, y: 4 }}
                 animate={{ opacity: 1, y: 0 }}
+                whileHover={{ backgroundColor: "rgba(255,255,255,0.02)" }}
+                transition={{ duration: 0.15 }}
+                onClick={() => onSessionClick(session)}
+                className="group relative cursor-pointer"
                 style={{ borderRadius: 10, padding: "10px 12px", background: "rgba(125,211,252,0.03)", border: "1px solid rgba(125,211,252,0.09)" }}
               >
+                {/* Loading overlay for this specific card */}
+                {loadingSessionId === session.id && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="absolute inset-0 flex items-center justify-center rounded-lg z-10"
+                    style={{ background: "rgba(5,6,9,0.6)", borderRadius: 10 }}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-1 h-1 rounded-full bg-sky-400 animate-bounce" style={{ animationDelay: "0ms" }} />
+                      <div className="w-1 h-1 rounded-full bg-sky-400 animate-bounce" style={{ animationDelay: "150ms" }} />
+                      <div className="w-1 h-1 rounded-full bg-sky-400 animate-bounce" style={{ animationDelay: "300ms" }} />
+                    </div>
+                  </motion.div>
+                )}
+
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
                   <div>
                     <p style={{ ...MONO, fontSize: 9, color: "rgba(125,211,252,0.6)", letterSpacing: "0.12em" }}>
@@ -556,13 +583,13 @@ function HistoryPanel() {
                   {confirmDelete === session.id ? (
                     <div style={{ display: "flex", gap: 4 }}>
                       <button
-                        onClick={() => handleDelete(session.id)}
+                        onClick={(e) => { e.stopPropagation(); void handleDelete(session.id); }}
                         style={{ ...MONO, fontSize: 8, padding: "2px 7px", borderRadius: 5, background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.35)", color: "#FCA5A5", cursor: "pointer", letterSpacing: "0.1em" }}
                       >
                         DELETE
                       </button>
                       <button
-                        onClick={() => setConfirmDelete(null)}
+                        onClick={(e) => { e.stopPropagation(); setConfirmDelete(null); }}
                         style={{ ...MONO, fontSize: 8, padding: "2px 7px", borderRadius: 5, background: "transparent", border: "1px solid rgba(125,211,252,0.15)", color: "rgba(125,211,252,0.4)", cursor: "pointer" }}
                       >
                         <X size={8} />
@@ -570,7 +597,7 @@ function HistoryPanel() {
                     </div>
                   ) : (
                     <button
-                      onClick={() => setConfirmDelete(session.id)}
+                      onClick={(e) => { e.stopPropagation(); setConfirmDelete(session.id); }}
                       style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(125,211,252,0.2)", padding: 2, transition: "color 0.15s" }}
                       onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "rgba(239,68,68,0.7)"; }}
                       onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "rgba(125,211,252,0.2)"; }}
@@ -595,6 +622,15 @@ function HistoryPanel() {
                     ))}
                   </div>
                 )}
+
+                {/* View indicator — appears on hover */}
+                <div className="absolute right-8 top-1/2 -translate-y-1/2
+                                opacity-0 group-hover:opacity-100
+                                transition-opacity duration-150 pointer-events-none">
+                  <span className="text-[10px] text-zinc-600 font-mono uppercase tracking-widest">
+                    View →
+                  </span>
+                </div>
               </motion.div>
             ))}
 
@@ -752,9 +788,13 @@ type RightTab = "chat" | "history" | "memory";
 function RightPanel({
   messages,
   onExpand,
+  onSessionClick,
+  loadingSessionId,
 }: {
   messages: ReturnType<typeof useJarvis>["messages"];
   onExpand: (content: string) => void;
+  onSessionClick: (session: JarvisSession) => void;
+  loadingSessionId: string | null;
 }) {
   const [activeTab, setActiveTab] = useState<RightTab>("chat");
   const endRef = useRef<HTMLDivElement>(null);
@@ -834,7 +874,12 @@ function RightPanel({
           </div>
         )}
 
-        {activeTab === "history" && <HistoryPanel />}
+        {activeTab === "history" && (
+          <HistoryPanel
+            onSessionClick={onSessionClick}
+            loadingSessionId={loadingSessionId}
+          />
+        )}
         {activeTab === "memory" && <MemoryPanel />}
       </div>
     </div>
@@ -909,6 +954,17 @@ function JarvisPage() {
   const [sidebarWasOpenBeforeExtended, setSidebarWasOpenBeforeExtended] = useState(false);
   const lastExtendedMsgId = useRef<string>("");
   const EXTENDED_WINDOW_THRESHOLD = 500;
+
+  // History view state
+  const [historyViewOpen, setHistoryViewOpen] = useState(false);
+  const [historyViewMessages, setHistoryViewMessages] = useState<DisplayMessage[]>([]);
+  const [historyViewSession, setHistoryViewSession] = useState<{
+    id: string;
+    startedAt: Date;
+    messageCount: number;
+    summary: string | null;
+  } | null>(null);
+  const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!coreRef.current) return;
@@ -1008,11 +1064,12 @@ function JarvisPage() {
   }, [isAnimatingToExtended, extendedWindowOpen]);
 
   const closeExtendedWindowSequence = useCallback(async () => {
-    // Close window first
+    // Close both windows
     setExtendedWindowOpen(false);
+    setHistoryViewOpen(false);
     await delay(200);
 
-    // Reverse Step 3 — center returns to normal (extendedWindowOpen is now false)
+    // Reverse Step 3 — center returns to normal
     setIsAnimatingToExtended(false);
     await delay(300);
 
@@ -1027,6 +1084,73 @@ function JarvisPage() {
       }));
     }
   }, [sidebarWasOpenBeforeExtended]);
+
+  // History-specific cinematic sequence — same steps, opens historyViewOpen
+  const triggerHistoryWindowSequence = useCallback(async () => {
+    if (isAnimatingToExtended || historyViewOpen) return;
+    setIsAnimatingToExtended(true);
+
+    let sidebarCurrentlyOpen = false;
+    const handleSidebarState = (e: Event) => {
+      sidebarCurrentlyOpen = (e as CustomEvent<{ isOpen: boolean }>).detail.isOpen;
+    };
+    window.addEventListener("jarvis:sidebar-state", handleSidebarState);
+    window.dispatchEvent(new CustomEvent("jarvis:request-sidebar-state"));
+    window.removeEventListener("jarvis:sidebar-state", handleSidebarState);
+
+    setSidebarWasOpenBeforeExtended(sidebarCurrentlyOpen);
+
+    if (sidebarCurrentlyOpen) {
+      window.dispatchEvent(new CustomEvent("jarvis:collapse-sidebar", {
+        detail: { collapse: true },
+      }));
+      await delay(250);
+    }
+
+    setLeftColumnVisible(false);
+    await delay(300);
+    await delay(350);
+
+    setHistoryViewOpen(true);
+    setIsAnimatingToExtended(false);
+  }, [isAnimatingToExtended, historyViewOpen]);
+
+  const handleHistoryCardClick = useCallback(async (session: JarvisSession) => {
+    if (loadingSessionId !== null) return;
+
+    setLoadingSessionId(session.id);
+
+    try {
+      const msgs = await loadSessionMessages(session.id);
+
+      // Close live window first if it's open
+      if (extendedWindowOpen) {
+        setExtendedWindowOpen(false);
+        await delay(250);
+      }
+
+      setHistoryViewSession({
+        id: session.id,
+        startedAt: new Date(session.started_at),
+        messageCount: session.message_count,
+        summary: session.session_summary,
+      });
+      setHistoryViewMessages(msgs);
+
+      await triggerHistoryWindowSequence();
+    } catch (err) {
+      console.error("[JARVIS] Failed to load session messages:", err);
+    } finally {
+      setLoadingSessionId(null);
+    }
+  }, [loadingSessionId, extendedWindowOpen, triggerHistoryWindowSequence]);
+
+  const handleHistoryViewClose = useCallback(async () => {
+    setHistoryViewOpen(false);
+    setHistoryViewMessages([]);
+    setHistoryViewSession(null);
+    await closeExtendedWindowSequence();
+  }, [closeExtendedWindowSequence]);
 
   // Watch for long assistant replies — trigger extended window at 500+ chars
   useEffect(() => {
@@ -1269,7 +1393,12 @@ function JarvisPage() {
                 className="md:hidden absolute inset-0 flex flex-col overflow-hidden"
                 style={{ background: "rgba(5,6,9,0.97)", backdropFilter: "blur(16px)", zIndex: 20 }}
               >
-                <RightPanel messages={messages} onExpand={(content) => void triggerExtendedWindowSequence(content)} />
+                <RightPanel
+                  messages={messages}
+                  onExpand={(content) => void triggerExtendedWindowSequence(content)}
+                  onSessionClick={(session) => void handleHistoryCardClick(session)}
+                  loadingSessionId={loadingSessionId}
+                />
               </motion.div>
             )}
           </AnimatePresence>
@@ -1283,16 +1412,39 @@ function JarvisPage() {
           className="hidden md:flex flex-col"
           style={{ width: 280, flexShrink: 0, borderLeft: "1px solid rgba(125,211,252,0.07)", minHeight: 0, overflow: "hidden" }}
         >
-          <RightPanel messages={messages} onExpand={(content) => void triggerExtendedWindowSequence(content)} />
+          <RightPanel
+            messages={messages}
+            onExpand={(content) => void triggerExtendedWindowSequence(content)}
+            onSessionClick={(session) => void handleHistoryCardClick(session)}
+            loadingSessionId={loadingSessionId}
+          />
         </motion.div>
       </div>
 
-      {/* Extended Window */}
+      {/* Extended Window — live chat */}
       <ExtendedWindow
         content={extendedWindowContent}
         messages={messages}
         onClose={() => void closeExtendedWindowSequence()}
         isOpen={extendedWindowOpen}
+      />
+
+      {/* Extended Window — history session viewer */}
+      <ExtendedWindow
+        content=""
+        messages={historyViewMessages}
+        onClose={() => void handleHistoryViewClose()}
+        isOpen={historyViewOpen}
+        mode="history"
+        historySession={
+          historyViewSession
+            ? {
+                startedAt: historyViewSession.startedAt,
+                messageCount: historyViewSession.messageCount,
+                summary: historyViewSession.summary,
+              }
+            : null
+        }
       />
 
       {/* ── Input bar ── */}

@@ -14,11 +14,19 @@ export interface DisplayMessage {
   metadata?: Record<string, unknown>;
 }
 
+interface HistorySessionInfo {
+  startedAt: Date;
+  messageCount: number;
+  summary: string | null;
+}
+
 interface ExtendedWindowProps {
   content: string;
   messages: DisplayMessage[];
   onClose: () => void;
   isOpen: boolean;
+  mode?: "live" | "history";
+  historySession?: HistorySessionInfo | null;
 }
 
 interface WindowHeaderProps {
@@ -26,10 +34,13 @@ interface WindowHeaderProps {
   onToggleFullscreen: () => void;
   onClose: () => void;
   messageCount: number;
+  mode: "live" | "history";
+  sessionDate?: Date;
 }
 
 interface WindowMessageProps {
   message: DisplayMessage;
+  mode: "live" | "history";
 }
 
 interface CopyActionProps {
@@ -43,7 +54,11 @@ function WindowHeader({
   onToggleFullscreen,
   onClose,
   messageCount,
+  mode,
+  sessionDate,
 }: WindowHeaderProps) {
+  const isHistory = mode === "history";
+
   return (
     <div className="flex items-center justify-between px-5 py-3.5
                     border-b border-zinc-800/60 flex-shrink-0">
@@ -55,8 +70,18 @@ function WindowHeader({
         </div>
         <div className="w-px h-3.5 bg-zinc-800" />
         <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.2em]">
-          J.A.R.V.I.S
+          {isHistory ? "Past Session" : "J.A.R.V.I.S"}
         </span>
+        {isHistory && sessionDate && (
+          <span className="text-[10px] text-zinc-700 font-mono">
+            {sessionDate.toLocaleDateString([], {
+              month: "short",
+              day: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
+          </span>
+        )}
         <span className="text-[10px] text-zinc-700 font-mono">
           {messageCount} messages
         </span>
@@ -85,7 +110,7 @@ function WindowHeader({
           className="w-7 h-7 rounded-md flex items-center justify-center
                      text-zinc-600 hover:text-red-400 hover:bg-red-950/30
                      transition-colors duration-150"
-          title="Close window"
+          title="Close"
         >
           <X className="w-3.5 h-3.5" />
         </motion.button>
@@ -94,7 +119,7 @@ function WindowHeader({
   );
 }
 
-// ─── Copy action (inside window) ──────────────────────────────────────────────
+// ─── Copy action (inside window, live mode only) ──────────────────────────────
 
 function CopyAction({ content }: CopyActionProps) {
   const [copied, setCopied] = useState(false);
@@ -136,8 +161,9 @@ function CopyAction({ content }: CopyActionProps) {
 
 // ─── Window Message ───────────────────────────────────────────────────────────
 
-function WindowMessage({ message }: WindowMessageProps) {
+function WindowMessage({ message, mode }: WindowMessageProps) {
   const isUser = message.role === "user";
+  const isLive = mode === "live";
 
   const formattedTime = new Date(message.timestamp).toLocaleTimeString([], {
     hour: "2-digit",
@@ -200,7 +226,7 @@ function WindowMessage({ message }: WindowMessageProps) {
 
         <div className="flex items-center justify-between mt-1.5 px-1">
           <p className="text-[10px] text-zinc-600">{formattedTime}</p>
-          <CopyAction content={message.content} />
+          {isLive && <CopyAction content={message.content} />}
         </div>
       </div>
     </motion.div>
@@ -253,19 +279,25 @@ export default function ExtendedWindow({
   messages,
   onClose,
   isOpen,
+  mode = "live",
+  historySession,
 }: ExtendedWindowProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const isHistory = mode === "history";
 
+  // Auto-scroll to bottom — live mode only
   useEffect(() => {
+    if (isHistory) return;
     if (scrollRef.current) {
       scrollRef.current.scrollTo({
         top: scrollRef.current.scrollHeight,
         behavior: "smooth",
       });
     }
-  }, [messages]);
+  }, [messages, isHistory]);
 
+  // Reset fullscreen when window closes
   useEffect(() => {
     if (!isOpen) setIsFullscreen(false);
   }, [isOpen]);
@@ -278,14 +310,16 @@ export default function ExtendedWindow({
     (m) => m.type !== "interrupted",
   );
 
-  const assistantCount = messages.filter((m) => m.role === "jarvis").length;
+  const displayedMessageCount = isHistory
+    ? visibleMessages.length
+    : messages.filter((m) => m.role === "jarvis").length;
 
   return (
     <AnimatePresence>
       {isOpen && (
         <>
           <motion.div
-            key="extended-window-backdrop"
+            key={`extended-window-backdrop-${mode}`}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -295,7 +329,7 @@ export default function ExtendedWindow({
           />
 
           <motion.div
-            key="extended-window"
+            key={`extended-window-${mode}`}
             layout
             variants={windowEnterExit}
             initial="hidden"
@@ -317,7 +351,9 @@ export default function ExtendedWindow({
               isFullscreen={isFullscreen}
               onToggleFullscreen={handleToggleFullscreen}
               onClose={onClose}
-              messageCount={assistantCount}
+              messageCount={displayedMessageCount}
+              mode={mode}
+              sessionDate={historySession?.startedAt}
             />
 
             <div
@@ -327,14 +363,26 @@ export default function ExtendedWindow({
                          scrollbar-thumb-zinc-800 hover:scrollbar-thumb-zinc-700"
             >
               {visibleMessages.length === 0 ? (
-                <div className="h-full flex items-center justify-center">
-                  <p className="text-zinc-600 text-sm font-mono">
-                    No messages yet
+                <div className="h-full flex flex-col items-center justify-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-zinc-900 border border-zinc-800
+                                  flex items-center justify-center">
+                    <span className="text-zinc-600 text-xs font-mono">J</span>
+                  </div>
+                  <p className="text-zinc-600 text-sm font-mono text-center">
+                    {isHistory
+                      ? "No messages saved for this session"
+                      : "Start talking to JARVIS"
+                    }
                   </p>
+                  {isHistory && (
+                    <p className="text-zinc-700 text-xs text-center max-w-48">
+                      Messages are saved when JARVIS responds to your commands
+                    </p>
+                  )}
                 </div>
               ) : (
                 visibleMessages.map((message) => (
-                  <WindowMessage key={message.id} message={message} />
+                  <WindowMessage key={message.id} message={message} mode={mode} />
                 ))
               )}
             </div>
@@ -343,20 +391,44 @@ export default function ExtendedWindow({
                             px-5 py-2.5 border-t border-zinc-800/40
                             flex-shrink-0">
               <div className="flex items-center gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/60
-                                animate-pulse" />
-                <span className="text-[10px] font-mono text-zinc-600
-                                 uppercase tracking-widest">
-                  Live
-                </span>
+                {isHistory ? (
+                  <>
+                    <div className="w-1.5 h-1.5 rounded-full bg-zinc-600" />
+                    <span className="text-[10px] font-mono text-zinc-600
+                                     uppercase tracking-widest">
+                      Read-only
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/60
+                                    animate-pulse" />
+                    <span className="text-[10px] font-mono text-zinc-600
+                                     uppercase tracking-widest">
+                      Live
+                    </span>
+                  </>
+                )}
               </div>
-              <span className="text-[10px] text-zinc-700 font-mono">
-                {new Date().toLocaleDateString([], {
-                  weekday: "short",
-                  month: "short",
-                  day: "numeric",
-                })}
-              </span>
+
+              {isHistory && historySession?.summary ? (
+                <span
+                  className="text-[10px] text-zinc-700 font-mono max-w-[300px] truncate"
+                  title={historySession.summary}
+                >
+                  {historySession.summary}
+                </span>
+              ) : (
+                !isHistory && (
+                  <span className="text-[10px] text-zinc-700 font-mono">
+                    {new Date().toLocaleDateString([], {
+                      weekday: "short",
+                      month: "short",
+                      day: "numeric",
+                    })}
+                  </span>
+                )
+              )}
             </div>
           </motion.div>
         </>
