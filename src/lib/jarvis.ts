@@ -470,24 +470,42 @@ export const kokoroManager = new KokoroManager();
 
 function getBestMaleVoice(): SpeechSynthesisVoice | null {
   const voices = window.speechSynthesis.getVoices();
+  if (voices.length === 0) return null;
 
-  const malePriority = [
+  // Priority order — best quality male voices across platforms
+  const priority = [
     "Google UK English Male",
+    "Microsoft Ryan Online (Natural)",  // Edge neural voice
+    "Microsoft Guy Online (Natural)",   // Edge neural voice
     "Microsoft David Desktop",
     "Microsoft Mark Desktop",
-    "Alex",
-    "Daniel",
     "Google US English",
+    "Alex",    // macOS
+    "Daniel",  // macOS UK
+    "Fred",    // macOS
   ];
 
-  for (const name of malePriority) {
-    const match = voices.find((v) => v.name.includes(name));
+  for (const name of priority) {
+    const match = voices.find((v) =>
+      v.name.toLowerCase().includes(name.toLowerCase()),
+    );
     if (match) return match;
   }
 
-  const maleByName = voices.find((v) => v.name.toLowerCase().includes("male"));
-  if (maleByName) return maleByName;
+  // Any online/neural voice — Edge has excellent neural voices
+  const neural = voices.find(
+    (v) =>
+      v.name.toLowerCase().includes("online") ||
+      v.name.toLowerCase().includes("natural") ||
+      v.name.toLowerCase().includes("neural"),
+  );
+  if (neural) return neural;
 
+  // Any male-labeled voice
+  const male = voices.find((v) => v.name.toLowerCase().includes("male"));
+  if (male) return male;
+
+  // English fallback
   return voices.find((v) => v.lang.startsWith("en")) ?? null;
 }
 
@@ -555,10 +573,14 @@ class TTSQueue {
       return;
     }
 
+    if (!kokoroManager.ready) {
+      console.log("[TTS] Using browser fallback voice:", getBestMaleVoice()?.name ?? "default");
+    }
+
     const utterance = new SpeechSynthesisUtterance(sentence);
-    utterance.rate = 0.95;
-    utterance.pitch = 0.9;
-    utterance.volume = 1;
+    utterance.rate = 0.92;   // slightly slower — more natural pacing
+    utterance.pitch = 0.85;  // lower pitch — masculine
+    utterance.volume = 1.0;
     utterance.lang = "en-US";
 
     if (window.speechSynthesis.getVoices().length === 0) {
@@ -1051,11 +1073,41 @@ export async function deleteMemory(memoryId: string): Promise<boolean> {
   }
 }
 
+// ─── Timeline context ─────────────────────────────────────────────────────────
+
+interface TimelineMonthContext {
+  monthKey: string;
+  context: string;
+  generatedSchedule: string | null;
+}
+
+async function fetchTimelineContext(): Promise<TimelineMonthContext[]> {
+  try {
+    const { data, error } = await supabase
+      .from("timeline_months")
+      .select("month_key, context, generated_schedule")
+      .neq("context", "") // only months that have goals written
+      .order("month_key", { ascending: true });
+
+    if (error || !data) return [];
+
+    return (data as Array<{ month_key: string; context: string; generated_schedule: string | null }>)
+      .map((row) => ({
+        monthKey: row.month_key,
+        context: row.context,
+        generatedSchedule: row.generated_schedule,
+      }));
+  } catch {
+    return [];
+  }
+}
+
 // ─── System Prompt Builder ────────────────────────────────────────────────────
 
 export function buildJarvisSystemPrompt(
   memories: Memory[],
   summaries: string[],
+  timelineMonths?: TimelineMonthContext[],
 ): string {
   const now = new Date();
   const dateStr = now.toLocaleDateString("en-US", {
@@ -1090,6 +1142,16 @@ export function buildJarvisSystemPrompt(
   const summariesSection =
     summaries.length > 0
       ? `\nRECENT SESSION SUMMARIES:\n${summaries.map((s, i) => `${i + 1}. ${s}`).join("\n")}`
+      : "";
+
+  const timelineSection =
+    timelineMonths && timelineMonths.length > 0
+      ? `\nMONTHLY GOALS & TIMELINE (what the user is working toward):\n${timelineMonths
+          .map(
+            (m) =>
+              `\n[${m.monthKey}]\nGoals: ${m.context.slice(0, 400)}${m.context.length > 400 ? "..." : ""}`,
+          )
+          .join("")}\n\nUse this to understand the user's broader goals when answering questions. If they ask about progress or plans, reference these goals.`
       : "";
 
   const taskSection =
@@ -1131,6 +1193,7 @@ IMPORTANT RULES:
 - If the user's request is ambiguous, make a reasonable assumption and state what you assumed.
 ${memoriesSection}
 ${summariesSection}
+${timelineSection}
 ${taskSection}
 
 CONVERSATIONAL BEHAVIOR:
@@ -1782,11 +1845,12 @@ export async function initJarvisSession(): Promise<void> {
       .eq("message_count", 0)
       .then(() => null, () => null);
 
-    const [memories, summaries] = await Promise.all([
+    const [memories, summaries, timelineMonths] = await Promise.all([
       getRecentMemories(20),
       getRecentSessionSummaries(3),
+      fetchTimelineContext(),
     ]);
-    const systemPrompt = buildJarvisSystemPrompt(memories, summaries);
+    const systemPrompt = buildJarvisSystemPrompt(memories, summaries, timelineMonths);
     patch({ recentMemories: memories, sessionSummaries: summaries, systemPrompt });
   } catch (err) {
     console.warn("[JARVIS] initJarvisSession failed:", err);

@@ -212,14 +212,63 @@ export async function executeToolCall(
     }
 
     if (toolName === "get_today_tasks") {
-      const today = new Date().toISOString().split("T")[0];
-      const tasks = getHorizonTasks().filter((t) => t.taskDate === today);
-      return `Today's tasks (${today}):\n${formatTaskList(tasks)}`;
+      // CRITICAL: compute date at call time, not module load time.
+      // en-CA gives YYYY-MM-DD in local timezone — never toISOString() which is UTC.
+      const now = new Date();
+      const todayStr = now.toLocaleDateString("en-CA"); // YYYY-MM-DD local time
+
+      const { data, error } = await supabase
+        .from("horizon_tasks")
+        .select("*")
+        .eq("task_date", todayStr)
+        .order("task_time", { ascending: true });
+
+      if (error || !data || data.length === 0) {
+        return `No tasks found for today (${todayStr}).`;
+      }
+
+      const rows = data as Array<{
+        title: string;
+        task_time: string;
+        priority: string;
+        completed: boolean;
+      }>;
+
+      const taskList = rows
+        .map(
+          (t) =>
+            `• ${t.title} at ${t.task_time} (${t.priority} priority)${t.completed ? " ✓" : ""}`,
+        )
+        .join("\n");
+
+      return `Tasks for today (${todayStr}):\n${taskList}`;
     }
 
     if (toolName === "get_pending_tasks") {
-      const tasks = getHorizonTasks().filter((t) => !t.completed);
-      return `All pending tasks:\n${formatTaskList(tasks)}`;
+      const { data, error } = await supabase
+        .from("horizon_tasks")
+        .select("*")
+        .eq("completed", false)
+        .order("task_date", { ascending: true })
+        .order("task_time", { ascending: true })
+        .limit(20); // prevent massive context dumps
+
+      if (error || !data || data.length === 0) {
+        return "No pending tasks found.";
+      }
+
+      const rows = data as Array<{
+        task_date: string;
+        task_time: string;
+        title: string;
+        priority: string;
+      }>;
+
+      const taskList = rows
+        .map((t) => `• ${t.task_date} ${t.task_time} — ${t.title} (${t.priority})`)
+        .join("\n");
+
+      return `Pending tasks (${rows.length} total):\n${taskList}`;
     }
 
     if (toolName === "recall_memories") {
