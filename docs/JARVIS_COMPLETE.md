@@ -153,7 +153,7 @@ Three modes defined as `ConversationMode`:
 
 **Cooldown system:**
 - `CONVERSATION_COOLDOWN_MS = 8000` ms
-- `startConversationCooldown()` is called **only** from `TTSQueue.playNext()` when the sentence queue drains to empty — this is the single authoritative call site
+- `startConversationCooldown()` is called **only** from `TTSQueue.playNext()` when the sentence queue drains to empty — this is the single authoritative call site. It is **not** called at enqueue time. This matters because the cooldown must start after the last syllable of audio has finished playing, not when the text is queued.
 - The cooldown function: sets mode to `cooling-down`, starts the 8s timer, then after 600ms auto-resumes mic listening (so user can speak immediately after JARVIS finishes)
 - If the 8s timer fires without new speech: `endConversation()` is called, mode resets to `idle`, wake word detection restarts
 
@@ -190,7 +190,7 @@ All tool definitions are in `src/lib/gemini.ts` as `JARVIS_TOOLS`. Tool executio
 |---|---|
 | `startSession()` | Inserts a row into `jarvis_sessions` with `started_at = now()`, returns UUID. |
 | `endSession(id)` | Sets `ended_at`, generates session summary via Gemini, writes it back to the row. |
-| `initJarvisSession()` | Runs on mount. Fetches memories (20), session summaries (3), timeline context in parallel via `Promise.all`. Builds system prompt. Does NOT create a Supabase session — session creation is deferred until first message (lazy creation). |
+| `initJarvisSession()` | Runs on mount. Fetches memories (20), session summaries (3), timeline context in parallel via `Promise.all`. Builds system prompt. Does NOT create a Supabase session — session creation is deferred until first message (lazy creation). Timeline context is fetched via `fetchTimelineContext()` which selects only `month_key` and `context` columns — `generated_schedule` is never fetched. Injection is capped at the 3 most recent months, 200 characters each, keeping the timeline section under 600 characters total. |
 | Lazy session creation | `_state.currentSessionId` is `null` on boot. On first `handleCommand()`, `startSession()` is called if `currentSessionId` is null. |
 | Empty session cleanup | On each `initJarvisSession()`, a fire-and-forget DELETE runs against `jarvis_sessions WHERE message_count = 0` to clean up sessions that were created but never received a message. |
 | `updateSessionMessageCount(id)` | Increments `message_count` on the session row after each exchange. |
@@ -234,8 +234,8 @@ Memories are injected into the system prompt on every session init under `PERSIS
 
 **Library:** `openwakeword-wasm-browser`
 **Keyword:** `hey_jarvis`
-**Detection threshold:** `WAKE_DETECT_THRESHOLD = 0.35`
-**Post-detection cooldown:** `WAKE_COOL_MS = 2500` ms (prevents immediate re-trigger)
+**Detection threshold:** `WAKE_DETECT_THRESHOLD = 0.45`
+**Post-detection cooldown:** `WAKE_COOL_MS = 3500` ms (prevents immediate re-trigger)
 **Desktop only:** `startWakeWordDetection()` returns early on mobile user-agents. Mobile users tap the orb to talk.
 
 **Load-then-start sequence** (race condition protection):
@@ -257,13 +257,17 @@ The Extended Window (`src/components/jarvis/extended-window.tsx`) is a floating 
 - `live`: Shows the current session's messages. Auto-scrolls on new messages.
 - `history`: Shows a past session's messages. Read-only. Auto-scroll disabled.
 
-**Positioning:** Center-left, covering the orb area.
+**Positioning:** True screen centre via CSS transform.
 ```css
+position: fixed;
 top: 50%; left: 50%;
-transform: translate(-55%, -50%);
-width: 72vw; max-width: 920px; min-width: 600px;
-height: 68vh; max-height: 780px; min-height: 480px;
+transform: translate(-50%, -50%);
+width: 65vw; max-width: 820px; min-width: 500px;
+height: 65vh; max-height: 760px; min-height: 460px;
+overflow: hidden;
 ```
+Positioning is handled entirely by inline style (`WINDOWED_STYLE` constant). No Tailwind positioning classes (`bottom-*`, `right-*`, etc.) are used on the window element — they would override the centering.
+
 Fullscreen toggle: `top/left/right/bottom: 16px`, `transform: none`. Animated via Framer Motion `layout` prop.
 
 **Color palette:** Deep navy HUD theme.
@@ -471,7 +475,9 @@ All variables are prefixed `VITE_` and accessed via `import.meta.env`. Set these
 
 ## 6. Known Limitations
 
-**Browser TTS fallback quality:** When Kokoro fails to load (network issues, first-load timeout), the app falls back to the browser's built-in `SpeechSynthesis` API. Voice quality varies significantly by browser and OS. Edge on Windows has the best neural voices. Chrome on Linux has limited options. The voice selector (`getBestMaleVoice()`) uses a priority list to pick the best available.
+**Kokoro TTS unavailable in sandboxed environments:** Kokoro-82M model loading fails in sandboxed hosting environments (e.g. Replit preview) because HuggingFace's CDN requires authentication tokens that are not available in the sandbox. All dtype variants (`q8`, `fp16`, `fp32`) fail for the same reason — the domain is the problem, not the format. The browser TTS fallback activates automatically. The preferred fallback voice is `Google UK English Male` (via the `getBestMaleVoice()` priority list).
+
+**Browser TTS fallback quality:** When Kokoro fails to load (network issues, sandboxed environment, first-load timeout), the app falls back to the browser's built-in `SpeechSynthesis` API. Voice quality varies significantly by browser and OS. Edge on Windows has the best neural voices. Chrome on Linux has limited options. The voice selector (`getBestMaleVoice()`) uses a priority list to pick the best available.
 
 **Kokoro first-load download:** The Kokoro-82M ONNX model is ~82MB. On first load it downloads fully before any neural TTS is available. Subsequent loads use the browser cache. There is no streaming or progressive loading — the user experiences silence (or a loading indicator) until the download completes.
 
