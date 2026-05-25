@@ -52,16 +52,17 @@ interface CopyActionProps {
 const WINDOWED_STYLE: React.CSSProperties = {
   top: "50%",
   left: "50%",
-  transform: "translate(-55%, -50%)",
-  width: "72vw",
-  maxWidth: "920px",
-  minWidth: "600px",
-  height: "68vh",
-  maxHeight: "780px",
+  transform: "translate(-50%, -50%)",
+  width: "min(68vw, calc(100vw - 48px))",
+  maxWidth: "860px",
+  minWidth: "480px",
+  height: "min(70vh, calc(100vh - 48px))",
+  maxHeight: "800px",
   minHeight: "480px",
   borderRadius: "16px",
   bottom: "auto",
   right: "auto",
+  overflow: "hidden",
 };
 
 const FULLSCREEN_STYLE: React.CSSProperties = {
@@ -455,7 +456,12 @@ export default function ExtendedWindow({
             <div
               ref={scrollRef}
               className="flex-1 overflow-y-auto px-5 py-4"
-              style={{ scrollbarWidth: "thin", scrollbarColor: "#0f2040 transparent" }}
+              style={{
+                scrollbarWidth: "thin",
+                scrollbarColor: "#0f2040 transparent",
+                maxWidth: "100%",
+                boxSizing: "border-box",
+              }}
             >
               {visibleMessages.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center gap-3">
