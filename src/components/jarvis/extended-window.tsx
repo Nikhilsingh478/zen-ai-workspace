@@ -316,24 +316,23 @@ function WindowMessage({ message, mode }: WindowMessageProps) {
 const EASE_OUT: [number, number, number, number] = [0.33, 1, 0.68, 1];
 const EASE_IN: [number, number, number, number] = [0.32, 0, 0.67, 0];
 
-// y is intentionally absent — Framer Motion's y animation writes its own
-// transform string and overwrites the translate(-50%,-50%) centering in
-// WINDOWED_STYLE. Opacity + scale only keeps the centering intact.
+// IMPORTANT: no x, y, scale, or any other transform-based values here.
+// Framer Motion owns the entire CSS `transform` property the moment it
+// animates any transform value (scale, y, x, rotate…). That would silently
+// overwrite the `translate(-50%, -50%)` in WINDOWED_STYLE and break centering.
+// Opacity-only keeps Framer Motion away from `transform` entirely.
 const windowEnterExit = {
   hidden: {
     opacity: 0,
-    scale: 0.92,
-    transition: { duration: 0.25, ease: EASE_IN },
+    transition: { duration: 0.2, ease: EASE_IN },
   },
   visible: {
     opacity: 1,
-    scale: 1,
-    transition: { duration: 0.35, ease: EASE_OUT },
+    transition: { duration: 0.3, ease: EASE_OUT },
   },
   exit: {
     opacity: 0,
-    scale: 0.94,
-    transition: { duration: 0.2, ease: EASE_IN },
+    transition: { duration: 0.15, ease: EASE_IN },
   },
 };
 
@@ -417,12 +416,10 @@ export default function ExtendedWindow({
           {/* Window */}
           <motion.div
             key={`extended-window-${mode}`}
-            layout
             variants={windowEnterExit}
             initial="hidden"
             animate="visible"
             exit="exit"
-            transition={{ layout: { duration: 0.35, ease: EASE_OUT } }}
             className="fixed z-50 flex flex-col overflow-hidden"
             style={{
               ...positionStyle,
