@@ -121,11 +121,11 @@ const WAKE_WORDS = ["jarvis", "hey jarvis", "okay jarvis"];
 
 // detectionThreshold: 0.0–1.0
 // 0.5 = default (requires raised voice in noisy environments)
-// 0.35 = recommended for desktop normal use
+// 0.45 = current — sensitive enough for normal voice, resistant to ambient false triggers
 // 0.2 = very sensitive (may false-trigger on similar words)
-const WAKE_DETECT_THRESHOLD = 0.35;
+const WAKE_DETECT_THRESHOLD = 0.45;
 // Minimum ms between wake-word triggers to prevent double-firing on echo
-const WAKE_COOL_MS = 2500;
+const WAKE_COOL_MS = 3500;
 
 let _wakeWordEngine: InstanceType<typeof WakeWordEngine> | null = null;
 let _wakeWordActive = false;

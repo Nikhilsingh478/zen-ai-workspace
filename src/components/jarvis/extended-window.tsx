@@ -50,18 +50,17 @@ interface CopyActionProps {
 // ─── Position constants ───────────────────────────────────────────────────────
 
 const WINDOWED_STYLE: React.CSSProperties = {
+  position: "fixed",
   top: "50%",
   left: "50%",
   transform: "translate(-50%, -50%)",
-  width: "min(68vw, calc(100vw - 48px))",
-  maxWidth: "860px",
-  minWidth: "480px",
-  height: "min(70vh, calc(100vh - 48px))",
-  maxHeight: "800px",
-  minHeight: "480px",
+  width: "65vw",
+  maxWidth: "820px",
+  minWidth: "500px",
+  height: "65vh",
+  maxHeight: "760px",
+  minHeight: "460px",
   borderRadius: "16px",
-  bottom: "auto",
-  right: "auto",
   overflow: "hidden",
 };
 
