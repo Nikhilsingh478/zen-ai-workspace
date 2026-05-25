@@ -1,0 +1,241 @@
+JARVIS — Fix Session: Part 3 of 3 — Date Context, Timeline Context, Voice
+Read src/lib/jarvis.ts, src/lib/gemini.ts, and src/lib/timeline.ts completely before touching anything. Understand how executeToolCall handles get_today_tasks, how buildJarvisSystemPrompt builds context, and how Timeline stores month data.
+Write every line as a super senior developer. Clean, typed, maintainable, zero hacks.
+
+FILES TO TOUCH
+
+src/lib/jarvis.ts
+src/lib/gemini.ts
+src/lib/timeline.ts — read only, do not modify
+
+
+FIX 1 — DATE CONTEXT BUG (JARVIS THINKS IT'S YESTERDAY)
+Problem: After midnight, get_today_tasks still returns tasks for the previous day. The date string being used is stale — computed at module load time instead of at call time.
+Fix: In executeToolCall inside src/lib/gemini.ts, find the get_today_tasks handler. Replace any hardcoded or cached date with a fresh new Date() call:
+typescriptcase 'get_today_tasks': {
+  // CRITICAL: compute date at call time, not module load time
+  const now = new Date()
+  const todayStr = now.toLocaleDateString('en-CA') // YYYY-MM-DD in local time
+  // en-CA locale gives YYYY-MM-DD format — correct for database comparison
+
+  const { data, error } = await supabase
+    .from('horizon_tasks')
+    .select('*')
+    .eq('task_date', todayStr)
+    .order('task_time', { ascending: true })
+
+  if (error || !data || data.length === 0) {
+    return `No tasks found for today (${todayStr}).`
+  }
+
+  const taskList = data.map(t =>
+    `• ${t.title} at ${t.task_time} (${t.priority} priority)${t.completed ? ' ✓' : ''}`
+  ).join('\n')
+
+  return `Tasks for today (${todayStr}):\n${taskList}`
+}
+Why en-CA: JavaScript's toISOString() returns UTC time which can give the wrong date after midnight in IST (UTC+5:30). toLocaleDateString('en-CA') uses the local timezone correctly and returns YYYY-MM-DD format matching your database.
+Also update get_pending_tasks to include the date in the output so Jarvis knows which dates tasks belong to:
+typescriptcase 'get_pending_tasks': {
+  const { data, error } = await supabase
+    .from('horizon_tasks')
+    .select('*')
+    .eq('completed', false)
+    .order('task_date', { ascending: true })
+    .order('task_time', { ascending: true })
+    .limit(20) // prevent massive context dumps
+
+  if (error || !data || data.length === 0) {
+    return 'No pending tasks found.'
+  }
+
+  const taskList = data.map(t =>
+    `• ${t.task_date} ${t.task_time} — ${t.title} (${t.priority})`
+  ).join('\n')
+
+  return `Pending tasks (${data.length} total):\n${taskList}`
+}
+
+FIX 2 — TIMELINE CONTEXT MISSING FROM JARVIS
+Problem: Jarvis has no knowledge of your monthly Timeline goals. It knows Horizon tasks (individual items) but not the bigger picture of what you're working toward each month.
+Fix: Inject Timeline month context into buildJarvisSystemPrompt in src/lib/jarvis.ts.
+First add a function to fetch Timeline context:
+typescriptinterface TimelineMonthContext {
+  monthKey: string
+  context: string
+  generatedSchedule: string | null
+}
+
+async function fetchTimelineContext(): Promise<TimelineMonthContext[]> {
+  try {
+    const { data, error } = await supabase
+      .from('timeline_months')
+      .select('month_key, context, generated_schedule')
+      .neq('context', '') // only months that have goals written
+      .order('month_key', { ascending: true })
+
+    if (error || !data) return []
+
+    return data.map(row => ({
+      monthKey: row.month_key as string,
+      context: row.context as string,
+      generatedSchedule: row.generated_schedule as string | null,
+    }))
+  } catch {
+    return []
+  }
+}
+Update buildJarvisSystemPrompt signature to accept timeline data:
+typescriptexport function buildJarvisSystemPrompt(
+  userContext: string,
+  recentMemories: Memory[],
+  sessionSummaries: string[],
+  timelineMonths?: TimelineMonthContext[] // new optional param
+): string {
+Add timeline section to the prompt string:
+typescript// Add this block inside buildJarvisSystemPrompt
+// after the memories section, before the conversational behavior block:
+
+const timelineSection = timelineMonths && timelineMonths.length > 0
+  ? `
+MONTHLY GOALS & TIMELINE (what the user is working toward):
+${timelineMonths.map(m => `
+[${m.monthKey}]
+Goals: ${m.context.slice(0, 400)}${m.context.length > 400 ? '...' : ''}
+`).join('')}
+
+Use this to understand the user's broader goals and context when 
+answering questions. If they ask about progress or plans, reference 
+these goals.
+`
+  : ''
+Append timelineSection to the prompt string.
+Update initJarvisSession in src/lib/jarvis.ts to fetch timeline context and pass it to the prompt builder:
+typescriptexport async function initJarvisSession(): Promise<void> {
+  try {
+    const [sessionId, memories, summaries, timelineMonths] = await Promise.all([
+      startSession(),
+      getRecentMemories(20),
+      getRecentSessionSummaries(3),
+      fetchTimelineContext(), // new
+    ])
+
+    const userContext = localStorage.getItem('jarvis:user-context') ?? ''
+
+    const systemPrompt = buildJarvisSystemPrompt(
+      userContext,
+      memories,
+      summaries,
+      timelineMonths // pass through
+    )
+
+    patch({
+      currentSessionId: sessionId,
+      recentMemories: memories,
+      sessionSummaries: summaries,
+      systemPrompt,
+    })
+  } catch (err) {
+    console.error('[JARVIS] initJarvisSession error:', err)
+  }
+}
+
+FIX 3 — VOICE QUALITY: SWITCH TO BETTER BROWSER VOICE
+Problem: Kokoro keeps failing with HuggingFace auth errors in Replit's environment. Browser TTS fallback sounds robotic.
+For Kokoro — try a completely different model source:
+In src/workers/kokoro-worker.js, replace the HuggingFace URL approach with the @huggingface/transformers pipeline approach which uses a different CDN:
+javascript// Try this model ID which has better CDN availability
+const MODEL_OPTIONS = [
+  // Lighter model — more likely to load without auth
+  { id: 'Xenova/speecht5_tts', dtype: 'fp32' },
+  // Fallback to kokoro with different dtype
+  { id: 'onnx-community/Kokoro-82M-v1.0', dtype: 'q4' },
+]
+
+// In the load handler, try each option:
+for (const option of MODEL_OPTIONS) {
+  try {
+    tts = await KokoroTTS.from_pretrained(option.id, {
+      dtype: option.dtype,
+      progress_callback: (p) => {
+        if (p.status === 'progress') {
+          self.postMessage({
+            type: 'loading',
+            message: `Loading voice... ${Math.round(p.progress || 0)}%`
+          })
+        }
+      }
+    })
+    console.log(`[Kokoro Worker] Loaded: ${option.id}`)
+    break
+  } catch (err) {
+    console.warn(`[Kokoro Worker] ${option.id} failed:`, err.message)
+  }
+}
+For browser TTS fallback — improve voice selection and naturalness:
+In src/lib/jarvis.ts, update getBestMaleVoice() with an expanded priority list and add naturalness improvements:
+typescriptfunction getBestMaleVoice(): SpeechSynthesisVoice | null {
+  const voices = window.speechSynthesis.getVoices()
+  if (voices.length === 0) return null
+
+  // Priority order — best quality male voices across platforms
+  const priority = [
+    'Google UK English Male',
+    'Microsoft Ryan Online (Natural)',  // Edge neural voice
+    'Microsoft Guy Online (Natural)',   // Edge neural voice
+    'Microsoft David Desktop',
+    'Microsoft Mark Desktop',
+    'Google US English',
+    'Alex',    // macOS
+    'Daniel',  // macOS UK
+    'Fred',    // macOS
+  ]
+
+  for (const name of priority) {
+    const match = voices.find(v =>
+      v.name.toLowerCase().includes(name.toLowerCase())
+    )
+    if (match) return match
+  }
+
+  // Any online/neural voice (Edge has great neural voices)
+  const neural = voices.find(v =>
+    v.name.toLowerCase().includes('online') ||
+    v.name.toLowerCase().includes('natural') ||
+    v.name.toLowerCase().includes('neural')
+  )
+  if (neural) return neural
+
+  // Any male-labeled voice
+  const male = voices.find(v =>
+    v.name.toLowerCase().includes('male')
+  )
+  if (male) return male
+
+  // English fallback
+  return voices.find(v => v.lang.startsWith('en')) ?? null
+}
+Also improve naturalness of browser TTS in playNext() fallback:
+typescript// In the browser TTS fallback section:
+utterance.rate = 0.92    // slightly slower — more natural pacing
+utterance.pitch = 0.85   // lower pitch — masculine
+utterance.volume = 1.0
+
+// Add slight pause between sentences for natural breathing
+// Already handled by sentence-level queuing in TTSQueue
+Add a note in the console when browser TTS is used:
+typescriptif (!kokoroManager.ready) {
+  console.log('[TTS] Using browser fallback voice:', 
+    getBestMaleVoice()?.name ?? 'default')
+}
+
+NON-NEGOTIABLE REQUIREMENTS
+
+toLocaleDateString('en-CA') must be used for all date comparisons — never toISOString().split('T')[0] which gives UTC date
+fetchTimelineContext() must handle errors silently — return [] on any failure, never throw
+timelineMonths param in buildJarvisSystemPrompt is optional — existing call sites without it must still work
+Timeline context must be truncated to 400 chars per month — prevent context bloat
+initJarvisSession must use Promise.all for all 4 fetches — parallel, not sequential
+Zero TypeScript errors
+Do not modify src/lib/timeline.ts — only read from Supabase directly
+Do not touch jarvis.tsx, extended-window.tsx, horizon.ts, or any page file

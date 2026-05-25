@@ -129,6 +129,7 @@ const WAKE_COOL_MS = 2500;
 
 let _wakeWordEngine: InstanceType<typeof WakeWordEngine> | null = null;
 let _wakeWordActive = false;
+let _wakeWordInitializing = false;
 
 function isMobileUA(): boolean {
   if (typeof navigator === "undefined") return false;
@@ -289,49 +290,63 @@ function startInterruptListener(): void {
   if (!SpeechRecognitionCtor) return;
   if (_interruptRecognition) return;
 
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    _interruptRecognition = new SR();
-    _interruptRecognition.continuous = false;
-    _interruptRecognition.interimResults = false;
-    _interruptRecognition.lang = "en-US";
-    _interruptRecognition.maxAlternatives = 1;
+  function createAndStart(): void {
+    if (_state.voiceState !== "speaking") return;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    _interruptRecognition.onresult = (event: any) => {
-      const transcript: string = event.results[0][0].transcript.toLowerCase().trim();
-      if (INTERRUPT_WORDS.some((w) => transcript.includes(w))) {
-        ttsQueue.interrupt();
-        stopInterruptListener();
-        transitionAudioState("interrupted");
-        setTimeout(() => {
-          if (_state.voiceState === "interrupted") {
-            transitionAudioState("idle");
-          }
-        }, 800);
-      }
-    };
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const recognition: any = new SR();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = "en-US";
+      recognition.maxAlternatives = 1;
 
-    _interruptRecognition.onerror = () => {
-      // Best-effort — silent fail
-    };
-
-    _interruptRecognition.onend = () => {
-      // Restart if JARVIS is still speaking
-      if (_state.voiceState === "speaking" && _interruptRecognition) {
-        try {
-          _interruptRecognition.start();
-        } catch {
-          // Ignore — recognition may already be starting
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      recognition.onresult = (event: any) => {
+        const transcript: string = event.results[0][0].transcript.toLowerCase().trim();
+        if (INTERRUPT_WORDS.some((w) => transcript.includes(w))) {
+          ttsQueue.interrupt();
+          stopInterruptListener();
+          transitionAudioState("interrupted");
+          setTimeout(() => {
+            if (_state.voiceState === "interrupted") {
+              transitionAudioState("idle");
+            }
+          }, 800);
         }
-      }
-    };
+      };
 
-    _interruptRecognition.start();
-  } catch (e) {
-    console.warn("[JARVIS] Interrupt listener failed to start:", e);
+      // On end — create a fresh instance rather than restarting the ended one
+      recognition.onend = () => {
+        if (_state.voiceState === "speaking") {
+          setTimeout(() => {
+            if (_state.voiceState === "speaking") {
+              createAndStart();
+            }
+          }, 100);
+        }
+      };
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      recognition.onerror = (event: any) => {
+        // Non-fatal errors — restart if still in speaking state
+        if (event.error === "aborted" || event.error === "no-speech") {
+          if (_state.voiceState === "speaking") {
+            setTimeout(() => createAndStart(), 200);
+          }
+        }
+      };
+
+      _interruptRecognition = recognition;
+      recognition.start();
+    } catch {
+      // Best-effort — interrupt is not critical
+    }
   }
+
+  createAndStart();
 }
 
 function stopInterruptListener(): void {
@@ -500,6 +515,8 @@ class TTSQueue {
     if (this.queue.length === 0) {
       this.isPlaying = false;
       this.stopKeepAlive();
+      // All sentences spoken — start cooldown NOW, not when enqueue() was called
+      startConversationCooldown();
       transitionAudioState("idle", { isAwake: false, transcript: "" });
       this.onDoneCallback?.();
       this.onDoneCallback = null;
@@ -1133,19 +1150,33 @@ CONVERSATIONAL BEHAVIOR:
 async function startWakeWordDetection(): Promise<void> {
   // Only on desktop — mobile users tap-to-talk exclusively
   if (isMobileUA()) return;
-  if (_wakeWordActive || _wakeWordEngine) return;
+  if (_wakeWordActive) return;
+  if (_wakeWordInitializing) return; // prevent parallel initialization
+  if (!_state.enabled) return;
+
+  _wakeWordInitializing = true;
 
   try {
-    _wakeWordEngine = new WakeWordEngine({
+    // Create engine locally — do NOT assign to module state until fully ready
+    const engine = new WakeWordEngine({
       baseAssetUrl: "/openwakeword/models",
       keywords: ["hey_jarvis"],
       detectionThreshold: WAKE_DETECT_THRESHOLD,
       cooldownMs: WAKE_COOL_MS,
     });
 
-    await _wakeWordEngine.load();
+    // Step 1 — load() must complete before wiring any events
+    await engine.load();
 
-    _wakeWordEngine.on("detect", ({ keyword, score }) => {
+    // Step 2 — check we're still wanted after the async gap
+    // (user may have disabled JARVIS while load was in progress)
+    if (!_state.enabled) {
+      _wakeWordInitializing = false;
+      return;
+    }
+
+    // Step 3 — wire events only after load completes
+    engine.on("detect", ({ keyword, score }: { keyword: string; score: number }) => {
       console.log(`[WakeWord] Detected: ${keyword} (score: ${score.toFixed(2)})`);
       if (_state.voiceState === "idle" && _state.enabled) {
         transitionAudioState("listening");
@@ -1153,26 +1184,41 @@ async function startWakeWordDetection(): Promise<void> {
       }
     });
 
-    _wakeWordEngine.on("error", (err: Error) => {
-      console.warn("[WakeWord] Error:", err);
+    engine.on("error", (err: Error) => {
+      console.warn("[WakeWord] Runtime error:", err.message);
     });
 
-    await _wakeWordEngine.start();
+    // Step 4 — start() only after events are wired
+    await engine.start();
+
+    // Step 5 — commit to module state only after full success
+    _wakeWordEngine = engine;
     _wakeWordActive = true;
+    _wakeWordInitializing = false;
+
     console.log('[JARVIS] Wake word detection active — say "Hey Jarvis"');
   } catch (err) {
-    console.warn("[WakeWord] Init failed — tap-to-talk still works:", (err as Error).message);
-    _wakeWordEngine = null;
+    _wakeWordInitializing = false;
     _wakeWordActive = false;
+    _wakeWordEngine = null;
+    console.warn("[WakeWord] Init failed — tap-to-talk still works:", (err as Error).message);
   }
 }
 
 async function stopWakeWordDetection(): Promise<void> {
-  if (_wakeWordEngine) {
-    try { await _wakeWordEngine.stop(); } catch { /* ignore — engine may already be stopped */ }
-    _wakeWordEngine = null;
-  }
   _wakeWordActive = false;
+  _wakeWordInitializing = false;
+
+  if (_wakeWordEngine) {
+    // Capture reference before nulling — prevents race on event handlers
+    const engine = _wakeWordEngine;
+    _wakeWordEngine = null;
+    try {
+      await engine.stop();
+    } catch {
+      // Silent — engine may already be stopped
+    }
+  }
 }
 
 function startCommandListening(): void {
@@ -1440,7 +1486,8 @@ function endConversation(): void {
  * conversation continues. Otherwise ends.
  */
 function startConversationCooldown(): void {
-  if (_conversationRuntime.mode !== "active") return;
+  // Allow reset even in cooling-down (e.g. long speech overlapping a previous cooldown)
+  if (_conversationRuntime.mode === "idle") return;
 
   _conversationRuntime.mode = "cooling-down";
   _conversationRuntime.lastReplyAt = Date.now();
@@ -1455,7 +1502,8 @@ function startConversationCooldown(): void {
   }, CONVERSATION_COOLDOWN_MS);
 
   // Auto-resume listening for follow-up.
-  // Small delay so TTS audio fully stops before mic opens.
+  // 600ms delay — gives TTS audio time to fully stop so the mic doesn't
+  // pick up the final syllable as a new command.
   setTimeout(() => {
     if (
       _conversationRuntime.mode === "cooling-down" &&
@@ -1466,7 +1514,7 @@ function startConversationCooldown(): void {
       transitionAudioState("listening");
       startCommandListening();
     }
-  }, 400);
+  }, 600);
 }
 
 /**
@@ -1641,12 +1689,10 @@ async function handleCommand(commandText: string) {
       }).catch(() => null);
 
       ttsQueue.enqueue(cleanTextForSpeech(searchResult.text), () => {
-        transitionAudioState("idle", { isAwake: false, transcript: "" });
         if (_state.enabled && _conversationRuntime.mode === "idle") {
           setTimeout(() => void startWakeWordDetection(), 400);
         }
       });
-      startConversationCooldown();
 
       return;
     }
@@ -1696,12 +1742,10 @@ async function handleCommand(commandText: string) {
     }).catch(() => null);
 
     ttsQueue.enqueue(cleanTextForSpeech(clean), () => {
-      transitionAudioState("idle", { isAwake: false, transcript: "" });
       if (_state.enabled && _conversationRuntime.mode === "idle") {
         setTimeout(() => void startWakeWordDetection(), 400);
       }
     });
-    startConversationCooldown();
   } catch (err) {
     console.error("[JARVIS] handleCommand error:", err);
     toast.error("JARVIS encountered an error", { duration: 3000 });

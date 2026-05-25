@@ -1,0 +1,277 @@
+Full Issue Map
+Issue 1 — Extended Window Position & Color
+Screenshot 2 shows the window should be center-left of the screen, roughly covering the orb area and left panel space. Currently it's bottom-right. Wrong position. Also needs the dark blue/teal color palette matching the existing JARVIS HUD theme — not plain black/white.
+Issue 2 — Stop Word Not Working
+Interrupt listener broke again. Console shows conversation ending on cooldown but no interrupt detection firing.
+Issue 3 — Conversation Cooldown Too Short
+[JARVIS] Conversation started
+[JARVIS] Cooldown expired — ending conversation  ← fires immediately
+[JARVIS] Conversation ended
+Cooldown is expiring WHILE Jarvis is still speaking. The cooldown timer starts when ttsQueue.enqueue() is called — but Jarvis hasn't finished speaking yet at that point. Should start AFTER TTS finishes, not when it starts.
+Issue 4 — Wake Word Re-initializing Multiple Times
+[WakeWord] Init failed — Call load() before start()
+[WakeWord] Init failed — Cannot read properties of null (reading 'on')
+Race condition still happening. The engine gets nulled mid-initialization.
+Issue 5 — Kokoro Still Failing
+HuggingFace auth error persists across all dtype attempts. Need a completely different approach.
+Issue 6 — Date Context Bug
+Jarvis thinks it's still May 24th after midnight. The get_today_tasks tool is using a hardcoded or stale date. Needs to use new Date() at call time, not at module load time.
+Issue 7 — Timeline Context Missing
+Jarvis has Horizon tasks but not Timeline month goals/context. The buildJarvisSystemPrompt function doesn't include Timeline data.
+Issue 8 — Voice Still Robotic
+Kokoro failing means browser TTS is being used. Need a better fallback voice strategy.
+
+How Many Parts
+Part 1 — Conversation cooldown fix + stop word fix + wake word race condition fix (~4800 chars)
+Part 2 — Extended window position + color palette overhaul (~4800 chars)
+Part 3 — Date context fix + Timeline context injection + Kokoro alternative approach (~4500 chars)
+
+3 parts total. Writing Part 1 now.
+
+JARVIS — Fix Session: Part 1 of 3 — Conversation, Stop Word, Wake Word
+Read src/lib/jarvis.ts completely before touching anything. Understand the full flow of handleCommand, startConversationCooldown, TTSQueue.playNext(), startInterruptListener, and startWakeWordDetection. Do not write a single line until you have read the file fully.
+Write every line as a super senior developer. Clean, typed, single-responsibility, zero hacks.
+
+FILES TO TOUCH
+
+src/lib/jarvis.ts only
+
+Do NOT touch any other file in this part.
+
+FIX 1 — CONVERSATION COOLDOWN FIRES WHILE JARVIS IS STILL SPEAKING
+Root cause: startConversationCooldown() is called immediately after ttsQueue.enqueue() — but at that point TTS hasn't started speaking yet. The 8 second cooldown starts counting from when speech is enqueued, not when it finishes. If Jarvis speaks for 10 seconds, cooldown expires 2 seconds before he finishes talking.
+Fix: Move startConversationCooldown() from the enqueue call site to inside TTSQueue — specifically called when the queue fully drains (all sentences spoken).
+In TTSQueue, find where transitionAudioState('idle') is called when the queue empties — this is the correct moment. Call startConversationCooldown() there:
+typescript// In TTSQueue.playNext(), where queue empties:
+if (this.queue.length === 0) {
+  this.isPlaying = false
+  this.stopKeepAlive()
+  // Queue is empty — all speech finished
+  // NOW start the conversation cooldown (not when enqueue was called)
+  startConversationCooldown()
+  transitionAudioState('idle')
+  return
+}
+Remove ALL existing startConversationCooldown() calls from handleCommand and anywhere else they currently exist. There must be exactly ONE call site — inside TTSQueue.playNext() when queue drains.
+Also update startConversationCooldown() itself — the auto-resume listening delay needs to be longer to account for the fact that the mic opens right after speaking stops:
+typescriptfunction startConversationCooldown(): void {
+  if (_conversationRuntime.mode === 'idle') return
+
+  _conversationRuntime.mode = 'cooling-down'
+  _conversationRuntime.lastReplyAt = Date.now()
+
+  if (_conversationRuntime.cooldownTimeoutId) {
+    clearTimeout(_conversationRuntime.cooldownTimeoutId)
+  }
+
+  _conversationRuntime.cooldownTimeoutId = setTimeout(() => {
+    console.log('[JARVIS] Cooldown expired — ending conversation')
+    endConversation()
+  }, CONVERSATION_COOLDOWN_MS) // 8000ms from when speech ENDS
+
+  // Auto-resume listening — delay 600ms after speech ends
+  // so browser doesn't pick up the last TTS syllable
+  setTimeout(() => {
+    if (
+      _conversationRuntime.mode === 'cooling-down' &&
+      _state.enabled &&
+      (_state.audioState === 'idle')
+    ) {
+      console.log('[JARVIS] Auto-resuming — listening for follow-up')
+      transitionAudioState('listening')
+      startCommandListening()
+    }
+  }, 600)
+}
+
+FIX 2 — STOP WORD INTERRUPT NOT WORKING
+Root cause: startInterruptListener() starts a SpeechRecognition instance, but SpeechRecognition.continuous = false means it only listens for one utterance then stops. Once it gets a result (or timeout), it stops listening. If Jarvis speaks for more than a few seconds the interrupt listener has already died.
+Fix: Make the interrupt listener restart itself continuously while in speaking state:
+typescriptfunction startInterruptListener(): void {
+  if (!('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)) return
+  if (_state.interruptRecognition) return // already running
+
+  const SR = (window as any).SpeechRecognition || 
+             (window as any).webkitSpeechRecognition
+
+  function createAndStart(): void {
+    // Don't restart if we've left speaking state
+    if (_state.audioState !== 'speaking') return
+
+    try {
+      const recognition = new SR()
+      recognition.continuous = false
+      recognition.interimResults = false
+      recognition.lang = 'en-US'
+      recognition.maxAlternatives = 1
+
+      recognition.onresult = (event: SpeechRecognitionEvent) => {
+        const transcript = event.results[0][0].transcript
+                            .toLowerCase().trim()
+        const INTERRUPT_WORDS = [
+          'stop', 'wait', 'hold on', 'shut up',
+          'pause', 'enough', 'quiet', 'silence'
+        ]
+
+        if (INTERRUPT_WORDS.some(word => transcript.includes(word))) {
+          ttsQueue.interrupt()
+          stopInterruptListener()
+          transitionAudioState('interrupted')
+          setTimeout(() => {
+            if (_state.audioState === 'interrupted') {
+              transitionAudioState('idle')
+            }
+          }, 800)
+        }
+      }
+
+      // On end — restart if still in speaking state
+      recognition.onend = () => {
+        if (_state.audioState === 'speaking') {
+          // Small delay before restarting to avoid rapid cycling
+          setTimeout(() => {
+            if (_state.audioState === 'speaking') {
+              createAndStart()
+            }
+          }, 100)
+        }
+      }
+
+      recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+        // On error — restart if still speaking, unless it's a fatal error
+        if (event.error === 'aborted' || event.error === 'no-speech') {
+          if (_state.audioState === 'speaking') {
+            setTimeout(() => createAndStart(), 200)
+          }
+        }
+      }
+
+      _state.interruptRecognition = recognition
+      recognition.start()
+    } catch (e) {
+      // Silent fail — interrupt is best-effort
+    }
+  }
+
+  createAndStart()
+}
+
+function stopInterruptListener(): void {
+  if (_state.interruptRecognition) {
+    try { _state.interruptRecognition.stop() } catch (e) {}
+    _state.interruptRecognition = null
+  }
+}
+Make sure stopInterruptListener() is called in transitionAudioState whenever leaving speaking state — this is existing behavior, just verify it's there.
+
+FIX 3 — WAKE WORD ENGINE RACE CONDITION AND NULL DEREFERENCE
+Console errors:
+[WakeWord] Init failed — Call load() before start()
+[WakeWord] Init failed — Cannot read properties of null (reading 'on')
+Root cause: Two race conditions:
+
+_wakeWordEngine gets set to null in the error handler while load() is still in progress
+The engine is being initialized multiple times in parallel when startWakeWordDetection() is called rapidly
+
+Fix: Add a proper initialization lock and null-safety throughout:
+typescriptlet _wakeWordEngine: InstanceType<typeof WakeWordEngine> | null = null
+let _wakeWordActive = false
+let _wakeWordInitializing = false // NEW — initialization lock
+
+async function startWakeWordDetection(): Promise<void> {
+  if (isMobile()) return
+  if (_wakeWordActive) return
+  if (_wakeWordInitializing) return // prevent parallel init
+  if (!_state.enabled) return
+
+  _wakeWordInitializing = true
+
+  try {
+    // Create engine
+    const engine = new WakeWordEngine({
+      baseAssetUrl: '/openwakeword/models',
+      keywords: ['hey_jarvis'],
+      detectionThreshold: 0.35,
+      cooldownMs: 2500,
+    })
+
+    // STEP 1 — load() MUST complete before anything else
+    await engine.load()
+
+    // STEP 2 — check we're still wanted after the await
+    // (user may have disabled JARVIS while load was in progress)
+    if (!_state.enabled) {
+      _wakeWordInitializing = false
+      return
+    }
+
+    // STEP 3 — wire events only after load completes
+    engine.on('detect', ({ keyword, score }: {
+      keyword: string
+      score: number
+    }) => {
+      console.log(
+        `[WakeWord] Detected: ${keyword} (score: ${score.toFixed(2)})`
+      )
+      if (_state.audioState === 'idle' && _state.enabled) {
+        transitionAudioState('listening')
+        startCommandListening()
+      }
+    })
+
+    engine.on('error', (err: Error) => {
+      console.warn('[WakeWord] Runtime error:', err.message)
+    })
+
+    // STEP 4 — start() only after events are wired
+    await engine.start()
+
+    // STEP 5 — commit to module state only after full success
+    _wakeWordEngine = engine
+    _wakeWordActive = true
+    _wakeWordInitializing = false
+
+    console.log('[JARVIS] Wake word active — say "Hey Jarvis"')
+  } catch (err) {
+    _wakeWordInitializing = false
+    _wakeWordActive = false
+    _wakeWordEngine = null
+    console.warn(
+      '[WakeWord] Init failed — tap-to-talk still works:',
+      (err as Error).message
+    )
+  }
+}
+
+async function stopWakeWordDetection(): Promise<void> {
+  _wakeWordActive = false
+  _wakeWordInitializing = false
+
+  if (_wakeWordEngine) {
+    const engine = _wakeWordEngine
+    _wakeWordEngine = null // null first — prevents race on 'on' handler
+    try {
+      await engine.stop()
+    } catch (e) {
+      // Silent — engine may already be stopped
+    }
+  }
+}
+Key changes:
+
+_wakeWordInitializing flag prevents parallel initialization
+_wakeWordEngine is only set AFTER full successful init — no partial state
+Engine reference is captured in local const engine before nulling module ref in stopWakeWordDetection — prevents null dereference
+State check after load() await handles the case where user disabled JARVIS mid-load
+
+
+NON-NEGOTIABLE REQUIREMENTS
+
+startConversationCooldown() must have exactly ONE call site — inside TTSQueue.playNext() when queue empties. Remove all other call sites.
+The interrupt listener must restart itself on onend while in speaking state
+_wakeWordInitializing flag must be reset in BOTH success and error paths
+_wakeWordEngine must only be assigned after fully successful initialization
+Zero TypeScript errors
+Do not touch any other file — jarvis.tsx, gemini.ts, horizon.ts, extended-window.tsx all untouched
+After these fixes the console should show clean conversation flow: started → auto-resume listening → cooldown only after speech ends → clean end after 8s silence
+
