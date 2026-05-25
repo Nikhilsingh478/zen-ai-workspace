@@ -65,6 +65,7 @@ const WINDOWED_STYLE: React.CSSProperties = {
 };
 
 const FULLSCREEN_STYLE: React.CSSProperties = {
+  position: "fixed",
   top: "16px",
   left: "16px",
   right: "16px",
@@ -315,23 +316,23 @@ function WindowMessage({ message, mode }: WindowMessageProps) {
 const EASE_OUT: [number, number, number, number] = [0.33, 1, 0.68, 1];
 const EASE_IN: [number, number, number, number] = [0.32, 0, 0.67, 0];
 
+// y is intentionally absent — Framer Motion's y animation writes its own
+// transform string and overwrites the translate(-50%,-50%) centering in
+// WINDOWED_STYLE. Opacity + scale only keeps the centering intact.
 const windowEnterExit = {
   hidden: {
     opacity: 0,
     scale: 0.92,
-    y: 20,
     transition: { duration: 0.25, ease: EASE_IN },
   },
   visible: {
     opacity: 1,
     scale: 1,
-    y: 0,
     transition: { duration: 0.35, ease: EASE_OUT },
   },
   exit: {
     opacity: 0,
     scale: 0.94,
-    y: 12,
     transition: { duration: 0.2, ease: EASE_IN },
   },
 };
@@ -454,14 +455,17 @@ export default function ExtendedWindow({
             {/* Message scroll area */}
             <div
               ref={scrollRef}
-              className="flex-1 overflow-y-auto px-5 py-4"
+              className="flex-1 overflow-y-auto"
               style={{
                 scrollbarWidth: "thin",
                 scrollbarColor: "#0f2040 transparent",
-                maxWidth: "100%",
-                boxSizing: "border-box",
               }}
             >
+              {/* Inner column — constrained to 75% width in fullscreen for readability */}
+              <div
+                className="py-4 px-5 mx-auto"
+                style={{ maxWidth: isFullscreen ? "75%" : "100%" }}
+              >
               {visibleMessages.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center gap-3">
                   <div
@@ -496,6 +500,7 @@ export default function ExtendedWindow({
                   <WindowMessage key={message.id} message={message} mode={mode} />
                 ))
               )}
+              </div>
             </div>
 
             {/* Status bar */}
