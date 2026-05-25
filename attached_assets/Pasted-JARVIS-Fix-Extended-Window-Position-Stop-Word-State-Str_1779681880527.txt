@@ -1,0 +1,96 @@
+JARVIS — Fix: Extended Window Position + Stop Word State String
+Read src/components/jarvis/extended-window.tsx and src/lib/jarvis.ts fully before touching anything.
+
+FILES TO TOUCH
+
+src/components/jarvis/extended-window.tsx
+src/lib/jarvis.ts
+
+
+FIX 1 — EXTENDED WINDOW STILL BOTTOM-RIGHT AND CUT OFF
+The window is appearing at the bottom-right of the screen, cut off, not centered. This is wrong. The window needs to be centered on the screen, fully visible, not touching any edges.
+Find the motion.div that renders the floating window. It currently has positioning styles placing it at bottom/right. Remove all of those completely.
+Replace with this exact inline style applied directly on the window motion.div:
+typescriptconst windowStyle: React.CSSProperties = isFullscreen
+  ? {
+      position: 'fixed',
+      top: '16px',
+      left: '16px',
+      right: '16px',
+      bottom: '16px',
+      width: 'auto',
+      height: 'auto',
+      transform: 'none',
+      borderRadius: '20px',
+    }
+  : {
+      position: 'fixed',
+      top: '50%',
+      left: '50%',
+      transform: 'translate(-50%, -50%)',
+      width: '65vw',
+      maxWidth: '820px',
+      minWidth: '500px',
+      height: '65vh',
+      maxHeight: '760px',
+      minHeight: '460px',
+      borderRadius: '16px',
+    }
+Apply it like this on the motion.div:
+tsx<motion.div
+  layout
+  style={windowStyle}
+  transition={{ layout: { duration: 0.35, ease: [0.33, 1, 0.68, 1] } }}
+  className="fixed z-50 flex flex-col overflow-hidden"
+  ...
+>
+Critical: Remove bottom, right, bottom: 'auto', right: 'auto' from any existing style objects on this element. These override the centering. The only positioning properties should be top: '50%', left: '50%', transform: 'translate(-50%, -50%)'.
+Also make sure the className does NOT contain bottom-6, right-6, bottom-24, right-24 or any Tailwind positioning classes — remove them all. Positioning is handled entirely by the inline style.
+Also add overflow: 'hidden' to the windowed style object so content never bleeds outside.
+
+FIX 2 — STOP WORD NOT WORKING BECAUSE WRONG STATE STRING
+Looking at the JARVIS UI screenshot, the voice mode shows "RESPONDING" — this means the state string for speaking is 'responding' not 'speaking'.
+In src/lib/jarvis.ts, find startInterruptListener() and the createAndStart() closure inside it.
+Find every single check that says _state.voiceState === 'speaking' or _state.voiceState !== 'speaking' and replace with the correct value:
+typescript// Every instance of this:
+_state.voiceState === 'speaking'
+// Replace with:
+_state.voiceState === 'responding'
+
+// Every instance of this:
+_state.voiceState !== 'speaking'
+// Replace with:
+_state.voiceState !== 'responding'
+There should be 3 places inside createAndStart():
+
+Top guard at start of function
+Inside onend handler
+Inside onerror handler
+
+Replace all 3.
+Also find where transitionAudioState sets the state to the speaking/responding value. Confirm that startInterruptListener() is called there. If it is not called when transitioning to 'responding', add it:
+typescript// Where voiceState is set to 'responding':
+// Make sure this line exists right after:
+startInterruptListener()
+And confirm stopInterruptListener() is called when leaving 'responding' state.
+
+FIX 3 — WAKE WORD TRIGGERING ON RANDOM WORDS
+From screenshot 1 — JARVIS picked up "okay" as a wake word trigger when it was on standby. This is the OpenWakeWord detection threshold being too sensitive for some ambient sounds.
+In src/lib/jarvis.ts, find startWakeWordDetection(). Update two values:
+typescript// Change threshold from 0.35 to 0.45
+detectionThreshold: 0.45,  // was 0.35 — raise to reduce false triggers
+
+// Change cooldown from 2500 to 3500
+cooldownMs: 3500,  // was 2500 — longer cooldown prevents rapid re-triggers
+0.45 is still sensitive enough for normal voice at normal distance but significantly reduces false triggers from ambient speech like "okay", "hey", random TV sounds etc.
+
+NON-NEGOTIABLE REQUIREMENTS
+
+The window motion.div must have NO Tailwind positioning classes — bottom-*, right-*, top-*, left-* must all be absent from className
+Positioning is 100% handled by inline style — top: '50%', left: '50%', transform: 'translate(-50%, -50%)'
+The layout prop on motion.div handles fullscreen animation smoothly
+'responding' is the correct state string — confirmed from UI screenshot showing "RESPONDING"
+All 3 checks in createAndStart() must be updated to 'responding'
+Threshold 0.45 and cooldown 3500 — exact values, no deviation
+Zero TypeScript errors
+Do not touch any other file

@@ -1,0 +1,82 @@
+JARVIS — Fix: Part 1 of 2 — Stop Word + Timeline Context
+Read src/lib/jarvis.ts completely before touching anything. Specifically find the exact string values used for voice states in the state object — look at where voiceState is assigned values like 'speaking', 'responding', 'idle' etc. The exact string matters.
+
+FILES TO TOUCH
+
+src/lib/jarvis.ts only for stop word fix
+src/lib/gemini.ts for timeline context size fix
+
+
+FIX 1 — STOP WORD NOT WORKING
+Root cause investigation required first:
+Before writing any code, search src/lib/jarvis.ts for:
+
+The JarvisAudioState type definition — what are the exact string literal values?
+Where voiceState is set to the speaking state — what exact string is assigned?
+Inside createAndStart() closure — what value is being checked?
+
+The UI was previously showing "RESPONDING" as the voice mode label. If the speaking state string is 'responding' not 'speaking', the interrupt listener check _state.voiceState === 'speaking' will never match and the listener will immediately exit without restarting.
+Fix: After finding the exact string value, update every check in createAndStart():
+typescript// Replace whatever the current check is with the correct state value
+// If speaking state is 'responding':
+if (_state.voiceState !== 'responding') return  // top guard
+if (_state.voiceState === 'responding')          // onend restart check
+if (_state.voiceState === 'responding')          // onerror restart check
+
+// If speaking state is 'speaking':
+if (_state.voiceState !== 'speaking') return
+if (_state.voiceState === 'speaking')
+if (_state.voiceState === 'speaking')
+Also verify that startInterruptListener() is actually being called when Jarvis enters the speaking/responding state. Search for where transitionAudioState or direct voiceState assignments happen for the speaking state — confirm startInterruptListener() is called there.
+If startInterruptListener() is NOT being called when entering speaking state, add it:
+typescript// In transitionAudioState or wherever voiceState is set to speaking/responding:
+// After setting the state to speaking:
+startInterruptListener()
+
+// When leaving speaking state (transitioning to any other state):
+stopInterruptListener()
+
+FIX 2 — TIMELINE CONTEXT CAUSING ERRORS
+Root cause: fetchTimelineContext() fetches all months with their full context and optional generated schedule. The generated schedule can be thousands of words — when injected into the system prompt it pushes the total prompt size over Gemini's limit causing a 400 error.
+Fix in src/lib/jarvis.ts:
+Update fetchTimelineContext() to NOT fetch generated_schedule — only fetch the user-written goals text which is short:
+typescriptasync function fetchTimelineContext(): Promise<TimelineMonthContext[]> {
+  try {
+    const { data, error } = await supabase
+      .from('timeline_months')
+      .select('month_key, context') // remove generated_schedule entirely
+      .neq('context', '')
+      .order('month_key', { ascending: true })
+
+    if (error || !data) return []
+
+    return data.map(row => ({
+      monthKey: row.month_key as string,
+      context: row.context as string,
+      generatedSchedule: null, // always null — don't inject schedules
+    }))
+  } catch {
+    return []
+  }
+}
+Also tighten the truncation in buildJarvisSystemPrompt from 400 chars to 200 chars per month and cap total months at 3 most recent:
+typescriptconst timelineSection = timelineMonths && timelineMonths.length > 0
+  ? `
+MONTHLY GOALS (user's current focus areas):
+${timelineMonths
+  .slice(-3) // only last 3 months — most relevant
+  .map(m =>
+    `[${m.monthKey}]: ${m.context.slice(0, 200)}${m.context.length > 200 ? '...' : ''}`
+  ).join('\n')}
+`
+  : ''
+This keeps the timeline injection small — under 600 characters total — preventing prompt overflow.
+
+NON-NEGOTIABLE REQUIREMENTS
+
+Must find the exact voiceState string value for speaking before changing the check — do not assume it is 'speaking'
+Must verify startInterruptListener() is actually called on state transition to speaking
+fetchTimelineContext() must NOT fetch generated_schedule — only month_key and context
+Timeline injection must be capped at 3 months maximum and 200 chars per month
+Zero TypeScript errors
+Do not touch any other file

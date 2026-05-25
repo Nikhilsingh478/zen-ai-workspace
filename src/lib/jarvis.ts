@@ -1085,17 +1085,17 @@ async function fetchTimelineContext(): Promise<TimelineMonthContext[]> {
   try {
     const { data, error } = await supabase
       .from("timeline_months")
-      .select("month_key, context, generated_schedule")
+      .select("month_key, context") // never fetch generated_schedule — it can be thousands of words
       .neq("context", "") // only months that have goals written
       .order("month_key", { ascending: true });
 
     if (error || !data) return [];
 
-    return (data as Array<{ month_key: string; context: string; generated_schedule: string | null }>)
+    return (data as Array<{ month_key: string; context: string }>)
       .map((row) => ({
         monthKey: row.month_key,
         context: row.context,
-        generatedSchedule: row.generated_schedule,
+        generatedSchedule: null, // always null — schedules are never injected into the prompt
       }));
   } catch {
     return [];
@@ -1146,12 +1146,13 @@ export function buildJarvisSystemPrompt(
 
   const timelineSection =
     timelineMonths && timelineMonths.length > 0
-      ? `\nMONTHLY GOALS & TIMELINE (what the user is working toward):\n${timelineMonths
+      ? `\nMONTHLY GOALS (user's current focus areas):\n${timelineMonths
+          .slice(-3) // only the 3 most recent months — keeps injection under 600 chars total
           .map(
             (m) =>
-              `\n[${m.monthKey}]\nGoals: ${m.context.slice(0, 400)}${m.context.length > 400 ? "..." : ""}`,
+              `[${m.monthKey}]: ${m.context.slice(0, 200)}${m.context.length > 200 ? "..." : ""}`,
           )
-          .join("")}\n\nUse this to understand the user's broader goals when answering questions. If they ask about progress or plans, reference these goals.`
+          .join("\n")}`
       : "";
 
   const taskSection =

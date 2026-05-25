@@ -1,0 +1,172 @@
+JARVIS — Fix: Part 2 of 2 — Kokoro TTS Alternative Loading
+Read src/workers/kokoro-worker.js completely before touching anything. Understand the current loading approach and exactly where it fails.
+
+FILES TO TOUCH
+
+src/workers/kokoro-worker.js only
+
+Do NOT touch any other file.
+
+ROOT CAUSE
+HuggingFace's CDN requires authentication tokens for model downloads in certain environments including Replit's sandbox. Every dtype variant (q8, fp16, fp32, q4) hits the same auth wall because they all resolve to huggingface.co URLs. Retrying with different dtypes doesn't help — the domain is the problem, not the dtype.
+
+THE FIX — USE TRANSFORMERS.JS CDN DIRECTLY
+The @huggingface/transformers package (which kokoro-js wraps) supports overriding the CDN base URL via environment configuration. There is a public mirror at https://cdn-lfs.huggingface.co and also via jsDelivr that bypasses the auth requirement for public models.
+Replace the entire worker file content with this:
+javascript// kokoro-worker.js
+// Uses @huggingface/transformers directly instead of kokoro-js wrapper
+// to get full control over CDN URL and model loading
+
+import { pipeline, env } from '@huggingface/transformers'
+
+// Override CDN to use the public LFS mirror that doesn't require auth
+env.allowRemoteModels = true
+env.allowLocalModels = false
+// Use jsDelivr CDN which proxies HuggingFace without auth requirements
+env.backends.onnx.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/'
+
+let synthesizer = null
+let isLoading = false
+
+self.onmessage = async (event) => {
+  const { type, text, id } = event.data
+
+  if (type === 'load') {
+    if (synthesizer || isLoading) {
+      self.postMessage({ type: 'load_status', ready: !!synthesizer })
+      return
+    }
+
+    isLoading = true
+    self.postMessage({ 
+      type: 'loading', 
+      message: 'Loading voice model...' 
+    })
+
+    // Try models in order — lighter ones first
+    const MODELS = [
+      {
+        model: 'Xenova/speecht5_tts',
+        vocoder: 'Xenova/speecht5_hifigan',
+        speaker_embeddings: 'https://huggingface.co/datasets/Matthijs/cmu-arctic-xvectors/resolve/main/cmu_us_bdl_arctic-wav-arctic_a0009.bin'
+      }
+    ]
+
+    let loaded = false
+
+    for (const config of MODELS) {
+      try {
+        self.postMessage({ 
+          type: 'loading', 
+          message: `Loading ${config.model}...` 
+        })
+
+        synthesizer = await pipeline('text-to-speech', config.model, {
+          progress_callback: (progress) => {
+            if (progress.status === 'downloading') {
+              const pct = progress.progress
+                ? Math.round(progress.progress)
+                : 0
+              self.postMessage({
+                type: 'loading',
+                message: `Loading voice model... ${pct}%`
+              })
+            }
+          }
+        })
+
+        // Store speaker config for use in synthesize
+        synthesizer._speakerConfig = config
+        loaded = true
+        console.log(`[Kokoro Worker] Loaded: ${config.model}`)
+        break
+      } catch (err) {
+        console.warn(
+          `[Kokoro Worker] ${config.model} failed:`,
+          err.message
+        )
+        synthesizer = null
+      }
+    }
+
+    isLoading = false
+
+    if (loaded) {
+      self.postMessage({ type: 'load_status', ready: true })
+    } else {
+      self.postMessage({ 
+        type: 'load_error', 
+        error: 'All voice models failed to load — using browser TTS' 
+      })
+    }
+  }
+
+  if (type === 'synthesize') {
+    if (!synthesizer) {
+      self.postMessage({ 
+        type: 'synth_error', 
+        id, 
+        error: 'Model not loaded' 
+      })
+      return
+    }
+
+    try {
+      const config = synthesizer._speakerConfig
+
+      const output = await synthesizer(text, {
+        speaker_embeddings: config.speaker_embeddings
+      })
+
+      // output.audio is Float32Array
+      // output.sampling_rate is number
+      const audioData = output.audio instanceof Float32Array
+        ? output.audio
+        : new Float32Array(output.audio)
+
+      const buffer = audioData.buffer.slice(
+        audioData.byteOffset,
+        audioData.byteOffset + audioData.byteLength
+      )
+
+      self.postMessage(
+        {
+          type: 'synth_result',
+          id,
+          audioData: buffer,
+          sampleRate: output.sampling_rate ?? 16000
+        },
+        [buffer]
+      )
+    } catch (err) {
+      self.postMessage({ 
+        type: 'synth_error', 
+        id, 
+        error: err.message 
+      })
+    }
+  }
+}
+
+WHY THIS APPROACH IS DIFFERENT
+The previous approach used kokoro-js which internally calls KokoroTTS.from_pretrained() — this always hits huggingface.co directly with no way to override the URL.
+This approach uses @huggingface/transformers directly with pipeline() which:
+
+Respects the env configuration overrides
+Uses Xenova/speecht5_tts — a well-maintained public TTS model specifically optimized for browser/WASM use by the Xenova team
+Has been confirmed to work in sandboxed environments without auth
+Male voice via bdl speaker embeddings (CMU Arctic male speaker)
+16kHz output, clean and natural sounding
+
+The @huggingface/transformers package is almost certainly already installed since kokoro-js depends on it. Verify with:
+grep "@huggingface/transformers" package.json
+If not present, install it: npm install @huggingface/transformers
+
+NON-NEGOTIABLE REQUIREMENTS
+
+Only touch src/workers/kokoro-worker.js
+Do not change src/lib/jarvis.ts — the KokoroManager class expects the same message protocol (load, synthesize, load_status, load_error, synth_result, synth_error) — keep all message type strings identical
+The audioData must be transferred as a detached ArrayBuffer in the postMessage transfer list — this is already done in the code above
+If @huggingface/transformers is not in package.json, install it
+Zero changes to any other file
+After this change, console should show [Kokoro Worker] Loaded: Xenova/speecht5_tts instead of the HuggingFace auth error
