@@ -7,7 +7,9 @@ import type { HorizonTask } from "@/lib/horizon";
 export type GeminiMessagePart =
   | { text: string }
   | { functionCall: { name: string; args: Record<string, unknown> } }
-  | { functionResponse: { name: string; response: { result: string } } };
+  | { functionResponse: { name: string; response: { result: string } } }
+  | { executableCode: { language: string; code: string } }
+  | { codeExecutionResult: { outcome: string; output: string } };
 
 export interface GeminiMessage {
   role: "user" | "model";
@@ -16,13 +18,26 @@ export interface GeminiMessage {
 
 interface GeminiRequest {
   contents: GeminiMessage[];
-  tools?: Array<{ functionDeclarations?: unknown[] } | { googleSearch?: Record<string, never> }>;
+  tools?: Array<
+    | { functionDeclarations?: unknown[] }
+    | { googleSearch?: Record<string, never> }
+    | { codeExecution?: Record<string, never> }
+  >;
   generationConfig?: {
     temperature?: number;
     topK?: number;
     topP?: number;
     maxOutputTokens?: number;
+    thinkingConfig?: { thinkingBudget: number };
   };
+  systemInstruction?: { parts: Array<{ text: string }> };
+  cachedContent?: string;
+}
+
+interface GeminiStreamChunk {
+  candidates?: Array<{
+    content?: { parts?: GeminiMessagePart[] };
+  }>;
 }
 
 interface GeminiResponse {
@@ -393,6 +408,117 @@ function classifySearchType(responseText: string, userQuery: string): SearchType
   return "general";
 }
 
+// ─── Code execution tool ──────────────────────────────────────────────────────
+
+export const CODE_EXECUTION_TOOL = { codeExecution: {} } as const;
+
+// ─── Sentence chunker (for streaming TTS) ────────────────────────────────────
+
+export class SentenceChunker {
+  private buffer = "";
+
+  push(token: string): string[] {
+    this.buffer += token;
+    const sentences: string[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    const regex = /[.!?](\s+|$)/g;
+    while ((match = regex.exec(this.buffer)) !== null) {
+      const sentence = this.buffer.slice(lastIndex, match.index + 1).trim();
+      if (sentence.length > 0) sentences.push(sentence);
+      lastIndex = match.index + match[0].length;
+    }
+    this.buffer = this.buffer.slice(lastIndex);
+    return sentences;
+  }
+
+  flush(): string[] {
+    const remainder = this.buffer.trim();
+    this.buffer = "";
+    return remainder.length > 0 ? [remainder] : [];
+  }
+
+  reset(): void {
+    this.buffer = "";
+  }
+}
+
+// ─── Deep thinking detector ───────────────────────────────────────────────────
+
+const THINKING_TRIGGERS = [
+  /should i\b/i,
+  /what do you think about\b/i,
+  /help me (plan|decide|figure out|think through)\b/i,
+  /\badvice\b/i,
+  /best (way|approach|strategy)\b/i,
+  /pros and cons\b/i,
+  /\bcompare\b/i,
+  /explain (why|how)\b/i,
+  /what would (happen|you recommend)\b/i,
+];
+
+export function requiresDeepThinking(message: string): boolean {
+  return THINKING_TRIGGERS.some((p) => p.test(message));
+}
+
+// ─── Code execution detector ──────────────────────────────────────────────────
+
+const CODE_TRIGGERS = [
+  /\bcalculate\b/i,
+  /\bcompute\b/i,
+  /\d+\s*[+\-*/]\s*\d+/,
+  /percent(age)?\b/i,
+  /\bhow many\b/i,
+  /\bsort\b/i,
+  /\bconvert\b/i,
+  /\bformula\b/i,
+];
+
+export function requiresCodeExecution(message: string): boolean {
+  return CODE_TRIGGERS.some((p) => p.test(message));
+}
+
+// ─── Context cache manager ────────────────────────────────────────────────────
+
+interface CachedContext {
+  cacheId: string;
+  createdAt: number;
+  expiresAt: number;
+  systemPrompt: string;
+}
+
+class CacheManager {
+  private cache: CachedContext | null = null;
+  private readonly TTL_MS = 60 * 60 * 1000; // 1 hour
+
+  isValid(systemPrompt: string): boolean {
+    if (!this.cache) return false;
+    if (Date.now() > this.cache.expiresAt) return false;
+    if (this.cache.systemPrompt !== systemPrompt) return false;
+    return true;
+  }
+
+  getCacheId(): string | null {
+    if (!this.cache || Date.now() > this.cache.expiresAt) return null;
+    return this.cache.cacheId;
+  }
+
+  set(cacheId: string, systemPrompt: string): void {
+    this.cache = {
+      cacheId,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + this.TTL_MS,
+      systemPrompt,
+    };
+  }
+
+  invalidate(): void {
+    this.cache = null;
+  }
+}
+
+const cacheManager = new CacheManager();
+
 // ─── API class ────────────────────────────────────────────────────────────────
 
 class GeminiAPI {
@@ -454,14 +580,33 @@ class GeminiAPI {
     apiKey: string,
     body: GeminiRequest,
     signal?: AbortSignal,
+    thinkingBudget = 0,
   ): Promise<{ ok: boolean; data: GeminiResponse | null; status: number }> {
     try {
+      // Inject context cache (removes systemInstruction if cache hit)
+      const cacheId = cacheManager.getCacheId();
+      const cachedBody: GeminiRequest = cacheId
+        ? { ...body, cachedContent: cacheId, systemInstruction: undefined }
+        : body;
+
+      // Inject thinking config when budget is non-zero
+      const finalBody: GeminiRequest =
+        thinkingBudget > 0
+          ? {
+              ...cachedBody,
+              generationConfig: {
+                ...cachedBody.generationConfig,
+                thinkingConfig: { thinkingBudget },
+              },
+            }
+          : cachedBody;
+
       const res = await fetch(
         `${this.baseUrl}/gemini-2.5-flash:generateContent?key=${apiKey}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
+          body: JSON.stringify(finalBody),
           signal,
         },
       );
@@ -526,22 +671,25 @@ class GeminiAPI {
     messages: GeminiMessage[],
     systemPrompt: string,
     sessionId: string,
+    thinkingBudget = 0,
+    overrideTools?: Array<
+      | { functionDeclarations?: unknown[] }
+      | { codeExecution?: Record<string, never> }
+    >,
   ): Promise<string> {
     if (!this.primaryKey && !this.fallbackKey) return "API key not configured.";
 
-    const fullHistory: GeminiMessage[] = [
-      { role: "user", parts: [{ text: systemPrompt }] },
-      { role: "model", parts: [{ text: "Understood. JARVIS online and ready." }] },
-      ...messages,
-    ];
+    const tools = overrideTools ?? [{ functionDeclarations: JARVIS_TOOLS }];
 
     const body: GeminiRequest = {
-      contents: fullHistory,
-      tools: [{ functionDeclarations: JARVIS_TOOLS }],
+      contents: messages,
+      tools,
+      systemInstruction: { parts: [{ text: systemPrompt }] },
       generationConfig: { temperature: 0.7, topK: 40, topP: 0.95, maxOutputTokens: 8192 },
     };
 
-    const tryRaw = async (key: string) => this._rawRequest(key, body);
+    const tryRaw = async (key: string) =>
+      this._rawRequest(key, body, undefined, thinkingBudget);
 
     let raw = this.primaryKey ? await tryRaw(this.primaryKey) : null;
     if (!raw?.ok && this.fallbackKey) {
@@ -556,21 +704,26 @@ class GeminiAPI {
 
     const parts = candidate.content.parts ?? [];
 
-    const functionCallPart = parts.find((p) => "functionCall" in p && p.functionCall);
-    const textPart = parts.find((p) => "text" in p && p.text);
+    const functionCallPart = parts.find((p) => "functionCall" in p);
+    const codeResultPart = parts.find(
+      (p): p is { codeExecutionResult: { outcome: string; output: string } } =>
+        "codeExecutionResult" in p,
+    );
+    const textPart = parts.find((p): p is { text: string } => "text" in p);
 
     if (functionCallPart && "functionCall" in functionCallPart && functionCallPart.functionCall) {
       const { name, args } = functionCallPart.functionCall;
       const toolResult = await executeToolCall(name, args as Record<string, unknown>, sessionId);
 
       const followUpHistory: GeminiMessage[] = [
-        ...fullHistory,
+        ...messages,
         { role: "model", parts: [functionCallPart] },
         { role: "user", parts: [{ functionResponse: { name, response: { result: toolResult } } }] },
       ];
 
       const followUpBody: GeminiRequest = {
         contents: followUpHistory,
+        systemInstruction: { parts: [{ text: systemPrompt }] },
         generationConfig: { temperature: 0.7, topK: 40, topP: 0.95, maxOutputTokens: 8192 },
       };
 
@@ -589,7 +742,18 @@ class GeminiAPI {
       return toolResult;
     }
 
-    if (textPart && "text" in textPart && textPart.text) return textPart.text;
+    // Code execution result — append output to any text response
+    if (codeResultPart) {
+      const output = codeResultPart.codeExecutionResult.output;
+      const base = textPart?.text ?? "";
+      return output
+        ? base
+          ? `${base}\n\nResult: ${output}`
+          : `Result: ${output}`
+        : base || "No response received.";
+    }
+
+    if (textPart?.text) return textPart.text;
 
     return "No response received.";
   }
@@ -601,15 +765,10 @@ class GeminiAPI {
     const fallback = { text: "API key not configured.", sources: [] as SearchSource[], searchType: "general" as SearchType };
     if (!this.primaryKey && !this.fallbackKey) return fallback;
 
-    const fullHistory: GeminiMessage[] = [
-      { role: "user", parts: [{ text: systemPrompt }] },
-      { role: "model", parts: [{ text: "Understood. I will search for current information." }] },
-      ...messages,
-    ];
-
     const body: GeminiRequest = {
-      contents: fullHistory,
+      contents: messages,
       tools: [{ googleSearch: {} }],
+      systemInstruction: { parts: [{ text: systemPrompt }] },
       generationConfig: { temperature: 0.5, topK: 40, topP: 0.95, maxOutputTokens: 4096 },
     };
 
@@ -658,6 +817,141 @@ class GeminiAPI {
     const searchType = classifySearchType(text, queryText);
 
     return { text, sources, searchType };
+  }
+
+  // ─── Streaming ───────────────────────────────────────────────────────────────
+
+  async *streamGenerate(
+    messages: GeminiMessage[],
+    systemPrompt: string,
+    tools?: Array<
+      | { functionDeclarations?: unknown[] }
+      | { codeExecution?: Record<string, never> }
+    >,
+  ): AsyncGenerator<string, void, unknown> {
+    if (!this.primaryKey && !this.fallbackKey) return;
+
+    if (this.primaryKey) {
+      try {
+        yield* this._streamWithKey(messages, systemPrompt, this.primaryKey, tools);
+        return;
+      } catch (err) {
+        const status = (err as { status?: number }).status;
+        if (this.fallbackKey && (status === 429 || status === 403)) {
+          console.warn("[Gemini] Primary key failed for streaming — retrying with fallback.");
+          yield* this._streamWithKey(messages, systemPrompt, this.fallbackKey, tools);
+          return;
+        }
+        throw err;
+      }
+    }
+
+    yield* this._streamWithKey(messages, systemPrompt, this.fallbackKey!, tools);
+  }
+
+  private async *_streamWithKey(
+    messages: GeminiMessage[],
+    systemPrompt: string,
+    apiKey: string,
+    tools?: Array<
+      | { functionDeclarations?: unknown[] }
+      | { codeExecution?: Record<string, never> }
+    >,
+  ): AsyncGenerator<string, void, unknown> {
+    const url = `${this.baseUrl}/gemini-2.5-flash:streamGenerateContent?alt=sse&key=${apiKey}`;
+
+    const payload = {
+      contents: messages,
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+      ...(tools && tools.length > 0 ? { tools } : {}),
+      generationConfig: {
+        temperature: 0.7,
+        topK: 40,
+        topP: 0.95,
+        maxOutputTokens: 8192,
+        thinkingConfig: { thinkingBudget: 0 }, // disable thinking for streaming — adds latency
+      },
+    };
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const err = Object.assign(
+        new Error(`Gemini streaming error: ${response.status}`),
+        { status: response.status },
+      );
+      throw err;
+    }
+
+    if (!response.body) throw new Error("Streaming response has no body");
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split("\n");
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const data = line.slice(6).trim();
+          if (data === "[DONE]") return;
+
+          try {
+            const parsed: GeminiStreamChunk = JSON.parse(data) as GeminiStreamChunk;
+            const text = parsed.candidates?.[0]?.content?.parts?.find(
+              (p): p is { text: string } =>
+                "text" in p && typeof (p as { text?: unknown }).text === "string",
+            )?.text;
+
+            if (text) yield text;
+          } catch {
+            // Malformed SSE chunk — skip
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  }
+
+  // ─── Context caching ─────────────────────────────────────────────────────────
+
+  async initContextCache(systemPrompt: string): Promise<void> {
+    if (cacheManager.isValid(systemPrompt)) return;
+    const apiKey = this.primaryKey;
+    if (!apiKey) return;
+
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/cachedContents?key=${apiKey}`;
+      const payload = {
+        model: "models/gemini-2.5-flash",
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        ttl: "3600s",
+      };
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) return;
+      const data = (await response.json()) as { name?: string };
+      const cacheId = data.name ?? null;
+      if (cacheId) {
+        cacheManager.set(cacheId, systemPrompt);
+        console.log("[JARVIS] Context cached — token usage reduced");
+      }
+    } catch {
+      // Cache creation failure is silent — fall back to full system prompt
+    }
   }
 
   get configured(): boolean {

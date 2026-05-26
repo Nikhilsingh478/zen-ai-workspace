@@ -6,7 +6,13 @@
 
 import { useSyncExternalStore } from "react";
 import { WakeWordEngine } from "openwakeword-wasm-browser";
-import { geminiAPI } from "@/lib/gemini";
+import {
+  geminiAPI,
+  SentenceChunker,
+  requiresDeepThinking,
+  requiresCodeExecution,
+  CODE_EXECUTION_TOOL,
+} from "@/lib/gemini";
 import type { GeminiMessage } from "@/lib/gemini";
 import { getHorizonTasks, ensureBooted } from "@/lib/horizon";
 import type { HorizonTask } from "@/lib/horizon";
@@ -680,6 +686,14 @@ class TTSQueue {
         transitionAudioState("listening");
       }
     }, 800);
+  }
+
+  setDoneCallback(fn: () => void): void {
+    if (!this.isPlaying) {
+      fn();
+    } else {
+      this.onDoneCallback = fn;
+    }
   }
 
   private splitIntoSentences(text: string): string[] {
@@ -1656,6 +1670,14 @@ function classifyDialoguePolicy(
 
 let conversationHistory: GeminiMessage[] = [];
 
+const TOOLS_INTENTS: ReadonlySet<IntentType> = new Set([
+  "task_creation",
+  "task_management",
+  "task_query",
+  "memory_capture",
+  "memory_query",
+]);
+
 // ─── Main command handler ─────────────────────────────────────────────────────
 
 async function handleCommand(commandText: string) {
@@ -1774,14 +1796,85 @@ async function handleCommand(commandText: string) {
       return;
     }
 
+    const needsTools = TOOLS_INTENTS.has(intent);
     const intentHint = `\nThe user's message has been pre-classified as: ${intent}. Use this as a hint when deciding whether to call a tool.`;
     const fullSystemPrompt = systemPrompt + intentHint;
 
-    const rawResponse = await geminiAPI.generateWithTools(
-      [...conversationHistory, userGeminiMsg],
-      fullSystemPrompt,
-      sessionId,
-    );
+    let rawResponse = "";
+    let spokenViaStream = false;
+
+    if (needsTools) {
+      // ── Tool-calling path (tasks, memory) ────────────────────────────────────
+      const thinkingBudget = requiresDeepThinking(commandText) ? 1024 : 0;
+      rawResponse = await geminiAPI.generateWithTools(
+        [...conversationHistory, userGeminiMsg],
+        fullSystemPrompt,
+        sessionId,
+        thinkingBudget,
+      );
+    } else if (requiresCodeExecution(commandText)) {
+      // ── Code execution path ───────────────────────────────────────────────────
+      rawResponse = await geminiAPI.generateWithTools(
+        [...conversationHistory, userGeminiMsg],
+        fullSystemPrompt,
+        sessionId,
+        0,
+        [CODE_EXECUTION_TOOL],
+      );
+    } else {
+      // ── Streaming path (pure conversation) ────────────────────────────────────
+      const chunker = new SentenceChunker();
+      let hasStartedSpeaking = false;
+
+      try {
+        const stream = geminiAPI.streamGenerate(
+          [...conversationHistory, userGeminiMsg],
+          fullSystemPrompt,
+        );
+
+        for await (const token of stream) {
+          rawResponse += token;
+          for (const sentence of chunker.push(token)) {
+            const clean = cleanTextForSpeech(
+              sentence.replace(/\[NAVIGATE:[^\]]+\]/g, ""),
+            );
+            if (clean.length > 0) {
+              if (!hasStartedSpeaking) {
+                transitionAudioState("speaking");
+                hasStartedSpeaking = true;
+              }
+              ttsQueue.enqueue(clean);
+            }
+          }
+        }
+
+        // Flush remaining partial sentence
+        for (const sentence of chunker.flush()) {
+          const clean = cleanTextForSpeech(
+            sentence.replace(/\[NAVIGATE:[^\]]+\]/g, ""),
+          );
+          if (clean.length > 0) {
+            if (!hasStartedSpeaking) {
+              transitionAudioState("speaking");
+              hasStartedSpeaking = true;
+            }
+            ttsQueue.enqueue(clean);
+          }
+        }
+      } catch (streamErr) {
+        console.warn("[JARVIS] Streaming failed — falling back to tool path:", streamErr);
+        if (!hasStartedSpeaking) {
+          rawResponse = await geminiAPI.generateWithTools(
+            [...conversationHistory, userGeminiMsg],
+            fullSystemPrompt,
+            sessionId,
+            requiresDeepThinking(commandText) ? 1024 : 0,
+          );
+        }
+      }
+
+      spokenViaStream = hasStartedSpeaking;
+    }
 
     conversationHistory = [
       ...conversationHistory,
@@ -1811,18 +1904,27 @@ async function handleCommand(commandText: string) {
     };
 
     patch({ messages: [..._state.messages, jarvisMsg] });
-    transitionAudioState("speaking");
+
+    if (!spokenViaStream) {
+      transitionAudioState("speaking");
+    }
 
     saveMessage(sessionId, "assistant", clean, "conversation").then(() => {
       updateSessionMessageCount(sessionId).catch(() => null);
       window.dispatchEvent(new CustomEvent("jarvis:history-refresh"));
     }).catch(() => null);
 
-    ttsQueue.enqueue(cleanTextForSpeech(clean), () => {
+    const onSpokenDone = () => {
       if (_state.enabled && _conversationRuntime.mode === "idle") {
         setTimeout(() => void startWakeWordDetection(), 400);
       }
-    });
+    };
+
+    if (!spokenViaStream) {
+      ttsQueue.enqueue(cleanTextForSpeech(clean), onSpokenDone);
+    } else {
+      ttsQueue.setDoneCallback(onSpokenDone);
+    }
   } catch (err) {
     console.error("[JARVIS] handleCommand error:", err);
     toast.error("JARVIS encountered an error", { duration: 3000 });
@@ -1866,6 +1968,8 @@ export async function initJarvisSession(): Promise<void> {
     ]);
     const systemPrompt = buildJarvisSystemPrompt(memories, summaries, timelineMonths);
     patch({ recentMemories: memories, sessionSummaries: summaries, systemPrompt });
+    // Try to create or reuse context cache (fire-and-forget — failure is silent)
+    void geminiAPI.initContextCache(systemPrompt);
   } catch (err) {
     console.warn("[JARVIS] initJarvisSession failed:", err);
   }
