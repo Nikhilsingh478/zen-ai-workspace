@@ -432,11 +432,23 @@ function MessageBubble({
           maxWidth: "86%",
           borderRadius: isUser ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
           padding: "9px 12px",
+          position: "relative",
+          overflow: "hidden",
           ...(isUser
             ? { background: "rgba(125,211,252,0.09)", border: "1px solid rgba(125,211,252,0.22)" }
             : { background: "rgba(255,255,255,0.03)", border: "1px solid rgba(125,211,252,0.1)" }),
         }}
       >
+        {/* One-shot scan line for JARVIS messages */}
+        {!isUser && (
+          <motion.div
+            className="absolute left-0 right-0 h-px pointer-events-none"
+            style={{ background: "linear-gradient(90deg, transparent, rgba(56,189,248,0.6), transparent)", top: 0 }}
+            initial={{ x: "-100%" }}
+            animate={{ x: "100%" }}
+            transition={{ duration: 0.7, ease: "easeInOut" }}
+          />
+        )}
         {!isUser && (
           <p style={{ fontFamily: "'Space Mono', monospace", fontSize: 7, letterSpacing: "0.22em", color: "rgba(125,211,252,0.5)", marginBottom: 4 }}>
             J.A.R.V.I.S
@@ -790,11 +802,13 @@ function RightPanel({
   onExpand,
   onSessionClick,
   loadingSessionId,
+  voiceState,
 }: {
   messages: ReturnType<typeof useJarvis>["messages"];
   onExpand: (content: string) => void;
   onSessionClick: (session: JarvisSession) => void;
   loadingSessionId: string | null;
+  voiceState: ReturnType<typeof useJarvis>["voiceState"];
 }) {
   const [activeTab, setActiveTab] = useState<RightTab>("chat");
   const endRef = useRef<HTMLDivElement>(null);
@@ -869,6 +883,33 @@ function RightPanel({
                   messages.map((msg) => <MessageBubble key={msg.id} msg={msg} onExpand={onExpand} />)
                 )}
               </AnimatePresence>
+
+              {/* Typing indicator — shown while JARVIS is processing */}
+              <AnimatePresence>
+                {voiceState === "processing" && (
+                  <motion.div
+                    key="typing-indicator"
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 4 }}
+                    transition={{ duration: 0.2 }}
+                    className="flex items-center gap-2"
+                    style={{ paddingLeft: 31 }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 11px", borderRadius: "12px 12px 12px 3px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(125,211,252,0.1)" }}>
+                      {[0, 1, 2].map((i) => (
+                        <motion.div
+                          key={i}
+                          style={{ width: 5, height: 5, borderRadius: "50%", background: "rgba(56,189,248,0.7)" }}
+                          animate={{ opacity: [0.3, 1, 0.3], y: [0, -3, 0] }}
+                          transition={{ duration: 0.9, repeat: Infinity, delay: i * 0.18, ease: "easeInOut" }}
+                        />
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
               <div ref={endRef} />
             </div>
           </div>
@@ -1398,6 +1439,7 @@ function JarvisPage() {
                   onExpand={(content) => void triggerExtendedWindowSequence(content)}
                   onSessionClick={(session) => void handleHistoryCardClick(session)}
                   loadingSessionId={loadingSessionId}
+                  voiceState={voiceState}
                 />
               </motion.div>
             )}
@@ -1417,6 +1459,7 @@ function JarvisPage() {
             onExpand={(content) => void triggerExtendedWindowSequence(content)}
             onSessionClick={(session) => void handleHistoryCardClick(session)}
             loadingSessionId={loadingSessionId}
+            voiceState={voiceState}
           />
         </motion.div>
       </div>
@@ -1427,6 +1470,7 @@ function JarvisPage() {
         messages={messages}
         onClose={() => void closeExtendedWindowSequence()}
         isOpen={extendedWindowOpen}
+        isResponding={voiceState === "processing" || voiceState === "speaking"}
       />
 
       {/* Extended Window — history session viewer */}

@@ -400,20 +400,41 @@ export function AICore({ voiceState, isAwake, size = 300 }: AICoreProps) {
           cx={C} cy={C} r={22}
           fill="url(#jv-orb)"
           filter="url(#jv-inner)"
+          style={{ originX: "50%", originY: "50%" }}
           initial={{ r: 22 }}
           animate={{
             r: isListening ? 26 : isProcessing ? [22, 24, 22] : 22,
-            filter: isActive
+            scale: isSpeaking ? [1, 1.06, 1] : 1,
+            filter: isSpeaking
+              ? [
+                  "drop-shadow(0 0 8px rgba(56,189,248,0.4)) drop-shadow(0 0 20px rgba(56,189,248,0.2))",
+                  "drop-shadow(0 0 18px rgba(56,189,248,0.9)) drop-shadow(0 0 40px rgba(56,189,248,0.5))",
+                  "drop-shadow(0 0 8px rgba(56,189,248,0.4)) drop-shadow(0 0 20px rgba(56,189,248,0.2))",
+                ]
+              : isProcessing
+              ? [
+                  "drop-shadow(0 0 6px rgba(56,189,248,0.2)) drop-shadow(0 0 14px rgba(56,189,248,0.1))",
+                  "drop-shadow(0 0 12px rgba(56,189,248,0.5)) drop-shadow(0 0 28px rgba(56,189,248,0.3))",
+                  "drop-shadow(0 0 6px rgba(56,189,248,0.2)) drop-shadow(0 0 14px rgba(56,189,248,0.1))",
+                ]
+              : isActive
               ? ["drop-shadow(0 0 8px rgba(125,211,252,0.6)) drop-shadow(0 0 20px rgba(125,211,252,0.3))",
                  "drop-shadow(0 0 14px rgba(147,197,253,0.8)) drop-shadow(0 0 36px rgba(147,197,253,0.4))",
                  "drop-shadow(0 0 8px rgba(125,211,252,0.6)) drop-shadow(0 0 20px rgba(125,211,252,0.3))"]
               : "drop-shadow(0 0 6px rgba(125,211,252,0.3))",
           }}
-          transition={isProcessing
-            ? { r: { duration: 0.5, repeat: Infinity, repeatType: "mirror", ease: "easeInOut" },
-                filter: { duration: 3, repeat: Infinity, ease: "easeInOut" } }
-            : { r: { type: "spring", stiffness: 200, damping: 22 },
-                filter: { duration: 3, repeat: Infinity, ease: "easeInOut" } }
+          transition={
+            isSpeaking
+              ? { scale: { duration: 1.2, repeat: Infinity, ease: "easeInOut" },
+                  filter: { duration: 1.2, repeat: Infinity, ease: "easeInOut" },
+                  r: { type: "spring", stiffness: 200, damping: 22 } }
+              : isProcessing
+              ? { r: { duration: 0.5, repeat: Infinity, repeatType: "mirror", ease: "easeInOut" },
+                  filter: { duration: 0.8, repeat: Infinity, ease: "easeInOut" },
+                  scale: { duration: 0.4 } }
+              : { r: { type: "spring", stiffness: 200, damping: 22 },
+                  filter: { duration: 3, repeat: Infinity, ease: "easeInOut" },
+                  scale: { duration: 0.4 } }
           }
         />
 
@@ -424,6 +445,50 @@ export function AICore({ voiceState, isAwake, size = 300 }: AICoreProps) {
         {/* 10 · HUD brackets */}
         <HUDBrackets active={isActive} />
       </svg>
+
+      {/* Rotating rings — active during processing + speaking.
+          Margin-based centering (not transform) so Framer Motion's rotate
+          can own the `transform` property without conflict. */}
+      <motion.div
+        className="absolute rounded-full pointer-events-none"
+        style={{
+          width: "140%",
+          height: "140%",
+          left: "-20%",
+          top: "-20%",
+          border: "1px solid transparent",
+          borderTopColor: "rgba(56,189,248,0.6)",
+          borderRightColor: "rgba(56,189,248,0.2)",
+        }}
+        animate={
+          isProcessing || isSpeaking ? { rotate: 360 } : { rotate: 0 }
+        }
+        transition={
+          isProcessing || isSpeaking
+            ? { duration: 1.8, repeat: Infinity, ease: "linear" }
+            : { duration: 0.5 }
+        }
+      />
+      <motion.div
+        className="absolute rounded-full pointer-events-none"
+        style={{
+          width: "120%",
+          height: "120%",
+          left: "-10%",
+          top: "-10%",
+          border: "1px solid transparent",
+          borderBottomColor: "rgba(56,189,248,0.4)",
+          borderLeftColor: "rgba(56,189,248,0.1)",
+        }}
+        animate={
+          isProcessing || isSpeaking ? { rotate: -360 } : { rotate: 0 }
+        }
+        transition={
+          isProcessing || isSpeaking
+            ? { duration: 2.4, repeat: Infinity, ease: "linear" }
+            : { duration: 0.5 }
+        }
+      />
 
       {/* Status overlay — positioned at lower third of orb */}
       <div

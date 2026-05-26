@@ -27,6 +27,7 @@ interface ExtendedWindowProps {
   isOpen: boolean;
   mode?: "live" | "history";
   historySession?: HistorySessionInfo | null;
+  isResponding?: boolean;
 }
 
 interface WindowHeaderProps {
@@ -342,6 +343,7 @@ export default function ExtendedWindow({
   isOpen,
   mode = "live",
   historySession,
+  isResponding = false,
 }: ExtendedWindowProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -424,12 +426,21 @@ export default function ExtendedWindow({
             style={{
               ...positionStyle,
               background: "linear-gradient(135deg, #050d18 0%, #060e1c 100%)",
-              border: "1px solid rgba(56, 189, 248, 0.15)",
-              boxShadow: `
-                0 0 0 1px rgba(56, 189, 248, 0.05),
-                0 25px 60px rgba(0, 0, 0, 0.7),
-                0 0 80px rgba(56, 189, 248, 0.04)
-              `,
+              border: isResponding
+                ? "1px solid rgba(56, 189, 248, 0.35)"
+                : "1px solid rgba(56, 189, 248, 0.15)",
+              boxShadow: isResponding
+                ? `
+                    0 0 0 1px rgba(56, 189, 248, 0.12),
+                    0 25px 60px rgba(0, 0, 0, 0.7),
+                    0 0 80px rgba(56, 189, 248, 0.12)
+                  `
+                : `
+                    0 0 0 1px rgba(56, 189, 248, 0.05),
+                    0 25px 60px rgba(0, 0, 0, 0.7),
+                    0 0 80px rgba(56, 189, 248, 0.04)
+                  `,
+              transition: "border-color 0.4s ease, box-shadow 0.4s ease",
             }}
           >
             {/* Top accent line */}
@@ -439,6 +450,24 @@ export default function ExtendedWindow({
                 background: "linear-gradient(90deg, transparent, rgba(56,189,248,0.4), transparent)",
               }}
             />
+
+            {/* Repeating scan line — active while JARVIS is responding */}
+            <AnimatePresence>
+              {isResponding && (
+                <motion.div
+                  key="responding-scan"
+                  className="absolute left-0 right-0 h-px z-10 pointer-events-none"
+                  style={{
+                    background: "linear-gradient(90deg, transparent, rgba(56,189,248,0.5), transparent)",
+                    top: 0,
+                  }}
+                  initial={{ x: "-100%" }}
+                  animate={{ x: "100%" }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                />
+              )}
+            </AnimatePresence>
 
             <WindowHeader
               isFullscreen={isFullscreen}
