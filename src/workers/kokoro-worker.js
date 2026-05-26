@@ -1,6 +1,5 @@
 // kokoro-worker.js
-// Uses @huggingface/transformers directly instead of kokoro-js wrapper
-// to get full control over CDN URL and model loading.
+// Uses @huggingface/transformers directly instead of kokoro-js wrapper.
 //
 // Message protocol (unchanged — KokoroManager in jarvis.ts depends on these):
 //   IN:  { type: 'load' }
@@ -25,20 +24,24 @@ env.backends.onnx.wasm.wasmPaths =
 // ─── State ────────────────────────────────────────────────────────────────────
 
 let synthesizer = null;
+let speakerEmbeddings = null;
 let isLoading = false;
 
-// ─── Model registry ───────────────────────────────────────────────────────────
-// Ordered lightest → heaviest. speecht5_tts is the Xenova-maintained,
-// sandbox-confirmed TTS model. bdl = CMU Arctic male speaker (natural, deep).
+// ─── Speaker embeddings ───────────────────────────────────────────────────────
+// speecht5_tts requires a pre-fetched Float32Array tensor — not a URL string.
+// The model's forward pass needs the actual embedding data at synthesis time.
 
-const MODELS = [
-  {
-    model: "Xenova/speecht5_tts",
-    vocoder: "Xenova/speecht5_hifigan",
-    speaker_embeddings:
-      "https://huggingface.co/datasets/Matthijs/cmu-arctic-xvectors/resolve/main/cmu_us_bdl_arctic-wav-arctic_a0009.bin",
-  },
-];
+const SPEAKER_URL =
+  "https://huggingface.co/datasets/Matthijs/cmu-arctic-xvectors/resolve/main/cmu_us_bdl_arctic-wav-arctic_a0009.bin";
+
+async function loadSpeakerEmbeddings() {
+  const response = await fetch(SPEAKER_URL);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch speaker embeddings: ${response.status}`);
+  }
+  const buffer = await response.arrayBuffer();
+  return new Float32Array(buffer);
+}
 
 // ─── Message handler ──────────────────────────────────────────────────────────
 
@@ -47,7 +50,6 @@ self.onmessage = async (event) => {
 
   // ── Load ────────────────────────────────────────────────────────────────────
   if (type === "load") {
-    // If already loaded or loading, report current status and return
     if (synthesizer || isLoading) {
       self.postMessage({ type: "load_status", ready: !!synthesizer });
       return;
@@ -56,58 +58,42 @@ self.onmessage = async (event) => {
     isLoading = true;
     self.postMessage({ type: "loading", message: "Loading voice model..." });
 
-    let loaded = false;
+    try {
+      self.postMessage({ type: "loading", message: "Downloading model..." });
 
-    for (const config of MODELS) {
-      try {
-        self.postMessage({
-          type: "loading",
-          message: `Loading ${config.model}...`,
-        });
-
-        synthesizer = await pipeline("text-to-speech", config.model, {
-          progress_callback: (progress) => {
-            if (progress.status === "downloading") {
-              const pct = progress.progress
-                ? Math.round(progress.progress)
-                : 0;
+      // Load pipeline and speaker embeddings in parallel
+      const [pipe, embeddings] = await Promise.all([
+        pipeline("text-to-speech", "Xenova/speecht5_tts", {
+          progress_callback: (p) => {
+            if (p.status === "downloading") {
               self.postMessage({
                 type: "loading",
-                message: `Loading voice model... ${pct}%`,
+                message: `Loading voice... ${Math.round(p.progress ?? 0)}%`,
               });
             }
           },
-        });
+        }),
+        loadSpeakerEmbeddings(),
+      ]);
 
-        // Attach speaker config so synthesize() can access it
-        synthesizer._speakerConfig = config;
-        loaded = true;
-        console.log(`[Kokoro Worker] Loaded: ${config.model}`);
-        break;
-      } catch (err) {
-        console.warn(
-          `[Kokoro Worker] ${config.model} failed:`,
-          err.message,
-        );
-        synthesizer = null;
-      }
-    }
+      synthesizer = pipe;
+      speakerEmbeddings = embeddings;
 
-    isLoading = false;
-
-    if (loaded) {
+      isLoading = false;
       self.postMessage({ type: "load_status", ready: true });
-    } else {
-      self.postMessage({
-        type: "load_error",
-        error: "All voice models failed to load — using browser TTS",
-      });
+      console.log("[Kokoro Worker] Loaded: Xenova/speecht5_tts with bdl embeddings");
+    } catch (err) {
+      isLoading = false;
+      synthesizer = null;
+      speakerEmbeddings = null;
+      console.error("[Kokoro Worker] Load failed:", err.message);
+      self.postMessage({ type: "load_error", error: err.message });
     }
   }
 
   // ── Synthesize ──────────────────────────────────────────────────────────────
   if (type === "synthesize") {
-    if (!synthesizer) {
+    if (!synthesizer || !speakerEmbeddings) {
       self.postMessage({
         type: "synth_error",
         id,
@@ -117,10 +103,10 @@ self.onmessage = async (event) => {
     }
 
     try {
-      const config = synthesizer._speakerConfig;
-
+      // Pass speaker_embeddings as the pre-fetched Float32Array tensor —
+      // the model's forward pass requires actual embedding data, not a URL.
       const output = await synthesizer(text, {
-        speaker_embeddings: config.speaker_embeddings,
+        speaker_embeddings: speakerEmbeddings,
       });
 
       // Ensure we have a clean Float32Array before transferring

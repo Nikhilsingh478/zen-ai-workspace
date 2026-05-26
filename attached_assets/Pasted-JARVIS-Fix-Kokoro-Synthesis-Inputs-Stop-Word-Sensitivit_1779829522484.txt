@@ -1,0 +1,187 @@
+JARVIS — Fix: Kokoro Synthesis Inputs + Stop Word Sensitivity
+Read src/workers/kokoro-worker.js fully before touching anything.
+
+FILES TO TOUCH
+
+src/workers/kokoro-worker.js
+src/lib/jarvis.ts — interrupt listener only
+
+
+FIX 1 — KOKORO SYNTHESIS FAILING: MISSING INPUTS
+Error:
+Missing the following inputs: speaker_embeddings, encoder_hidden_states, output_sequence
+The speecht5_tts model requires speaker embeddings to be loaded separately and passed as a tensor. The current worker calls synthesizer(text, { speaker_embeddings: url_string }) but the model expects a pre-fetched Float32Array tensor, not a URL string.
+Replace the entire worker with this corrected implementation:
+javascriptimport { pipeline, env, RawImage } from '@huggingface/transformers'
+
+env.allowRemoteModels = true
+env.allowLocalModels = false
+env.backends.onnx.wasm.wasmPaths = 
+  'https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/'
+
+let synthesizer = null
+let speakerEmbeddings = null
+let isLoading = false
+
+// Pre-fetch and cache speaker embeddings as Float32Array
+async function loadSpeakerEmbeddings() {
+  const SPEAKER_URL = 'https://huggingface.co/datasets/Matthijs/cmu-arctic-xvectors/resolve/main/cmu_us_bdl_arctic-wav-arctic_a0009.bin'
+  
+  const response = await fetch(SPEAKER_URL)
+  if (!response.ok) throw new Error(`Failed to fetch speaker embeddings: ${response.status}`)
+  
+  const buffer = await response.arrayBuffer()
+  return new Float32Array(buffer)
+}
+
+self.onmessage = async (event) => {
+  const { type, text, id } = event.data
+
+  if (type === 'load') {
+    if (synthesizer || isLoading) {
+      self.postMessage({ type: 'load_status', ready: !!synthesizer })
+      return
+    }
+
+    isLoading = true
+    self.postMessage({ type: 'loading', message: 'Loading voice model...' })
+
+    try {
+      // Load pipeline and speaker embeddings in parallel
+      self.postMessage({ type: 'loading', message: 'Downloading model...' })
+      
+      const [pipe, embeddings] = await Promise.all([
+        pipeline('text-to-speech', 'Xenova/speecht5_tts', {
+          progress_callback: (p) => {
+            if (p.status === 'downloading') {
+              self.postMessage({
+                type: 'loading',
+                message: `Loading voice... ${Math.round(p.progress ?? 0)}%`
+              })
+            }
+          }
+        }),
+        loadSpeakerEmbeddings()
+      ])
+
+      synthesizer = pipe
+      speakerEmbeddings = embeddings
+
+      isLoading = false
+      self.postMessage({ type: 'load_status', ready: true })
+      console.log('[Kokoro Worker] Loaded: Xenova/speecht5_tts with bdl embeddings')
+    } catch (err) {
+      isLoading = false
+      synthesizer = null
+      speakerEmbeddings = null
+      console.error('[Kokoro Worker] Load failed:', err.message)
+      self.postMessage({ type: 'load_error', error: err.message })
+    }
+  }
+
+  if (type === 'synthesize') {
+    if (!synthesizer || !speakerEmbeddings) {
+      self.postMessage({
+        type: 'synth_error',
+        id,
+        error: 'Model not loaded'
+      })
+      return
+    }
+
+    try {
+      // Pass speaker_embeddings as the pre-fetched Float32Array
+      const output = await synthesizer(text, {
+        speaker_embeddings: speakerEmbeddings
+      })
+
+      const audioData = output.audio instanceof Float32Array
+        ? output.audio
+        : new Float32Array(output.audio)
+
+      const buffer = audioData.buffer.slice(
+        audioData.byteOffset,
+        audioData.byteOffset + audioData.byteLength
+      )
+
+      self.postMessage(
+        {
+          type: 'synth_result',
+          id,
+          audioData: buffer,
+          sampleRate: output.sampling_rate ?? 16000
+        },
+        [buffer]
+      )
+    } catch (err) {
+      self.postMessage({
+        type: 'synth_error',
+        id,
+        error: err.message
+      })
+    }
+  }
+}
+Key fix: speakerEmbeddings is fetched as a raw Float32Array during model load, cached in the worker, and passed directly to synthesizer() on every synthesis call. The model needs the actual tensor data, not a URL.
+
+FIX 2 — STOP WORD REQUIRES SHOUTING
+Root cause: When browser TTS is playing through the speakers, the microphone picks up the TTS audio output as ambient noise. This raises the speech recognition confidence threshold — the interrupt listener hears the TTS voice as background noise and requires a louder signal to distinguish the user's voice.
+Two fixes:
+Fix A — Lower interrupt recognition threshold:
+In src/lib/jarvis.ts, inside createAndStart(), add maxAlternatives and a continuous mode tweak:
+typescriptrecognition.continuous = true  // change from false to true
+recognition.interimResults = true  // add this — catches partial matches faster
+recognition.maxAlternatives = 3  // check top 3 alternatives not just 1
+Update the result handler to check all alternatives and interim results:
+typescriptrecognition.onresult = (event: SpeechRecognitionEvent) => {
+  const INTERRUPT_WORDS = [
+    'stop', 'wait', 'hold on', 'shut up',
+    'pause', 'enough', 'quiet', 'silence'
+  ]
+
+  // Check all results including interim
+  for (let i = event.resultIndex; i < event.results.length; i++) {
+    const result = event.results[i]
+    
+    // Check all alternatives
+    for (let j = 0; j < result.length; j++) {
+      const transcript = result[j].transcript.toLowerCase().trim()
+      
+      if (INTERRUPT_WORDS.some(word => transcript.includes(word))) {
+        ttsQueue.interrupt()
+        stopInterruptListener()
+        transitionAudioState('interrupted')
+        setTimeout(() => {
+          if (_state.voiceState === 'interrupted') {
+            transitionAudioState('idle')
+          }
+        }, 800)
+        return
+      }
+    }
+  }
+}
+Fix B — Remove onend restart when continuous is true:
+With continuous = true, the recognition instance stays alive and doesn't need restarting via onend. Update onend to only restart on unexpected stops:
+typescriptrecognition.onend = () => {
+  // continuous mode should not end unless something went wrong
+  // restart only if still in speaking state
+  if (_state.voiceState === 'speaking') {
+    setTimeout(() => {
+      if (_state.voiceState === 'speaking') {
+        createAndStart()
+      }
+    }, 100)
+  }
+}
+With continuous: true and interimResults: true, the recognition instance listens continuously without stopping, catches partial speech faster, and checks 3 alternatives — significantly lowering the effective voice level needed to trigger an interrupt.
+
+NON-NEGOTIABLE REQUIREMENTS
+
+speakerEmbeddings must be loaded as Float32Array during model init — not as a URL string at synthesis time
+Both synthesizer and speakerEmbeddings must be non-null before attempting synthesis
+recognition.continuous = true in the interrupt listener — this is the key change for sensitivity
+recognition.interimResults = true — catches partial speech
+Check all event.results from event.resultIndex — not just results[0]
+Zero TypeScript errors
+Do not touch any other file except these two

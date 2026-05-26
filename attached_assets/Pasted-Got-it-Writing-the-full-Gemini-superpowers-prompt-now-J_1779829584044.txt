@@ -1,0 +1,458 @@
+Got it. Writing the full Gemini superpowers prompt now.
+
+JARVIS — Gemini Superpowers: Streaming + Caching + Thinking Mode + Code Execution
+Read src/lib/gemini.ts and src/lib/jarvis.ts completely before touching anything. Understand the full request/response flow, how generateWithTools, generateWithSearch, and generate methods work, how handleCommand processes responses, and how ttsQueue receives text. Do not write a single line until both files are fully read.
+Write every line as a super senior developer. Clean, typed, maintainable, zero hacks, zero any types.
+
+FILES TO TOUCH
+
+src/lib/gemini.ts — streaming, caching, thinking mode, code execution
+src/lib/jarvis.ts — streaming consumer, sentence chunking into TTS
+
+Do NOT touch:
+
+src/routes/jarvis.tsx
+src/components/jarvis/extended-window.tsx
+src/lib/horizon.ts
+Any other file
+
+
+PART 1 — STREAMING RESPONSES
+What This Does
+Currently Jarvis waits for the complete Gemini response before speaking. With streaming, Gemini sends tokens as they generate. The first sentence reaches TTS in under 1 second. Conversations feel dramatically more alive.
+Architecture Change
+Current flow:
+User speaks → Gemini API → wait 2-3s for full response → TTS speaks full text
+New flow:
+User speaks → Gemini streaming API → 
+first sentence detected → TTS starts speaking immediately →
+second sentence detected → queued → 
+third sentence → queued →
+all while Gemini is still generating
+Implementation in src/lib/gemini.ts
+Add a new method streamGenerate to the GeminiAPI class:
+typescriptasync *streamGenerate(
+  messages: GeminiMessage[],
+  systemPrompt: string,
+  tools?: object[]
+): AsyncGenerator<string, void, unknown> {
+  // Use streamGenerateContent endpoint
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse&key=${this.primaryKey}`
+
+  const payload = {
+    contents: messages,
+    systemInstruction: {
+      parts: [{ text: systemPrompt }]
+    },
+    ...(tools && tools.length > 0 ? { tools } : {}),
+    generationConfig: {
+      temperature: 0.7,
+      topK: 40,
+      topP: 0.95,
+      maxOutputTokens: 8192,
+      thinkingConfig: {
+        thinkingBudget: 0 // disable thinking for streaming — adds latency
+      }
+    }
+  }
+
+  let response: Response
+  
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+  } catch {
+    // Network error — fall back to primary key failure handler
+    throw new Error('Network error during streaming request')
+  }
+
+  if (!response.ok) {
+    // On 429 or 403 — retry with fallback key
+    if (response.status === 429 || response.status === 403) {
+      yield* this._streamWithKey(messages, systemPrompt, tools, this.fallbackKey)
+      return
+    }
+    throw new Error(`Gemini streaming error: ${response.status}`)
+  }
+
+  yield* this._streamWithKey(messages, systemPrompt, tools, this.primaryKey)
+}
+
+private async *_streamWithKey(
+  messages: GeminiMessage[],
+  systemPrompt: string,
+  tools: object[] | undefined,
+  apiKey: string
+): AsyncGenerator<string, void, unknown> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse&key=${apiKey}`
+
+  const payload = {
+    contents: messages,
+    systemInstruction: { parts: [{ text: systemPrompt }] },
+    ...(tools && tools.length > 0 ? { tools } : {}),
+    generationConfig: {
+      temperature: 0.7,
+      topK: 40,
+      topP: 0.95,
+      maxOutputTokens: 8192,
+      thinkingConfig: { thinkingBudget: 0 }
+    }
+  }
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+
+  if (!response.ok || !response.body) {
+    throw new Error(`Streaming failed: ${response.status}`)
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      const chunk = decoder.decode(value, { stream: true })
+      const lines = chunk.split('\n')
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        const data = line.slice(6).trim()
+        if (data === '[DONE]') return
+
+        try {
+          const parsed = JSON.parse(data)
+          const text = parsed
+            ?.candidates?.[0]
+            ?.content
+            ?.parts
+            ?.find((p: { text?: string }) => p.text)
+            ?.text
+
+          if (text) yield text
+        } catch {
+          // Malformed SSE chunk — skip
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock()
+  }
+}
+Sentence Chunker
+Add a utility class to src/lib/gemini.ts that accumulates streaming tokens and emits complete sentences:
+typescriptexport class SentenceChunker {
+  private buffer = ''
+  private readonly SENTENCE_ENDINGS = /[.!?]\s+|[.!?]$/
+
+  // Returns complete sentences found in the buffer, keeps remainder
+  push(token: string): string[] {
+    this.buffer += token
+    const sentences: string[] = []
+
+    let match: RegExpExecArray | null
+    let lastIndex = 0
+
+    // Find all sentence boundaries
+    const regex = /[.!?](\s+|$)/g
+    while ((match = regex.exec(this.buffer)) !== null) {
+      const sentence = this.buffer.slice(lastIndex, match.index + 1).trim()
+      if (sentence.length > 0) sentences.push(sentence)
+      lastIndex = match.index + match[0].length
+    }
+
+    // Keep remainder after last sentence boundary
+    this.buffer = this.buffer.slice(lastIndex)
+    return sentences
+  }
+
+  // Call at end of stream to flush any remaining text
+  flush(): string[] {
+    const remainder = this.buffer.trim()
+    this.buffer = ''
+    return remainder.length > 0 ? [remainder] : []
+  }
+
+  reset(): void {
+    this.buffer = ''
+  }
+}
+Export SentenceChunker from gemini.ts.
+Implementation in src/lib/jarvis.ts
+Import SentenceChunker from gemini.ts.
+In handleCommand, replace the existing geminiAPI.generateWithTools() call with a streaming version:
+typescript// Replace the existing non-streaming call with:
+const chunker = new SentenceChunker()
+let fullResponse = ''
+
+// Set state to processing before starting
+transitionAudioState('processing')
+
+try {
+  const stream = geminiAPI.streamGenerate(
+    conversationHistory,
+    _state.systemPrompt,
+    JARVIS_TOOLS
+  )
+
+  // Transition to speaking as soon as first token arrives
+  let hasStartedSpeaking = false
+
+  for await (const token of stream) {
+    fullResponse += token
+
+    const sentences = chunker.push(token)
+    for (const sentence of sentences) {
+      const cleanSentence = cleanTextForSpeech(sentence)
+      if (cleanSentence.length > 0) {
+        if (!hasStartedSpeaking) {
+          transitionAudioState('speaking')
+          hasStartedSpeaking = true
+        }
+        ttsQueue.enqueue(cleanSentence)
+      }
+    }
+  }
+
+  // Flush remaining text
+  const remaining = chunker.flush()
+  for (const sentence of remaining) {
+    const clean = cleanTextForSpeech(sentence)
+    if (clean.length > 0) {
+      ttsQueue.enqueue(clean)
+    }
+  }
+
+} catch (err) {
+  // Fall back to non-streaming on error
+  console.warn('[JARVIS] Streaming failed, falling back:', err)
+  // existing non-streaming fallback here — call generateWithTools as before
+}
+Important: The streaming path handles regular conversation. Function calls (tool use) still go through generateWithTools — streaming and function calling cannot be combined in the same request. Add intent classification before deciding which path to use:
+typescriptconst intent = classifyIntent(userMessage)
+const needsTools = [
+  'task_creation',
+  'task_management', 
+  'task_query',
+  'memory_capture',
+  'memory_query'
+].includes(intent)
+
+if (needsTools) {
+  // existing generateWithTools path — unchanged
+} else if (intent === 'search_query') {
+  // existing generateWithSearch path — unchanged
+} else {
+  // new streaming path for pure conversation
+}
+
+PART 2 — THINKING MODE FOR COMPLEX QUERIES
+What This Does
+Gemini 2.5 Flash has an internal reasoning step before answering. For complex questions — planning, advice, analysis — it produces significantly better responses. For simple tasks it adds unnecessary latency so it should only activate on complex queries.
+Implementation in src/lib/gemini.ts
+Add a thinkingBudget parameter to _rawRequest:
+typescriptprivate async _rawRequest(
+  payload: GeminiRequest,
+  apiKey: string,
+  thinkingBudget = 0  // 0 = disabled, 1024 = light thinking, 8192 = deep
+): Promise<GeminiResponse> {
+  const payloadWithThinking = {
+    ...payload,
+    generationConfig: {
+      ...payload.generationConfig,
+      thinkingConfig: {
+        thinkingBudget
+      }
+    }
+  }
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payloadWithThinking),
+  })
+  // rest of existing implementation unchanged
+}
+Add a function to detect if a query needs deep thinking:
+typescriptfunction requiresDeepThinking(message: string): boolean {
+  const THINKING_TRIGGERS = [
+    /should i\b/i,
+    /what do you think about\b/i,
+    /help me (plan|decide|figure out|think through)\b/i,
+    /advice\b/i,
+    /best (way|approach|strategy)\b/i,
+    /pros and cons\b/i,
+    /compare\b/i,
+    /explain (why|how)\b/i,
+    /what would (happen|you recommend)\b/i,
+  ]
+  return THINKING_TRIGGERS.some(pattern => pattern.test(message))
+}
+Export requiresDeepThinking from gemini.ts.
+In src/lib/jarvis.ts, in handleCommand, when calling generateWithTools for complex queries pass thinkingBudget: 1024:
+typescript// In the needsTools path or non-streaming path:
+const budget = requiresDeepThinking(userMessage) ? 1024 : 0
+// Pass budget to the relevant generate method
+Update generateWithTools signature to accept optional thinkingBudget:
+typescriptasync generateWithTools(
+  messages: GeminiMessage[],
+  systemPrompt: string,
+  sessionId: string,
+  thinkingBudget = 0
+): Promise<string>
+
+PART 3 — CODE EXECUTION TOOL
+What This Does
+Jarvis can run actual Python code for calculations, data processing, sorting, formatting. "Calculate compound interest", "what's 15% of my 38 active tasks", "sort these items alphabetically" — Jarvis executes code and returns the exact result.
+Implementation in src/lib/gemini.ts
+Add codeExecution to the tools array when code execution is appropriate. This is a built-in Gemini tool — no external service needed:
+typescript// Add to JARVIS_TOOLS or as a separate tools config:
+const CODE_EXECUTION_TOOL = { codeExecution: {} }
+Add a helper to detect if a query would benefit from code execution:
+typescriptfunction requiresCodeExecution(message: string): boolean {
+  const CODE_TRIGGERS = [
+    /calculate\b/i,
+    /compute\b/i,
+    /\d+\s*[+\-*/]\s*\d+/,  // math expressions
+    /percent(age)?\b/i,
+    /how many\b/i,
+    /sort\b/i,
+    /convert\b/i,
+    /formula\b/i,
+  ]
+  return CODE_TRIGGERS.some(pattern => pattern.test(message))
+}
+In handleCommand, when requiresCodeExecution is true, add CODE_EXECUTION_TOOL to the tools array sent to Gemini:
+typescriptconst tools = needsTools
+  ? [{ functionDeclarations: JARVIS_TOOLS }]
+  : requiresCodeExecution(userMessage)
+  ? [CODE_EXECUTION_TOOL]
+  : []
+Handle code execution results in the response — Gemini returns a executableCode and codeExecutionResult part type. Extract the result and include it in the response text:
+typescript// In response processing, after extracting text parts:
+const codeResult = parts.find(p => p.codeExecutionResult)
+if (codeResult?.codeExecutionResult?.output) {
+  const output = codeResult.codeExecutionResult.output
+  responseText = responseText
+    ? `${responseText}\n\nResult: ${output}`
+    : `Result: ${output}`
+}
+
+PART 4 — CONTEXT CACHING
+What This Does
+The system prompt (personality + memories + timeline context) is rebuilt and sent with every single message — consuming hundreds of tokens each time. Context caching tells Gemini to store it once and reuse it. Reduces token consumption by ~60% and speeds up responses.
+Implementation in src/lib/gemini.ts
+Add a CacheManager class:
+typescriptinterface CachedContext {
+  cacheId: string
+  createdAt: number
+  expiresAt: number
+  systemPrompt: string
+}
+
+class CacheManager {
+  private cache: CachedContext | null = null
+  private readonly TTL_MS = 60 * 60 * 1000 // 1 hour
+
+  isValid(systemPrompt: string): boolean {
+    if (!this.cache) return false
+    if (Date.now() > this.cache.expiresAt) return false
+    if (this.cache.systemPrompt !== systemPrompt) return false
+    return true
+  }
+
+  getCacheId(): string | null {
+    return this.cache?.cacheId ?? null
+  }
+
+  set(cacheId: string, systemPrompt: string): void {
+    this.cache = {
+      cacheId,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + this.TTL_MS,
+      systemPrompt,
+    }
+  }
+
+  invalidate(): void {
+    this.cache = null
+  }
+}
+
+const cacheManager = new CacheManager()
+Add a createContextCache method to GeminiAPI:
+typescriptasync createContextCache(
+  systemPrompt: string,
+  apiKey: string
+): Promise<string | null> {
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/cachedContents?key=${apiKey}`
+
+    const payload = {
+      model: 'models/gemini-2.5-flash',
+      systemInstruction: {
+        parts: [{ text: systemPrompt }]
+      },
+      ttl: '3600s',
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+
+    if (!response.ok) return null
+
+    const data = await response.json()
+    return data.name ?? null  // cache ID like "cachedContents/abc123"
+  } catch {
+    return null
+  }
+}
+In _rawRequest, when a valid cache exists use it instead of sending the full system prompt:
+typescript// At the start of _rawRequest:
+const cachedId = cacheManager.getCacheId()
+const payloadWithCache = cachedId
+  ? {
+      ...payload,
+      cachedContent: cachedId,
+      // Remove systemInstruction when using cache
+      systemInstruction: undefined,
+    }
+  : payload
+In src/lib/jarvis.ts, in initJarvisSession, after building the system prompt:
+typescript// Try to create or reuse context cache
+if (!cacheManager.isValid(systemPrompt)) {
+  const cacheId = await geminiAPI.createContextCache(
+    systemPrompt,
+    import.meta.env.VITE_GEMINI_API_KEY
+  )
+  if (cacheId) {
+    cacheManager.set(cacheId, systemPrompt)
+    console.log('[JARVIS] Context cached — token usage reduced')
+  }
+}
+
+NON-NEGOTIABLE REQUIREMENTS
+
+Streaming only activates for conversation intent — tool calls and search still use existing non-streaming paths
+SentenceChunker must be exported from gemini.ts and imported in jarvis.ts
+The streaming generator must release the reader lock in a finally block — memory leak if not
+thinkingBudget: 0 must be set on the streaming endpoint — thinking mode + streaming causes latency issues
+Thinking budget 1024 only for queries matching requiresDeepThinking — not all queries
+CODE_EXECUTION_TOOL and functionDeclarations tools are mutually exclusive — never send both in the same request
+CacheManager is module-level singleton — not a class that gets instantiated per request
+Cache TTL is 1 hour — matches Gemini's minimum cached content lifetime
+If cache creation fails — silently fall back to sending full system prompt — never throw
+All existing methods (generate, generateWithTools, generateWithSearch) must continue working exactly as before — streaming is additive
+Zero TypeScript errors
+Zero any types anywhere in new code

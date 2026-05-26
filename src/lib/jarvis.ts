@@ -284,7 +284,7 @@ function cleanTextForSpeech(text: string): string {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _interruptRecognition: any = null;
 
-const INTERRUPT_WORDS = ["stop", "wait", "hold on", "shut up", "pause", "enough", "quiet"];
+const INTERRUPT_WORDS = ["stop", "wait", "hold on", "shut up", "pause", "enough", "quiet", "silence"];
 
 function startInterruptListener(): void {
   if (!SpeechRecognitionCtor) return;
@@ -298,27 +298,40 @@ function startInterruptListener(): void {
       const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const recognition: any = new SR();
-      recognition.continuous = false;
-      recognition.interimResults = false;
+      // continuous + interimResults: recognition stays alive without stopping,
+      // catches partial speech faster, and reduces the effective voice level
+      // required to interrupt — important because the mic picks up TTS output
+      // as ambient noise and raises the confidence threshold.
+      recognition.continuous = true;
+      recognition.interimResults = true;
       recognition.lang = "en-US";
-      recognition.maxAlternatives = 1;
+      recognition.maxAlternatives = 3;
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       recognition.onresult = (event: any) => {
-        const transcript: string = event.results[0][0].transcript.toLowerCase().trim();
-        if (INTERRUPT_WORDS.some((w) => transcript.includes(w))) {
-          ttsQueue.interrupt();
-          stopInterruptListener();
-          transitionAudioState("interrupted");
-          setTimeout(() => {
-            if (_state.voiceState === "interrupted") {
-              transitionAudioState("idle");
+        // Iterate from resultIndex (not 0) to avoid re-processing old results
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const result = event.results[i];
+          // Check all alternatives (up to maxAlternatives)
+          for (let j = 0; j < result.length; j++) {
+            const transcript: string = result[j].transcript.toLowerCase().trim();
+            if (INTERRUPT_WORDS.some((w) => transcript.includes(w))) {
+              ttsQueue.interrupt();
+              stopInterruptListener();
+              transitionAudioState("interrupted");
+              setTimeout(() => {
+                if (_state.voiceState === "interrupted") {
+                  transitionAudioState("idle");
+                }
+              }, 800);
+              return;
             }
-          }, 800);
+          }
         }
       };
 
-      // On end — create a fresh instance rather than restarting the ended one
+      // With continuous = true the instance should not end on its own.
+      // Restart only if it stops unexpectedly while still in speaking state.
       recognition.onend = () => {
         if (_state.voiceState === "speaking") {
           setTimeout(() => {

@@ -1,0 +1,209 @@
+JARVIS — Responding Animation: Orb + Chat + Extended Window
+Read src/components/jarvis/ai-core.tsx, src/routes/jarvis.tsx, and src/components/jarvis/extended-window.tsx fully before touching anything. Understand the existing animation system, how voiceState is read, and how messages render.
+Write every line as a super senior developer. Clean, typed, Framer Motion only for animations.
+
+FILES TO TOUCH
+
+src/components/jarvis/ai-core.tsx
+src/routes/jarvis.tsx
+src/components/jarvis/extended-window.tsx
+
+
+FIX 1 — ORB ANIMATION DURING RESPONDING STATE
+In src/components/jarvis/ai-core.tsx, find the main orb element and its animation variants.
+When voiceState === 'processing' or voiceState === 'speaking' add these animations:
+Outer ring — rotating arc:
+tsx<motion.div
+  className="absolute rounded-full"
+  style={{
+    width: '140%',
+    height: '140%',
+    border: '1px solid transparent',
+    borderTopColor: 'rgba(56,189,248,0.6)',
+    borderRightColor: 'rgba(56,189,248,0.2)',
+  }}
+  animate={
+    voiceState === 'processing' || voiceState === 'speaking'
+      ? { rotate: 360 }
+      : { rotate: 0 }
+  }
+  transition={
+    voiceState === 'processing' || voiceState === 'speaking'
+      ? { duration: 1.8, repeat: Infinity, ease: 'linear' }
+      : { duration: 0.5 }
+  }
+/>
+Second counter-rotating ring:
+tsx<motion.div
+  className="absolute rounded-full"
+  style={{
+    width: '120%',
+    height: '120%',
+    border: '1px solid transparent',
+    borderBottomColor: 'rgba(56,189,248,0.4)',
+    borderLeftColor: 'rgba(56,189,248,0.1)',
+  }}
+  animate={
+    voiceState === 'processing' || voiceState === 'speaking'
+      ? { rotate: -360 }
+      : { rotate: 0 }
+  }
+  transition={
+    voiceState === 'processing' || voiceState === 'speaking'
+      ? { duration: 2.4, repeat: Infinity, ease: 'linear' }
+      : { duration: 0.5 }
+  }
+/>
+Core orb glow pulse:
+tsxanimate={
+  voiceState === 'speaking'
+    ? {
+        boxShadow: [
+          '0 0 20px rgba(56,189,248,0.2)',
+          '0 0 50px rgba(56,189,248,0.5)',
+          '0 0 20px rgba(56,189,248,0.2)',
+        ],
+        scale: [1, 1.06, 1],
+      }
+    : voiceState === 'processing'
+    ? {
+        boxShadow: [
+          '0 0 20px rgba(56,189,248,0.1)',
+          '0 0 35px rgba(56,189,248,0.3)',
+          '0 0 20px rgba(56,189,248,0.1)',
+        ],
+      }
+    : {
+        boxShadow: '0 0 20px rgba(56,189,248,0.1)',
+        scale: 1,
+      }
+}
+transition={
+  voiceState === 'speaking'
+    ? { duration: 1.2, repeat: Infinity, ease: 'easeInOut' }
+    : voiceState === 'processing'
+    ? { duration: 0.8, repeat: Infinity, ease: 'easeInOut' }
+    : { duration: 0.4 }
+}
+
+FIX 2 — CHAT MESSAGE ENTRANCE ANIMATION
+In src/routes/jarvis.tsx, find where JARVIS assistant messages are rendered in the chat feed.
+For new JARVIS messages appearing — add entrance animation:
+tsx<motion.div
+  key={message.id}
+  initial={{ opacity: 0, y: 12, scale: 0.97 }}
+  animate={{ opacity: 1, y: 0, scale: 1 }}
+  transition={{
+    duration: 0.35,
+    ease: [0.33, 1, 0.68, 1],
+  }}
+>
+  {/* existing message bubble content */}
+</motion.div>
+Typing indicator — show animated dots while Jarvis is processing. Add this before messages render, visible only when voiceState === 'processing':
+tsx<AnimatePresence>
+  {voiceState === 'processing' && (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 4 }}
+      transition={{ duration: 0.2 }}
+      className="flex gap-3 mb-4"
+    >
+      <div
+        className="w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center"
+        style={{
+          background: 'rgba(56,189,248,0.1)',
+          border: '1px solid rgba(56,189,248,0.2)',
+        }}
+      >
+        <span style={{ color: '#38bdf8', fontSize: '9px', fontWeight: 'bold' }}>J</span>
+      </div>
+      <div
+        className="flex items-center gap-1.5 px-4 py-3 rounded-2xl rounded-tl-sm"
+        style={{
+          background: 'rgba(10,22,40,0.8)',
+          border: '1px solid rgba(30,58,95,0.6)',
+        }}
+      >
+        {[0, 150, 300].map((delay) => (
+          <motion.div
+            key={delay}
+            className="w-1.5 h-1.5 rounded-full"
+            style={{ background: 'rgba(56,189,248,0.6)' }}
+            animate={{ opacity: [0.3, 1, 0.3], y: [0, -4, 0] }}
+            transition={{
+              duration: 0.8,
+              repeat: Infinity,
+              delay: delay / 1000,
+              ease: 'easeInOut',
+            }}
+          />
+        ))}
+      </div>
+    </motion.div>
+  )}
+</AnimatePresence>
+Streaming text effect — when a new JARVIS message appears, animate a scan line across it once:
+tsx// Wrap the message content div with position: relative
+// Add this as a child that animates once on mount:
+<motion.div
+  className="absolute inset-0 pointer-events-none rounded-2xl"
+  style={{
+    background: 'linear-gradient(90deg, transparent, rgba(56,189,248,0.06), transparent)',
+  }}
+  initial={{ x: '-100%' }}
+  animate={{ x: '200%' }}
+  transition={{ duration: 0.8, ease: 'easeOut', delay: 0.1 }}
+/>
+
+FIX 3 — EXTENDED WINDOW ANIMATION DURING RESPONDING
+In src/components/jarvis/extended-window.tsx, add a responding state indicator at the top of the window that activates when new messages are incoming.
+Add a prop to ExtendedWindowProps:
+typescriptisResponding?: boolean
+Pass voiceState === 'processing' || voiceState === 'speaking' from jarvis.tsx when calling <ExtendedWindow>.
+Inside the window, add an animated scan line at the top that runs when responding:
+tsx<AnimatePresence>
+  {isResponding && (
+    <motion.div
+      key="scan-line"
+      className="absolute top-0 left-0 right-0 h-px z-10 pointer-events-none"
+      style={{
+        background: 'linear-gradient(90deg, transparent, #38bdf8, transparent)',
+        boxShadow: '0 0 8px rgba(56,189,248,0.8)',
+      }}
+      initial={{ x: '-100%' }}
+      animate={{ x: '100%' }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
+    />
+  )}
+</AnimatePresence>
+Also add a subtle border pulse on the window container when responding:
+tsx// On the main window motion.div, add to existing style:
+style={{
+  ...existingStyle,
+  border: isResponding
+    ? '1px solid rgba(56,189,248,0.35)'
+    : '1px solid rgba(56,189,248,0.15)',
+  transition: 'border-color 0.4s ease',
+  boxShadow: isResponding
+    ? `0 0 0 1px rgba(56,189,248,0.08),
+       0 25px 60px rgba(0,0,0,0.7),
+       0 0 100px rgba(56,189,248,0.08)`
+    : `0 0 0 1px rgba(56,189,248,0.05),
+       0 25px 60px rgba(0,0,0,0.7),
+       0 0 80px rgba(56,189,248,0.04)`,
+}}
+
+NON-NEGOTIABLE REQUIREMENTS
+
+All animations use Framer Motion only — no CSS keyframes, no raw JS animation
+Rotating rings must be position: absolute inside a position: relative container — verify parent has relative
+AnimatePresence must wrap the typing indicator — it needs to animate out when processing ends
+The scan line in the message bubble fires exactly once on mount — initial and animate are one-shot not repeat
+The scan line in the extended window repeats continuously while isResponding is true
+isResponding prop is optional with default false — existing ExtendedWindow usage without the prop must still compile
+Zero TypeScript errors
+Do not change any existing functionality — voice, sessions, memory, conversation mode all untouched
+voiceState is already available in jarvis.tsx via the existing store hook — do not add new state for this
