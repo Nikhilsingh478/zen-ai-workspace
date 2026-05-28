@@ -10,7 +10,7 @@ export interface DisplayMessage {
   role: "user" | "jarvis";
   content: string;
   timestamp: number;
-  type?: "text" | "task_created" | "memory_saved" | "error" | "interrupted" | "morning_briefing" | "search_result";
+  type?: "text" | "task_created" | "memory_saved" | "error" | "interrupted" | "morning_briefing" | "search_result" | "proactive_alert" | "context_update";
   metadata?: Record<string, unknown>;
 }
 

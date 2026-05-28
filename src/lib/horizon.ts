@@ -309,6 +309,47 @@ export async function addTasksBatch(inputs: HorizonTaskInput[]): Promise<number>
   }
 }
 
+// ─── JARVIS batch task creator (Promise.allSettled — one failure never aborts others) ─
+
+export async function addJarvisTasksBatch(
+  tasks: Array<{
+    title: string;
+    taskDate: string;
+    taskTime: string;
+    priority: "low" | "medium" | "high";
+    description?: string;
+  }>,
+): Promise<{ created: number; failed: number }> {
+  let created = 0;
+  let failed = 0;
+
+  const results = await Promise.allSettled(
+    tasks.map((task) =>
+      addTaskDirect({
+        title: task.title,
+        taskDate: task.taskDate,
+        taskTime: task.taskTime,
+        priority: task.priority,
+        description: task.description ?? null,
+        notificationEnabled: true,
+      }),
+    ),
+  );
+
+  for (const result of results) {
+    if (result.status === "fulfilled" && result.value !== null) {
+      created++;
+    } else {
+      failed++;
+      if (result.status === "rejected") {
+        console.error("[Horizon] JARVIS batch task failed:", result.reason);
+      }
+    }
+  }
+
+  return { created, failed };
+}
+
 // ─── Standalone addTaskDirect (callable outside React hooks) ─────────────────
 
 export async function addTaskDirect(input: HorizonTaskInput): Promise<HorizonTask | null> {

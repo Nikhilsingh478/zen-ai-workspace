@@ -224,6 +224,59 @@ Deno.serve(async (req) => {
     });
   }
 
+  // ── Proactive check branch (client-triggered, no FCM) ─────────────────────
+  let requestBody: Record<string, unknown> = {};
+  try {
+    requestBody = (await req.clone().json()) as Record<string, unknown>;
+  } catch { /* empty body — fine for cron triggers */ }
+
+  if (requestBody.type === "proactive_check") {
+    try {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const supabaseKey =
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ||
+        Deno.env.get("SUPABASE_ANON_KEY")!;
+      const db = createClient(supabaseUrl, supabaseKey);
+
+      const nowUTC = new Date();
+      const ist = getISTComponents(nowUTC);
+      const nowMins = ist.totalMinutes;
+
+      const { data: tasks } = await db
+        .from("horizon_tasks")
+        .select("id, title, task_time, priority, completed")
+        .eq("task_date", ist.dateStr)
+        .eq("completed", false)
+        .order("task_time", { ascending: true });
+
+      const upcomingInWindow = (tasks ?? []).filter((t: { task_time: string }) => {
+        const [h, m] = t.task_time.split(":").map(Number);
+        const diff = h * 60 + m - nowMins;
+        return diff >= 13 && diff <= 17; // 15-minute warning window
+      });
+
+      const overdueHighPriority = (tasks ?? []).filter((t: { task_time: string; priority: string }) => {
+        const [h, m] = t.task_time.split(":").map(Number);
+        return t.priority === "high" && nowMins > h * 60 + m + 30;
+      });
+
+      return new Response(
+        JSON.stringify({
+          upcomingInWindow,
+          overdueHighPriority,
+          istTime: ist.timeStr,
+          istDate: ist.dateStr,
+        }),
+        { headers: { "Content-Type": "application/json" } },
+      );
+    } catch (err) {
+      return new Response(JSON.stringify({ error: String(err) }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }
+
   try {
     // ── 1. Firebase service account ───────────────────────────────────────
     const serviceAccountRaw = Deno.env.get("FIREBASE_SERVICE_ACCOUNT");

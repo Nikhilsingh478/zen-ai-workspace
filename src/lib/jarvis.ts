@@ -12,6 +12,8 @@ import {
   requiresDeepThinking,
   requiresCodeExecution,
   CODE_EXECUTION_TOOL,
+  executeToolCall,
+  takePendingContextUpdate,
 } from "@/lib/gemini";
 import type { GeminiMessage } from "@/lib/gemini";
 import { getHorizonTasks, ensureBooted } from "@/lib/horizon";
@@ -44,7 +46,7 @@ export type JarvisMessage = {
   role: "user" | "jarvis";
   content: string;
   timestamp: number;
-  type?: "text" | "task_created" | "memory_saved" | "error" | "interrupted" | "morning_briefing" | "search_result";
+  type?: "text" | "task_created" | "memory_saved" | "error" | "interrupted" | "morning_briefing" | "search_result" | "proactive_alert" | "context_update";
   tasks?: ParsedTask[];
   metadata?: Record<string, unknown>;
 };
@@ -98,6 +100,8 @@ export type IntentType =
   | "memory_query"
   | "task_management"
   | "search_query"
+  | "daily_review"
+  | "quick_capture"
   | "conversation";
 
 type JarvisState = {
@@ -193,6 +197,8 @@ const CONVERSATION_END_PHRASES = [
 let _sessionStartedThisVisit = false;
 // Briefing guard — prevents double-fire from React StrictMode double-invocation
 let _briefingDeliveredThisSession = false;
+// Proactive check interval — cleared on jarvis.disable()
+let _proactiveCheckInterval: ReturnType<typeof setInterval> | null = null;
 
 function emit() {
   listeners.forEach((fn) => fn());
@@ -752,10 +758,38 @@ class TTSQueue {
 
 const ttsQueue = new TTSQueue();
 
+// ─── Quick Capture Patterns ───────────────────────────────────────────────────
+
+const QUICK_CAPTURE_PATTERNS = [
+  /^note[:\s]/i,
+  /^quick note[:\s]/i,
+  /^capture[:\s]/i,
+  /^jot down[:\s]/i,
+  /^remember to\s/i,
+  /^log[:\s]/i,
+] as const;
+
+// ─── Daily / Weekly Review Patterns ──────────────────────────────────────────
+
+const REVIEW_PATTERNS = [
+  /give me (a |my )?(daily |day'?s? |end.of.day )?review/i,
+  /how (did|was) (my |today|the day)/i,
+  /end of day/i,
+  /day review/i,
+  /wrap up (today|the day)/i,
+  /summarize (my |today|the day)/i,
+  /how am i (doing|tracking)/i,
+  /weekly review/i,
+  /week in review/i,
+] as const;
+
 // ─── Intent Classifier ────────────────────────────────────────────────────────
 
 export function classifyIntent(message: string): IntentType {
   const lower = message.toLowerCase();
+
+  // Quick capture — highest priority; bypasses Gemini entirely
+  if (QUICK_CAPTURE_PATTERNS.some((p) => p.test(message.trim()))) return "quick_capture";
 
   // Task query — expanded patterns for natural phrasing
   const taskQueryPatterns = [
@@ -781,6 +815,14 @@ export function classifyIntent(message: string): IntentType {
   if (/remember that|save this|note that|keep in mind|don't forget that|make a note|jot down/.test(lower))
     return "memory_capture";
 
+  // Life updates — route to tools path so update_user_context tool is available
+  if (
+    /^i just (got|started|finished|completed|landed|launched|moved|decided|joined|left)\b/i.test(message) ||
+    /^i'?m (now |starting |learning |building |working on )/i.test(message) ||
+    /^i'?ve (decided|started|finished|completed|moved)\b/i.test(message)
+  )
+    return "memory_capture";
+
   if (/what do i have|what('s| is) today|my tasks|pending (tasks?|work)|what's (due|scheduled)|show me (my|today)|what (do i need|should i do)|anything (today|scheduled)/.test(lower))
     return "task_query";
 
@@ -789,6 +831,9 @@ export function classifyIntent(message: string): IntentType {
 
   if (/delete (task|reminder)|remove (task|reminder)|reschedule|update (task|reminder)|change (the|my) (task|reminder|schedule)|cancel (task|reminder|meeting)|move (the|my) (task|meeting)/.test(lower))
     return "task_management";
+
+  // Daily/weekly review — checked before search_query to avoid misclassification
+  if (REVIEW_PATTERNS.some((p) => p.test(message))) return "daily_review";
 
   // Search queries — broad pattern set including "what is X" definitional queries
   const searchPatterns = [
@@ -1175,12 +1220,249 @@ async function fetchTimelineContext(): Promise<TimelineMonthContext[]> {
   }
 }
 
+// ─── Habit Tracking ───────────────────────────────────────────────────────────
+
+interface HabitPattern {
+  domain: string;
+  completionRate: number;
+  activeDays: number;
+  trend: "strong" | "low" | "absent";
+}
+
+const DOMAIN_KEYWORDS: Record<string, string[]> = {
+  gym: ["gym", "workout", "exercise", "fitness", "strength", "cardio", "training"],
+  development: ["code", "dev", "build", "implement", "javascript", "react", "project"],
+  cricket: ["cricket", "batting", "bowling", "practice", "match"],
+  freelance: ["client", "freelance", "deliver", "invoice"],
+  study: ["study", "learn", "revision", "exam", "course"],
+  ai: ["ai", "jarvis", "ml", "model", "gemini"],
+};
+
+type WeekTask = { task_date: string; title: string; completed: boolean; description: string | null };
+
+/**
+ * Analyses the last 7 days of task data by domain and returns a plain-text
+ * insight string for injection into the system prompt.
+ * Always returns empty string on error — never throws.
+ */
+export async function analyzeHabits(tasks?: WeekTask[]): Promise<string> {
+  try {
+    if (!tasks) {
+      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toLocaleDateString("en-CA");
+      const { data } = await supabase
+        .from("horizon_tasks")
+        .select("task_date, title, completed, description")
+        .gte("task_date", weekAgo)
+        .order("task_date", { ascending: true });
+      tasks = (data ?? []) as WeekTask[];
+    }
+
+    if (tasks.length === 0) return "";
+
+    const domainStats: Record<string, { total: number; completed: number; dates: Set<string> }> = {};
+
+    for (const task of tasks) {
+      const titleLower = task.title.toLowerCase();
+      let domain = "general";
+
+      for (const [d, keywords] of Object.entries(DOMAIN_KEYWORDS)) {
+        if (keywords.some((k) => titleLower.includes(k))) {
+          domain = d;
+          break;
+        }
+      }
+
+      // Timeline tag in description overrides keyword match
+      if (task.description) {
+        const match = /\[timeline:[^:]+:([^\]]+)\]/.exec(task.description);
+        if (match) domain = match[1];
+      }
+
+      if (!domainStats[domain]) {
+        domainStats[domain] = { total: 0, completed: 0, dates: new Set() };
+      }
+      domainStats[domain].total++;
+      if (task.completed) {
+        domainStats[domain].completed++;
+        domainStats[domain].dates.add(task.task_date);
+      }
+    }
+
+    const insights: string[] = [];
+
+    for (const [domain, stats] of Object.entries(domainStats)) {
+      if (stats.total < 2) continue; // insufficient data — skip
+
+      const rate = Math.round((stats.completed / stats.total) * 100);
+      const activeDays = stats.dates.size;
+
+      const pattern: HabitPattern = {
+        domain,
+        completionRate: rate,
+        activeDays,
+        trend: rate >= 80 ? "strong" : rate === 0 ? "absent" : rate < 40 ? "low" : "strong",
+      };
+
+      if (pattern.trend === "absent" && stats.total >= 2) {
+        insights.push(`${domain}: 0% completion this week (${stats.total} tasks skipped)`);
+      } else if (pattern.trend === "strong") {
+        insights.push(`${domain}: strong week — ${rate}% completion, active ${activeDays} days`);
+      } else if (pattern.trend === "low" && stats.total >= 3) {
+        insights.push(`${domain}: low engagement — only ${rate}% done this week`);
+      }
+    }
+
+    return insights.length > 0
+      ? `Weekly habit patterns:\n${insights.join("\n")}`
+      : "";
+  } catch {
+    return "";
+  }
+}
+
+// ─── Daily / Weekly Review ────────────────────────────────────────────────────
+
+/**
+ * Builds the prompt for a daily/weekly review. Fetches all data in parallel.
+ * Always returns a prompt string — handles empty data gracefully.
+ */
+async function generateDailyReview(): Promise<string> {
+  const todayStr = new Date().toLocaleDateString("en-CA");
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toLocaleDateString("en-CA");
+
+  const [{ data: todayTasks }, { data: weekTasks }, timelineMonths] = await Promise.all([
+    supabase
+      .from("horizon_tasks")
+      .select("title, completed, task_time, priority")
+      .eq("task_date", todayStr)
+      .order("task_time", { ascending: true }),
+    supabase
+      .from("horizon_tasks")
+      .select("task_date, title, completed, description")
+      .gte("task_date", weekAgo)
+      .order("task_date", { ascending: true }),
+    fetchTimelineContext(),
+  ]);
+
+  const completed = (todayTasks ?? []).filter((t) => t.completed);
+  const pending = (todayTasks ?? []).filter((t) => !t.completed);
+  const habitInsight = await analyzeHabits((weekTasks ?? []) as WeekTask[]);
+
+  return (
+    `Generate a concise end-of-day review. Be honest and direct — not a cheerleader.\n\n` +
+    `TODAY (${todayStr}):\n` +
+    `Completed (${completed.length}): ${completed.map((t) => t.title).join(", ") || "none"}\n` +
+    `Still pending (${pending.length}): ${pending.map((t) => t.title).join(", ") || "none"}\n\n` +
+    (habitInsight ? `THIS WEEK PATTERN:\n${habitInsight}\n\n` : "") +
+    (timelineMonths.length > 0
+      ? `TIMELINE GOALS:\n${timelineMonths.slice(-2).map((m) => `[${m.monthKey}]: ${m.context.slice(0, 150)}`).join("\n")}\n\n`
+      : "") +
+    `Format your response as:\n` +
+    `1. What got done today (1-2 sentences, honest)\n` +
+    `2. What carries over (1 sentence)\n` +
+    `3. Timeline progress (1 sentence, omit if no timeline data)\n` +
+    `4. One honest observation about patterns this week — be direct, not a therapist\n\n` +
+    `Keep total response under 120 words. Speak like a sharp, honest advisor. No markdown, plain spoken text only.`
+  );
+}
+
+// ─── Proactive Intelligence ───────────────────────────────────────────────────
+
+/**
+ * Adds a silent proactive alert to the chat feed — visual only, never spoken aloud.
+ */
+function addProactiveMessage(text: string): void {
+  patch({
+    messages: [
+      ..._state.messages,
+      {
+        id: `proactive_${Date.now()}`,
+        role: "jarvis" as const,
+        content: text,
+        type: "proactive_alert" as const,
+        timestamp: Date.now(),
+      },
+    ],
+  });
+}
+
+async function runProactiveCheck(): Promise<void> {
+  try {
+    const now = new Date();
+    const todayStr = now.toLocaleDateString("en-CA");
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+
+    const { data: tasks } = await supabase
+      .from("horizon_tasks")
+      .select("id, title, task_time, priority")
+      .eq("task_date", todayStr)
+      .eq("completed", false)
+      .order("task_time", { ascending: true });
+
+    if (!tasks || tasks.length === 0) return;
+
+    const nowMins = currentHour * 60 + currentMinute;
+
+    for (const task of tasks as Array<{ id: string; title: string; task_time: string; priority: string }>) {
+      const [taskHour, taskMin] = task.task_time.split(":").map(Number);
+      const taskMins = taskHour * 60 + taskMin;
+      const diff = taskMins - nowMins;
+
+      // 15-minute warning window
+      if (diff >= 13 && diff <= 17) {
+        addProactiveMessage(`Heads up — "${task.title}" starts in 15 minutes.`);
+        return; // one proactive message at a time
+      }
+
+      // High-priority overdue (30-minute grace period)
+      if (task.priority === "high" && nowMins > taskMins + 30) {
+        addProactiveMessage(
+          `"${task.title}" was scheduled for ${task.task_time} and hasn't been marked complete.`,
+        );
+        return;
+      }
+    }
+
+    // Evening check — 7pm, first 15 minutes of the hour only
+    if (currentHour === 19 && currentMinute < 15) {
+      const { count } = await supabase
+        .from("horizon_tasks")
+        .select("*", { count: "exact", head: true })
+        .eq("task_date", todayStr)
+        .eq("completed", true);
+
+      if ((count ?? 0) === 0) {
+        addProactiveMessage(
+          `It's 7pm and you haven't completed any tasks today. ${tasks.length} still pending.`,
+        );
+      }
+    }
+  } catch {
+    // Silent — proactive checks must never crash the app
+  }
+}
+
+export function startProactiveChecks(): void {
+  if (_proactiveCheckInterval) return;
+  void runProactiveCheck(); // run immediately on start
+  _proactiveCheckInterval = setInterval(() => void runProactiveCheck(), 15 * 60 * 1000);
+}
+
+export function stopProactiveChecks(): void {
+  if (_proactiveCheckInterval) {
+    clearInterval(_proactiveCheckInterval);
+    _proactiveCheckInterval = null;
+  }
+}
+
 // ─── System Prompt Builder ────────────────────────────────────────────────────
 
 export function buildJarvisSystemPrompt(
   memories: Memory[],
   summaries: string[],
   timelineMonths?: TimelineMonthContext[],
+  habitInsight?: string,
 ): string {
   const now = new Date();
   const dateStr = now.toLocaleDateString("en-US", {
@@ -1233,6 +1515,8 @@ export function buildJarvisSystemPrompt(
       ? `\nTODAY'S TASKS (${todayKey}) — ${todayTasks.length} pending:\n${todayTasks.map((t) => `• ${t.taskTime} ${t.title} (${t.priority})`).join("\n")}${highPriority.length > 0 ? `\nHIGH PRIORITY TODAY: ${highPriority.map((t) => t.title).join(", ")}` : ""}`
       : `\nNo tasks scheduled for today (${todayKey}).`;
 
+  const habitSection = habitInsight ? `\nWEEKLY HABITS:\n${habitInsight}\n` : "";
+
   return `You are JARVIS — Just A Rather Very Intelligent System.
 You are the personal AI of a single user: a student, developer, and freelancer who juggles multiple contexts simultaneously.
 ${userContext}
@@ -1269,7 +1553,7 @@ ${memoriesSection}
 ${summariesSection}
 ${timelineSection}
 ${taskSection}
-
+${habitSection}
 CONVERSATIONAL BEHAVIOR:
 - You are in a live voice conversation, not a chat interface.
 - After answering, if the topic has natural follow-up potential, ask ONE short follow-up question to keep the conversation going.
@@ -1808,6 +2092,109 @@ async function handleCommand(commandText: string) {
       parts: [{ text: commandText }],
     };
 
+    // ── Quick Capture — highest priority, no Gemini call ──────────────────────
+    if (intent === "quick_capture") {
+      const content = commandText
+        .replace(/^(note|quick note|capture|jot down|log)[:\s]+/i, "")
+        .trim();
+
+      if (!content) {
+        transitionAudioState("idle");
+        return;
+      }
+
+      try {
+        await supabase.from("jarvis_memory").insert({
+          content,
+          memory_type: "general",
+          source_session_id: sessionId || null,
+        });
+
+        // If it contains a time reference, also create a task
+        const looksLikeTask =
+          /\b(by|before|at|on|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next week|tonight|\d+(am|pm))\b/i.test(
+            content,
+          );
+
+        if (looksLikeTask) {
+          await executeToolCall(
+            "create_task",
+            {
+              title: content,
+              taskDate: new Date().toLocaleDateString("en-CA"),
+              taskTime: "09:00",
+              priority: "medium",
+            },
+            sessionId,
+          );
+        }
+
+        const responseText = "Noted.";
+        const jarvisMsg: JarvisMessage = {
+          id: crypto.randomUUID(),
+          role: "jarvis",
+          content: responseText,
+          timestamp: Date.now(),
+          type: "memory_saved",
+        };
+        patch({ messages: [..._state.messages, jarvisMsg] });
+        transitionAudioState("speaking");
+
+        saveMessage(sessionId, "assistant", responseText, "conversation").then(() => {
+          updateSessionMessageCount(sessionId).catch(() => null);
+        }).catch(() => null);
+
+        ttsQueue.enqueue(responseText, () => {
+          if (_state.enabled && _conversationRuntime.mode === "idle") {
+            setTimeout(() => void startWakeWordDetection(), 400);
+          }
+        });
+      } catch {
+        transitionAudioState("idle");
+      }
+      return;
+    }
+
+    // ── Daily / Weekly Review — before search_query classification ─────────────
+    if (intent === "daily_review") {
+      try {
+        const reviewPrompt = await generateDailyReview();
+        const reviewResponse = await geminiAPI.generateContent(reviewPrompt);
+
+        const jarvisMsg: JarvisMessage = {
+          id: crypto.randomUUID(),
+          role: "jarvis",
+          content: reviewResponse,
+          timestamp: Date.now(),
+          type: "morning_briefing",
+        };
+
+        conversationHistory = [
+          ...conversationHistory,
+          { role: "user", parts: [{ text: commandText }] },
+          { role: "model", parts: [{ text: reviewResponse }] },
+        ];
+        if (conversationHistory.length > 20) conversationHistory = conversationHistory.slice(-20);
+
+        patch({ messages: [..._state.messages, jarvisMsg] });
+        transitionAudioState("speaking");
+
+        saveMessage(sessionId, "assistant", reviewResponse, "conversation").then(() => {
+          updateSessionMessageCount(sessionId).catch(() => null);
+          window.dispatchEvent(new CustomEvent("jarvis:history-refresh"));
+        }).catch(() => null);
+
+        ttsQueue.enqueue(cleanTextForSpeech(reviewResponse), () => {
+          if (_state.enabled && _conversationRuntime.mode === "idle") {
+            setTimeout(() => void startWakeWordDetection(), 400);
+          }
+        });
+      } catch {
+        transitionAudioState("idle");
+      }
+      return;
+    }
+
     if (intent === "search_query") {
       const searchResult = await geminiAPI.generateWithSearch(
         [...conversationHistory, userGeminiMsg],
@@ -1868,6 +2255,24 @@ async function handleCommand(commandText: string) {
         sessionId,
         thinkingBudget,
       );
+
+      // Check if executeToolCall signalled a context update — inject silent UI badge
+      const contextUpdate = takePendingContextUpdate();
+      if (contextUpdate) {
+        patch({
+          messages: [
+            ..._state.messages,
+            {
+              id: `ctx_update_${Date.now()}`,
+              role: "jarvis" as const,
+              content: contextUpdate.updateText,
+              type: "context_update" as const,
+              metadata: { updateType: contextUpdate.updateType },
+              timestamp: Date.now(),
+            },
+          ],
+        });
+      }
     } else if (requiresCodeExecution(commandText)) {
       // ── Code execution path ───────────────────────────────────────────────────
       rawResponse = await geminiAPI.generateWithTools(
@@ -2017,12 +2422,13 @@ export async function initJarvisSession(): Promise<void> {
       .eq("message_count", 0)
       .then(() => null, () => null);
 
-    const [memories, summaries, timelineMonths] = await Promise.all([
+    const [memories, summaries, timelineMonths, habitInsight] = await Promise.all([
       getRecentMemories(20),
       getRecentSessionSummaries(3),
       fetchTimelineContext(),
+      analyzeHabits(),
     ]);
-    const systemPrompt = buildJarvisSystemPrompt(memories, summaries, timelineMonths);
+    const systemPrompt = buildJarvisSystemPrompt(memories, summaries, timelineMonths, habitInsight);
     patch({ recentMemories: memories, sessionSummaries: summaries, systemPrompt });
     // Try to create or reuse context cache (fire-and-forget — failure is silent)
     void geminiAPI.initContextCache(systemPrompt);
@@ -2057,6 +2463,7 @@ export const jarvis = {
     patch({ enabled: true });
     transitionAudioState("idle");
     void startWakeWordDetection();
+    startProactiveChecks();
   },
 
   disable() {
@@ -2069,6 +2476,7 @@ export const jarvis = {
     stopRecognition();
     ttsQueue.interrupt();
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+    stopProactiveChecks();
     patch({ enabled: false, isAwake: false, transcript: "" });
     transitionAudioState("idle");
   },

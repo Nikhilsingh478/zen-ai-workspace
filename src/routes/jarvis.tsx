@@ -358,6 +358,8 @@ function MessageBubble({
   const isMorningBrief = msg.type === "morning_briefing";
   const isSearchResult = msg.type === "search_result";
   const isTaskCreated  = msg.type === "task_created";
+  const isProactiveAlert = msg.type === "proactive_alert";
+  const isContextUpdate  = msg.type === "context_update";
 
   const time = new Date(msg.timestamp).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
   const MONO = { fontFamily: "'Space Mono', monospace" };
@@ -369,6 +371,45 @@ function MessageBubble({
           — interrupted —
         </span>
       </div>
+    );
+  }
+
+  if (isProactiveAlert) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: -4, scale: 0.97 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ type: "spring", stiffness: 340, damping: 28 }}
+        style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "7px 11px", borderRadius: 8, background: "rgba(251,191,36,0.06)", border: "1px solid rgba(251,191,36,0.22)", alignSelf: "stretch" }}
+      >
+        <Zap size={11} style={{ color: "#FBB924", flexShrink: 0, marginTop: 1 }} />
+        <div style={{ flex: 1 }}>
+          <span style={{ ...MONO, fontSize: 7, color: "rgba(251,191,36,0.55)", letterSpacing: "0.18em", textTransform: "uppercase" as const, display: "block", marginBottom: 3 }}>
+            PROACTIVE ALERT
+          </span>
+          <p style={{ fontSize: 11, color: "rgba(251,191,36,0.85)", lineHeight: 1.5 }}>{msg.content}</p>
+        </div>
+        <span style={{ ...MONO, fontSize: 7, color: "rgba(251,191,36,0.3)", flexShrink: 0, alignSelf: "flex-end" }}>{time}</span>
+      </motion.div>
+    );
+  }
+
+  if (isContextUpdate) {
+    const updateType = (msg.metadata?.updateType as string) ?? "update";
+    return (
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", borderRadius: 8, background: "rgba(167,139,250,0.06)", border: "1px solid rgba(167,139,250,0.2)", alignSelf: "flex-start" }}
+      >
+        <Sparkles size={10} style={{ color: "rgba(167,139,250,0.7)", flexShrink: 0 }} />
+        <div>
+          <span style={{ ...MONO, fontSize: 7, color: "rgba(167,139,250,0.5)", letterSpacing: "0.18em", textTransform: "uppercase" as const }}>
+            CONTEXT · {updateType}
+          </span>
+          <p style={{ fontSize: 10, color: "rgba(167,139,250,0.75)", marginTop: 2, maxWidth: 220, lineHeight: 1.4 }}>{msg.content}</p>
+        </div>
+      </motion.div>
     );
   }
 

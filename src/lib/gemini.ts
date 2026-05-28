@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { addTaskDirect, getHorizonTasks } from "@/lib/horizon";
+import { addTaskDirect, getHorizonTasks, addJarvisTasksBatch } from "@/lib/horizon";
 import type { HorizonTask } from "@/lib/horizon";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -178,6 +178,57 @@ const JARVIS_TOOLS = [
       required: ["task_id"],
     },
   },
+  {
+    name: "update_user_context",
+    description:
+      "Updates the user's personal context when they share significant life updates, new goals, completed milestones, changed preferences, or new projects. " +
+      "Only call this when the user says something that meaningfully changes their life situation — not for routine task creation or casual chat. " +
+      'Examples that SHOULD trigger this: "I just got a freelance client", "I finished my project", "I\'m starting to learn Rust", "I moved to a new city", "I\'ve decided to focus on backend development". ' +
+      'Examples that should NOT: "remind me to call mom", "what\'s the weather".',
+    parameters: {
+      type: "object",
+      properties: {
+        update_text: {
+          type: "string",
+          description: "The new information to add to the context, written as a clear factual statement about the user",
+        },
+        update_type: {
+          type: "string",
+          enum: ["goal", "project", "preference", "achievement", "life_change"],
+          description: "Category of the update",
+        },
+      },
+      required: ["update_text", "update_type"],
+    },
+  },
+  {
+    name: "create_tasks_batch",
+    description:
+      "Creates multiple tasks at once when the user wants to schedule several things in one command. " +
+      "Use this instead of create_task when the user mentions 2 or more tasks in a single message. " +
+      'Examples: "Set up my week", "Add gym Monday Wednesday Friday and coding Tuesday Thursday", "Schedule these meetings".',
+    parameters: {
+      type: "object",
+      properties: {
+        tasks: {
+          type: "array",
+          description: "Array of tasks to create",
+          items: {
+            type: "object",
+            properties: {
+              title: { type: "string" },
+              taskDate: { type: "string", description: "YYYY-MM-DD" },
+              taskTime: { type: "string", description: "HH:MM 24h format" },
+              priority: { type: "string", enum: ["low", "medium", "high"] },
+              description: { type: "string" },
+            },
+            required: ["title", "taskDate", "taskTime", "priority"],
+          },
+        },
+      },
+      required: ["tasks"],
+    },
+  },
 ];
 
 // ─── Tool Execution ───────────────────────────────────────────────────────────
@@ -328,6 +379,59 @@ export async function executeToolCall(
       const { error } = await supabase.from("horizon_tasks").update(updates).eq("id", task_id);
       if (error) return `Failed to update task: ${error.message}`;
       return `Task updated successfully.`;
+    }
+
+    if (toolName === "update_user_context") {
+      const { update_text, update_type } = toolArgs as {
+        update_text: string;
+        update_type: string;
+      };
+
+      try {
+        const existing = localStorage.getItem("jarvis:user-context") ?? "";
+        const timestamp = new Date().toLocaleDateString("en-CA");
+        const newEntry = `[${timestamp}] ${update_text}`;
+
+        // Guard against near-duplicate entries — check first 30 chars of the new text
+        if (
+          update_text.length >= 10 &&
+          existing.toLowerCase().includes(update_text.toLowerCase().slice(0, 30))
+        ) {
+          return "Context already contains similar information. No update needed.";
+        }
+
+        const updated = existing ? `${existing}\n${newEntry}` : newEntry;
+        localStorage.setItem("jarvis:user-context", updated);
+
+        // Signal handleCommand to inject a silent UI notification
+        _pendingContextUpdate = { updateType: update_type, updateText: update_text };
+        return `CONTEXT_UPDATED:${update_type}:${update_text}`;
+      } catch {
+        return "Failed to update context.";
+      }
+    }
+
+    if (toolName === "create_tasks_batch") {
+      const { tasks } = toolArgs as {
+        tasks: Array<{
+          title: string;
+          taskDate: string;
+          taskTime: string;
+          priority: "low" | "medium" | "high";
+          description?: string;
+        }>;
+      };
+
+      if (!tasks || tasks.length === 0) {
+        return "No tasks provided.";
+      }
+
+      const { created, failed } = await addJarvisTasksBatch(tasks);
+
+      if (failed === 0) {
+        return `Created ${created} task${created > 1 ? "s" : ""} successfully.`;
+      }
+      return `Created ${created} tasks. ${failed} failed — check your Horizon page.`;
     }
 
     return `Unknown tool: ${toolName}`;
@@ -518,6 +622,19 @@ class CacheManager {
 }
 
 const cacheManager = new CacheManager();
+
+// ─── Pending context update notification ──────────────────────────────────────
+// Set by executeToolCall when update_user_context fires.
+// Cleared atomically by takePendingContextUpdate in handleCommand.
+
+type PendingContextUpdate = { updateType: string; updateText: string };
+let _pendingContextUpdate: PendingContextUpdate | null = null;
+
+export function takePendingContextUpdate(): PendingContextUpdate | null {
+  const update = _pendingContextUpdate;
+  _pendingContextUpdate = null;
+  return update;
+}
 
 // ─── API class ────────────────────────────────────────────────────────────────
 
