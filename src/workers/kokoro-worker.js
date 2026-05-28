@@ -31,16 +31,29 @@ let isLoading = false;
 // speecht5_tts requires a pre-fetched Float32Array tensor — not a URL string.
 // The model's forward pass needs the actual embedding data at synthesis time.
 
-const SPEAKER_URL =
-  "https://huggingface.co/datasets/Matthijs/cmu-arctic-xvectors/resolve/main/cmu_us_bdl_arctic-wav-arctic_a0009.bin";
+// Multiple CDN sources tried in order — bdl = CMU Arctic male speaker
+const EMBEDDING_URLS = [
+  "https://huggingface.co/datasets/Matthijs/cmu-arctic-xvectors/resolve/main/cmu_us_bdl_arctic-wav-arctic_a0009.bin",
+  "https://huggingface.co/datasets/Matthijs/cmu-arctic-xvectors/resolve/main/cmu_us_bdl_arctic-wav-arctic_a0002.bin",
+  "https://huggingface.co/datasets/Matthijs/cmu-arctic-xvectors/resolve/main/cmu_us_slt_arctic-wav-arctic_a0001.bin",
+];
 
 async function loadSpeakerEmbeddings() {
-  const response = await fetch(SPEAKER_URL);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch speaker embeddings: ${response.status}`);
+  for (const url of EMBEDDING_URLS) {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        console.warn(`[Kokoro Worker] Embeddings 404 at: ${url}`);
+        continue;
+      }
+      const buffer = await response.arrayBuffer();
+      console.log(`[Kokoro Worker] Embeddings loaded from: ${url}`);
+      return new Float32Array(buffer);
+    } catch (err) {
+      console.warn(`[Kokoro Worker] Embeddings fetch failed: ${err.message}`);
+    }
   }
-  const buffer = await response.arrayBuffer();
-  return new Float32Array(buffer);
+  throw new Error("All speaker embedding sources failed");
 }
 
 // ─── Message handler ──────────────────────────────────────────────────────────
@@ -61,8 +74,8 @@ self.onmessage = async (event) => {
     try {
       self.postMessage({ type: "loading", message: "Downloading model..." });
 
-      // Load pipeline and speaker embeddings in parallel
-      const [pipe, embeddings] = await Promise.all([
+      // Load pipeline and embeddings in parallel — allSettled so one failure doesn't abort both
+      const [pipeResult, embResult] = await Promise.allSettled([
         pipeline("text-to-speech", "Xenova/speecht5_tts", {
           progress_callback: (p) => {
             if (p.status === "downloading") {
@@ -76,8 +89,15 @@ self.onmessage = async (event) => {
         loadSpeakerEmbeddings(),
       ]);
 
-      synthesizer = pipe;
-      speakerEmbeddings = embeddings;
+      if (pipeResult.status === "rejected") {
+        throw new Error(`Pipeline failed: ${pipeResult.reason.message}`);
+      }
+      if (embResult.status === "rejected") {
+        throw new Error(`Embeddings failed: ${embResult.reason.message}`);
+      }
+
+      synthesizer = pipeResult.value;
+      speakerEmbeddings = embResult.value;
 
       isLoading = false;
       self.postMessage({ type: "load_status", ready: true });

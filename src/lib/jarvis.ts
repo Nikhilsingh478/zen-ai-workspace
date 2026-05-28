@@ -132,6 +132,9 @@ const WAKE_WORDS = ["jarvis", "hey jarvis", "okay jarvis"];
 const WAKE_DETECT_THRESHOLD = 0.45;
 // Minimum ms between wake-word triggers to prevent double-firing on echo
 const WAKE_COOL_MS = 3500;
+// Module-level debounce — ignores rapid re-detections within the same utterance
+let _lastWakeWordAt = 0;
+const WAKE_DEBOUNCE_MS = 3000;
 
 let _wakeWordEngine: InstanceType<typeof WakeWordEngine> | null = null;
 let _wakeWordActive = false;
@@ -487,8 +490,15 @@ export const kokoroManager = new KokoroManager();
 
 // ─── Browser TTS voice selector ───────────────────────────────────────────────
 
-function getBestMaleVoice(): SpeechSynthesisVoice | null {
-  const voices = window.speechSynthesis.getVoices();
+// Module-level voice cache — pre-populated on init so first TTS call never uses "default"
+let _cachedMaleVoice: SpeechSynthesisVoice | null = null;
+let _voicesLoaded = false;
+
+/**
+ * Selects the best available male voice from a given list.
+ * Pure function — does not read from speechSynthesis directly.
+ */
+function selectBestMaleVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null {
   if (voices.length === 0) return null;
 
   // Priority order — best quality male voices across platforms
@@ -528,6 +538,31 @@ function getBestMaleVoice(): SpeechSynthesisVoice | null {
   return voices.find((v) => v.lang.startsWith("en")) ?? null;
 }
 
+/**
+ * Pre-loads the best male voice at module init time.
+ * Fires once — handles both the synchronous case (voices already ready)
+ * and the async case (browser fires voiceschanged after page load).
+ */
+function preloadVoices(): void {
+  const tryLoad = () => {
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length > 0) {
+      _voicesLoaded = true;
+      _cachedMaleVoice = selectBestMaleVoice(voices);
+      console.log("[TTS] Voices pre-loaded:", _cachedMaleVoice?.name ?? "default");
+    }
+  };
+
+  tryLoad();
+
+  if (!_voicesLoaded) {
+    window.speechSynthesis.onvoiceschanged = () => {
+      tryLoad();
+      window.speechSynthesis.onvoiceschanged = null; // fire once
+    };
+  }
+}
+
 // ─── TTSQueue ─────────────────────────────────────────────────────────────────
 
 class TTSQueue {
@@ -552,14 +587,13 @@ class TTSQueue {
     if (this.queue.length === 0) {
       this.isPlaying = false;
       this.stopKeepAlive();
-      // All sentences spoken — start cooldown NOW, not when enqueue() was called
-      startConversationCooldown();
-      transitionAudioState("idle", { isAwake: false, transcript: "" });
-      this.onDoneCallback?.();
-      this.onDoneCallback = null;
+      // Queue is empty — but the last utterance may still be playing.
+      // Cooldown fires from onend/onended of the last sentence, not here.
       return;
     }
 
+    // Capture BEFORE shift — true when this is the final sentence in the queue
+    const isLastSentence = this.queue.length === 1;
     const sentence = this.queue.shift()!;
 
     // Try Kokoro neural TTS first — much better quality than browser TTS
@@ -575,7 +609,15 @@ class TTSQueue {
         source.onended = () => {
           audioContext.close();
           this.currentSource = null;
-          void this.playNext();
+          if (isLastSentence) {
+            // Speech is truly done — now start cooldown and transition
+            transitionAudioState("idle", { isAwake: false, transcript: "" });
+            startConversationCooldown();
+            this.onDoneCallback?.();
+            this.onDoneCallback = null;
+          } else {
+            void this.playNext();
+          }
         };
         source.start(0);
         this.currentSource = source;
@@ -593,7 +635,7 @@ class TTSQueue {
     }
 
     if (!kokoroManager.ready) {
-      console.log("[TTS] Using browser fallback voice:", getBestMaleVoice()?.name ?? "default");
+      console.log("[TTS] Using browser fallback voice:", _cachedMaleVoice?.name ?? "default");
     }
 
     const utterance = new SpeechSynthesisUtterance(sentence);
@@ -602,15 +644,9 @@ class TTSQueue {
     utterance.volume = 1.0;
     utterance.lang = "en-US";
 
-    if (window.speechSynthesis.getVoices().length === 0) {
-      await new Promise<void>((resolve) => {
-        window.speechSynthesis.onvoiceschanged = () => resolve();
-        setTimeout(resolve, 1000);
-      });
-    }
-
-    const maleVoice = getBestMaleVoice();
-    if (maleVoice) utterance.voice = maleVoice;
+    // Use the pre-loaded cached voice — avoids empty-list race on first call
+    const voice = _cachedMaleVoice ?? selectBestMaleVoice(window.speechSynthesis.getVoices());
+    if (voice) utterance.voice = voice;
 
     // Timeout fallback — Chrome's onend is unreliable, especially after ~15s.
     // Estimate based on character count + generous buffer.
@@ -632,7 +668,17 @@ class TTSQueue {
 
     utterance.onend = () => {
       cleanup();
-      void this.playNext();
+      if (isLastSentence) {
+        // Last word spoken — safe to start cooldown now
+        this.isPlaying = false;
+        this.stopKeepAlive();
+        transitionAudioState("idle", { isAwake: false, transcript: "" });
+        startConversationCooldown();
+        this.onDoneCallback?.();
+        this.onDoneCallback = null;
+      } else {
+        void this.playNext();
+      }
     };
 
     utterance.onerror = () => {
@@ -1268,6 +1314,13 @@ async function startWakeWordDetection(): Promise<void> {
 
     // Step 3 — wire events only after load completes
     engine.on("detect", ({ keyword, score }: { keyword: string; score: number }) => {
+      const now = Date.now();
+      // Debounce — the engine fires multiple events per utterance as audio frames slide
+      if (now - _lastWakeWordAt < WAKE_DEBOUNCE_MS) {
+        console.log(`[WakeWord] Debounced detection: ${keyword} (score: ${score.toFixed(2)})`);
+        return;
+      }
+      _lastWakeWordAt = now;
       console.log(`[WakeWord] Detected: ${keyword} (score: ${score.toFixed(2)})`);
       if (_state.voiceState === "idle" && _state.enabled) {
         transitionAudioState("listening");
@@ -1563,6 +1616,9 @@ function endConversation(): void {
   _conversationRuntime.mode = "idle";
   _conversationRuntime.policy = "answering";
   _conversationRuntime.turnCount = 0;
+
+  // Reset debounce so the next wake word fires immediately after cooldown
+  _lastWakeWordAt = 0;
 
   if (_state.voiceState !== "idle") {
     transitionAudioState("idle");
@@ -2100,3 +2156,10 @@ export function useJarvis() {
 }
 
 export { stopWakeWordDetection };
+
+// ─── Module init ──────────────────────────────────────────────────────────────
+// Pre-load TTS voices at module load time — not on first speech.
+// Ensures the cached voice is ready before the first utterance is played.
+if (typeof window !== "undefined") {
+  preloadVoices();
+}

@@ -1,0 +1,134 @@
+**JARVIS — Gemini Superpowers Audit: Read-Only Verification**
+
+Do not change any code. This is a pure read-only audit. Read every relevant file thoroughly and answer every question with exact line numbers, exact function names, and exact values found in the code. No assumptions — only what is actually in the files.
+
+---
+
+## FILES TO READ
+
+- `src/lib/gemini.ts` — full file
+- `src/lib/jarvis.ts` — full file
+
+---
+
+## AUDIT 1 — STREAMING
+
+**Q1.1:** Does `streamGenerate` exist as a method on `GeminiAPI`? What is the exact URL it uses — is it `streamGenerateContent` or `generateContent`? Does it use `alt=sse` query parameter?
+
+**Q1.2:** Does `_streamWithKey` exist as a private method? Does it have a `finally { reader.releaseLock() }` block? Show the exact line.
+
+**Q1.3:** Does `SentenceChunker` class exist and is it exported? Does it have `push()`, `flush()`, and `reset()` methods? Does `push()` return `string[]`?
+
+**Q1.4:** In `handleCommand`, is there a conditional branch that routes `conversation` intent to the streaming path? Show the exact condition. Does it check `classifyIntent(userMessage)` result before deciding which path to use?
+
+**Q1.5:** In the streaming path inside `handleCommand`, does `transitionAudioState('speaking')` get called on the FIRST sentence — not after all sentences? Show the exact code block.
+
+**Q1.6:** Does the streaming path have a try/catch that falls back to `generateWithTools` or `generate` on error? What does the fallback do exactly?
+
+**Q1.7:** Is `thinkingBudget: 0` hardcoded in the streaming request payload? Show the exact line.
+
+---
+
+## AUDIT 2 — THINKING MODE
+
+**Q2.1:** Does `requiresDeepThinking` function exist and is it exported from `gemini.ts`? List every regex pattern it checks.
+
+**Q2.2:** In `_rawRequest`, is `thinkingConfig` injected into `generationConfig` conditionally — only when `thinkingBudget > 0`? Show the exact condition. Does it avoid injecting `thinkingConfig` when budget is 0?
+
+**Q2.3:** In `handleCommand`, when the tools path runs, is `requiresDeepThinking(userMessage)` called? What `thinkingBudget` value is passed when it returns true? What value when false?
+
+**Q2.4:** Is `generateWithTools` signature updated to accept `thinkingBudget` parameter? What is its default value?
+
+---
+
+## AUDIT 3 — CODE EXECUTION
+
+**Q3.1:** Does `CODE_EXECUTION_TOOL` constant exist? What is its exact value — is it `{ codeExecution: {} }` or something else?
+
+**Q3.2:** Does `requiresCodeExecution` function exist and is it exported? List every pattern it checks.
+
+**Q3.3:** In `handleCommand`, is there a branch that sends `CODE_EXECUTION_TOOL` instead of `functionDeclarations`? Show the exact condition that triggers it.
+
+**Q3.4:** Are `CODE_EXECUTION_TOOL` and `functionDeclarations` tools mutually exclusive — is there any code path where both could be sent in the same request? Answer yes or no with evidence.
+
+**Q3.5:** In the response processing code, is there handling for `codeExecutionResult` parts? Does it extract `.output` and append it to the response text? Show the exact code.
+
+---
+
+## AUDIT 4 — CONTEXT CACHING
+
+**Q4.1:** Does `CacheManager` class exist inside `gemini.ts`? Is it a module-level singleton (not exported, not instantiated per-request)? Show the exact instantiation line.
+
+**Q4.2:** Does `CacheManager` have `isValid(systemPrompt)`, `getCacheId()`, `set(cacheId, systemPrompt)`, and `invalidate()` methods? What is the TTL value in milliseconds?
+
+**Q4.3:** Does `initContextCache` method exist on `GeminiAPI`? What Gemini API endpoint does it call — show the exact URL. Does it use `cachedContents` endpoint?
+
+**Q4.4:** In `_rawRequest`, is there a check for `cacheManager.getCacheId()`? When a cache hit occurs, is `systemInstruction` removed from the payload? Show the exact code block.
+
+**Q4.5:** In `src/lib/jarvis.ts`, in `initJarvisSession`, is `geminiAPI.initContextCache(systemPrompt)` called after building the prompt? Is it fire-and-forget (`void`) or awaited?
+
+---
+
+## AUDIT 5 — ROUTING INTEGRITY
+
+**Q5.1:** List all intent types that `classifyIntent` can return. Show the exact type definition.
+
+**Q5.2:** In `handleCommand`, draw the exact routing logic — which intent values go to which path:
+- Which intents go to `generateWithTools`?
+- Which intents go to `generateWithSearch`?
+- Which intents go to `streamGenerate`?
+- Is there any intent that falls through without being handled?
+
+**Q5.3:** Is `classifyIntent` called exactly once per `handleCommand` invocation and its result stored in a variable? Or is it called multiple times? Show the exact code.
+
+**Q5.4:** Can a message ever reach Gemini with BOTH `functionDeclarations` tools AND `googleSearch` grounding in the same request? Check all paths and answer yes or no with evidence.
+
+---
+
+## AUDIT 6 — RELIABILITY CHECKS
+
+**Q6.1:** Does `streamGenerate` have dual API key failover — if primary key returns 429 or 403 does it retry with fallback key? Show the exact error handling.
+
+**Q6.2:** Does `initContextCache` fail silently — does it have try/catch that returns null on any error without throwing? Show the exact catch block.
+
+**Q6.3:** If `SentenceChunker.flush()` is never called at the end of the stream, would any text be lost? Is `flush()` called in the streaming path in `handleCommand`?
+
+**Q6.4:** If the streaming path throws mid-stream — after some sentences have already been enqueued to TTS — does the error handling correctly stop TTS and return to idle state? Or does it leave state stuck in `speaking`?
+
+**Q6.5:** Does `generateWithTools` still work correctly for tool-based intents — has anything in the Gemini superpowers implementation broken the existing function calling flow? Check the method signature and body for any regressions.
+
+---
+
+## AUDIT 7 — GAPS AND MISSING PIECES
+
+After reading both files, identify and list:
+
+1. Any of the 4 superpowers that exists in code but is never actually called from `handleCommand`
+2. Any superpower that is called but the response is not properly handled — e.g. code execution result extracted but never shown to user
+3. Any place where the new code could cause a silent failure that makes Jarvis fall back to browser TTS or return "No response received" without any console warning
+4. Any TypeScript `any` types introduced by the new code
+5. Any `// TODO` or `// FIXME` comments left in the new code
+6. Whether the existing `generate()` method used by the Ask page is still intact and unchanged
+
+---
+
+## OUTPUT FORMAT
+
+Give a structured report for each audit section:
+
+```
+AUDIT 1 — STREAMING: [PASS / PARTIAL / FAIL]
+Q1.1: [answer with line numbers]
+Q1.2: [answer with line numbers]
+...
+
+AUDIT 2 — THINKING MODE: [PASS / PARTIAL / FAIL]
+...
+
+GAPS FOUND:
+1. [description]
+2. [description]
+...
+```
+
+Be precise. Show exact line numbers for every claim. If something doesn't exist, say exactly that — do not infer or assume it works because it was supposed to be implemented.

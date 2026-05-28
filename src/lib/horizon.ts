@@ -93,11 +93,22 @@ async function refetch() {
   setState({ tasks: (data as Row[]).map(rowToTask), loaded: true });
 }
 
-function setupRealtime() {
+function setupRealtime(): void {
+  // Mark as mounted immediately — teardown checks this before the timer fires
   _realtimeMounted = true;
-  if (_realtimeTimer) clearTimeout(_realtimeTimer);
+
+  // Cancel any pending setup from a previous rapid unmount
+  if (_realtimeTimer) {
+    clearTimeout(_realtimeTimer);
+    _realtimeTimer = null;
+  }
+
+  // 150ms debounce — if component unmounts before this fires, teardown cancels it
   _realtimeTimer = setTimeout(() => {
     if (!_realtimeMounted) return;
+    // Guard against duplicate channels across hot-reloads
+    if (_realtimeChannel) return;
+
     _realtimeChannel = supabase
       .channel("horizon_tasks_realtime")
       .on(
@@ -112,12 +123,14 @@ function setupRealtime() {
   }, 150);
 }
 
-function teardownRealtime() {
+function teardownRealtime(): void {
   _realtimeMounted = false;
+
   if (_realtimeTimer) {
     clearTimeout(_realtimeTimer);
     _realtimeTimer = null;
   }
+
   if (_realtimeChannel) {
     supabase.removeChannel(_realtimeChannel).catch(() => null);
     _realtimeChannel = null;

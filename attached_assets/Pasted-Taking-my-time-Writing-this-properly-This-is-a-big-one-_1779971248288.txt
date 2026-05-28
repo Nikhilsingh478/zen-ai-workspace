@@ -1,0 +1,938 @@
+Taking my time. Writing this properly. This is a big one.
+
+---
+
+**JARVIS — Feature Upgrade: Proactive Intelligence + Smart Context + Daily Review + Habit Tracking + Quick Capture + Batch Tasks**
+
+Read `src/lib/gemini.ts`, `src/lib/jarvis.ts`, `src/lib/horizon.ts`, `src/routes/jarvis.tsx`, and `supabase/functions/` directory completely before touching anything. Understand the existing tool system, FCM notification infrastructure, session management, and how the existing edge function works. Do not write a single line until all files are fully read.
+
+Write every line as a super senior developer. Clean, typed, maintainable, single-responsibility, zero hacks, zero `any` types.
+
+---
+
+## FILES TO TOUCH
+
+- `src/lib/gemini.ts` — new tools, batch task tool, context update tool, quick capture detection
+- `src/lib/jarvis.ts` — habit analysis, daily review prompt, quick capture routing, context auto-update
+- `src/lib/horizon.ts` — batch task creation function
+- `src/routes/jarvis.tsx` — context update notification UI
+- `supabase/functions/` — extend existing notification edge function with proactive intelligence
+
+**Do NOT touch:**
+- Any other page or route
+- `src/lib/supabase.ts`
+- `src/lib/timeline.ts`
+- `src/components/jarvis/extended-window.tsx`
+
+---
+
+## FEATURE 1 — PROACTIVE INTELLIGENCE (Supabase Edge Function)
+
+### What It Does
+A cron job runs every 15 minutes. It checks Horizon tasks and fires FCM push notifications when something needs attention — without the user asking.
+
+### Step 1 — Read Existing Edge Function
+
+Find the existing Supabase Edge Function in `supabase/functions/`. Read it fully. Understand how it currently sends FCM notifications. You will extend it — not replace it.
+
+### Step 2 — Extend The Edge Function
+
+Add a new handler inside the existing edge function for proactive checks. The function should accept a `type: 'proactive_check'` action in addition to whatever it currently handles.
+
+When `type === 'proactive_check'`:
+
+```typescript
+// Proactive check logic:
+
+const now = new Date()
+const todayStr = now.toLocaleDateString('en-CA') // YYYY-MM-DD in local time
+const currentHour = now.getHours()
+const currentMinute = now.getMinutes()
+
+// Query today's incomplete tasks
+const { data: todayTasks } = await supabaseAdmin
+  .from('horizon_tasks')
+  .select('*')
+  .eq('task_date', todayStr)
+  .eq('completed', false)
+  .order('task_time', { ascending: true })
+
+if (!todayTasks) return new Response('ok')
+
+const notifications: Array<{ title: string, body: string, urgency: 'high' | 'normal' }> = []
+
+// Check 1 — Task starting in 15 minutes
+for (const task of todayTasks) {
+  const [taskHour, taskMinute] = task.task_time.split(':').map(Number)
+  const taskTotalMinutes = taskHour * 60 + taskMinute
+  const nowTotalMinutes = currentHour * 60 + currentMinute
+  const minutesUntilTask = taskTotalMinutes - nowTotalMinutes
+
+  if (minutesUntilTask >= 13 && minutesUntilTask <= 17) {
+    notifications.push({
+      title: `JARVIS: Starting soon`,
+      body: `"${task.title}" starts in 15 minutes`,
+      urgency: task.priority === 'high' ? 'high' : 'normal'
+    })
+  }
+}
+
+// Check 2 — High priority task overdue (past scheduled time, not completed)
+for (const task of todayTasks) {
+  const [taskHour, taskMinute] = task.task_time.split(':').map(Number)
+  const taskTotalMinutes = taskHour * 60 + taskMinute
+  const nowTotalMinutes = currentHour * 60 + currentMinute
+
+  if (
+    task.priority === 'high' &&
+    nowTotalMinutes > taskTotalMinutes + 30 // 30 min grace period
+  ) {
+    notifications.push({
+      title: `JARVIS: Overdue`,
+      body: `High priority: "${task.title}" was scheduled for ${task.task_time}`,
+      urgency: 'high'
+    })
+  }
+}
+
+// Check 3 — Nothing completed by 7pm
+if (currentHour >= 19 && currentHour < 20) {
+  const { count } = await supabaseAdmin
+    .from('horizon_tasks')
+    .select('*', { count: 'exact', head: true })
+    .eq('task_date', todayStr)
+    .eq('completed', true)
+
+  if (count === 0 && todayTasks.length > 0) {
+    notifications.push({
+      title: `JARVIS: Check in`,
+      body: `You have ${todayTasks.length} tasks today but haven't completed any yet`,
+      urgency: 'normal'
+    })
+  }
+}
+
+// Fire FCM for the highest urgency notification only (don't spam)
+// Use existing FCM sending logic from the edge function
+const toSend = notifications.find(n => n.urgency === 'high') ?? notifications[0]
+if (toSend) {
+  // Call existing FCM send logic here with toSend.title and toSend.body
+}
+```
+
+### Step 3 — Schedule The Cron Job
+
+In `supabase/functions/` create or update the cron schedule configuration. If using `supabase/functions/schedule.ts` or a `cron.ts` — add:
+
+```
+*/15 * * * *
+```
+
+pointing to the proactive check handler.
+
+If the project uses `pg_cron` via SQL, add to the appropriate migration file:
+
+```sql
+select cron.schedule(
+  'jarvis-proactive-check',
+  '*/15 * * * *',
+  $$
+  select net.http_post(
+    url := 'YOUR_SUPABASE_FUNCTION_URL/notifications',
+    body := '{"type":"proactive_check"}'::jsonb
+  )
+  $$
+);
+```
+
+### Step 4 — Client Side Trigger (Fallback)
+
+For when the cron isn't running (development), add a client-side fallback in `src/lib/jarvis.ts`:
+
+```typescript
+// Module-level proactive check interval
+let _proactiveCheckInterval: ReturnType<typeof setInterval> | null = null
+
+export function startProactiveChecks(): void {
+  if (_proactiveCheckInterval) return
+
+  // Run immediately on start, then every 15 minutes
+  runProactiveCheck()
+  _proactiveCheckInterval = setInterval(runProactiveCheck, 15 * 60 * 1000)
+}
+
+export function stopProactiveChecks(): void {
+  if (_proactiveCheckInterval) {
+    clearInterval(_proactiveCheckInterval)
+    _proactiveCheckInterval = null
+  }
+}
+
+async function runProactiveCheck(): Promise<void> {
+  try {
+    const now = new Date()
+    const todayStr = now.toLocaleDateString('en-CA')
+    const currentHour = now.getHours()
+    const currentMinute = now.getMinutes()
+
+    const { data: tasks } = await supabase
+      .from('horizon_tasks')
+      .select('*')
+      .eq('task_date', todayStr)
+      .eq('completed', false)
+      .order('task_time', { ascending: true })
+
+    if (!tasks || tasks.length === 0) return
+
+    for (const task of tasks) {
+      const [taskHour, taskMin] = (task.task_time as string)
+        .split(':').map(Number)
+      const taskMins = taskHour * 60 + taskMin
+      const nowMins = currentHour * 60 + currentMinute
+      const diff = taskMins - nowMins
+
+      // 15 minute warning
+      if (diff >= 13 && diff <= 17) {
+        addProactiveMessage(
+          `Heads up — "${task.title}" starts in 15 minutes.`
+        )
+        return // one proactive message at a time
+      }
+
+      // High priority overdue
+      if (
+        task.priority === 'high' &&
+        nowMins > taskMins + 30
+      ) {
+        addProactiveMessage(
+          `"${task.title}" was scheduled for ${task.task_time} and hasn't been marked complete.`
+        )
+        return
+      }
+    }
+
+    // Evening check — 7pm nothing done
+    if (currentHour === 19 && currentMinute < 15) {
+      const { count } = await supabase
+        .from('horizon_tasks')
+        .select('*', { count: 'exact', head: true })
+        .eq('task_date', todayStr)
+        .eq('completed', true)
+
+      if ((count ?? 0) === 0) {
+        addProactiveMessage(
+          `It's 7pm and you haven't completed any tasks today. ${tasks.length} still pending.`
+        )
+      }
+    }
+  } catch {
+    // Silent — proactive checks must never crash the app
+  }
+}
+
+function addProactiveMessage(text: string): void {
+  // Add as a special proactive message type to JARVIS state
+  // Does NOT go through TTS — visual only, shown in chat feed
+  patch({
+    messages: [
+      ..._state.messages,
+      {
+        id: `proactive_${Date.now()}`,
+        role: 'assistant' as const,
+        content: text,
+        type: 'proactive_alert',
+        timestamp: new Date(),
+      }
+    ]
+  })
+}
+```
+
+Call `startProactiveChecks()` in `jarvis.enable()` and `stopProactiveChecks()` in `jarvis.disable()` and on page unmount.
+
+### Step 5 — Proactive Message UI in `src/routes/jarvis.tsx`
+
+Add a distinct render for `type === 'proactive_alert'` messages in the chat feed:
+
+```tsx
+if (message.type === 'proactive_alert') {
+  return (
+    <motion.div
+      key={message.id}
+      initial={{ opacity: 0, x: -10 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.3 }}
+      className="flex items-start gap-2 mb-3"
+    >
+      <div
+        className="w-5 h-5 rounded-full flex-shrink-0 flex items-center
+                   justify-center mt-0.5"
+        style={{
+          background: 'rgba(251,191,36,0.1)',
+          border: '1px solid rgba(251,191,36,0.3)',
+        }}
+      >
+        <span style={{ fontSize: '9px' }}>⚡</span>
+      </div>
+      <div
+        className="flex-1 px-3 py-2 rounded-xl rounded-tl-sm"
+        style={{
+          background: 'rgba(251,191,36,0.06)',
+          border: '1px solid rgba(251,191,36,0.15)',
+        }}
+      >
+        <p className="text-xs"
+           style={{ color: 'rgba(251,191,36,0.9)' }}>
+          {message.content}
+        </p>
+        <p className="text-[10px] mt-1"
+           style={{ color: 'rgba(251,191,36,0.4)' }}>
+          {formatTime(message.timestamp)}
+        </p>
+      </div>
+    </motion.div>
+  )
+}
+```
+
+---
+
+## FEATURE 2 — SMART CONTEXT AUTO-UPDATE
+
+### What It Does
+When Jarvis detects a significant life update in conversation — "I just got a new client", "I finished the project", "I'm learning Rust" — it automatically updates the Context Window without you navigating there manually. A subtle notification appears in the chat message, not spoken aloud.
+
+### Step 1 — New Tool in `src/lib/gemini.ts`
+
+Add `update_user_context` to `JARVIS_TOOLS`:
+
+```typescript
+{
+  name: 'update_user_context',
+  description: `Updates the user's personal context when they share significant 
+    life updates, new goals, completed milestones, changed preferences, or 
+    new projects. Only call this when the user says something that meaningfully 
+    changes their life situation — not for routine task creation or casual chat.
+    Examples that SHOULD trigger this: 
+    "I just got a freelance client", "I finished my project", 
+    "I'm starting to learn Rust", "I moved to a new city",
+    "I've decided to focus on backend development".
+    Examples that should NOT: "remind me to call mom", "what's the weather".`,
+  parameters: {
+    type: 'object',
+    properties: {
+      update_text: {
+        type: 'string',
+        description: 'The new information to add or update in the context, written as a clear factual statement about the user'
+      },
+      update_type: {
+        type: 'string',
+        enum: ['goal', 'project', 'preference', 'achievement', 'life_change'],
+        description: 'Category of the update'
+      }
+    },
+    required: ['update_text', 'update_type']
+  }
+}
+```
+
+### Step 2 — Handle Tool In `executeToolCall` in `src/lib/gemini.ts`
+
+Add the handler:
+
+```typescript
+case 'update_user_context': {
+  const { update_text, update_type } = toolArgs as {
+    update_text: string
+    update_type: string
+  }
+
+  try {
+    // Read existing context
+    const existing = localStorage.getItem('jarvis:user-context') ?? ''
+
+    // Append new information with timestamp
+    const timestamp = new Date().toLocaleDateString('en-CA')
+    const newEntry = `[${timestamp}] ${update_text}`
+
+    // Check if similar info already exists — avoid duplicates
+    if (existing.toLowerCase().includes(update_text.toLowerCase().slice(0, 30))) {
+      return `Context already contains similar information. No update needed.`
+    }
+
+    const updated = existing
+      ? `${existing}\n${newEntry}`
+      : newEntry
+
+    localStorage.setItem('jarvis:user-context', updated)
+
+    // Return special marker so UI knows to show notification
+    return `CONTEXT_UPDATED:${update_type}:${update_text}`
+  } catch {
+    return 'Failed to update context.'
+  }
+}
+```
+
+### Step 3 — Context Update Notification in `src/lib/jarvis.ts`
+
+In `handleCommand`, after getting the tool result, check for the `CONTEXT_UPDATED` marker:
+
+```typescript
+// After executeToolCall returns result:
+if (typeof toolResult === 'string' && toolResult.startsWith('CONTEXT_UPDATED:')) {
+  const parts = toolResult.split(':')
+  const updateType = parts[1]
+  const updateText = parts.slice(2).join(':')
+
+  // Add a silent UI notification — NOT spoken aloud, not passed to TTS
+  patch({
+    messages: [
+      ..._state.messages,
+      {
+        id: `ctx_update_${Date.now()}`,
+        role: 'assistant' as const,
+        content: `Context updated`,
+        type: 'context_update',
+        metadata: { updateType, updateText },
+        timestamp: new Date(),
+      }
+    ]
+  })
+}
+```
+
+### Step 4 — Context Update UI in `src/routes/jarvis.tsx`
+
+Add render for `type === 'context_update'` in the chat feed:
+
+```tsx
+if (message.type === 'context_update') {
+  return (
+    <motion.div
+      key={message.id}
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.25 }}
+      className="flex justify-center mb-3"
+    >
+      <div
+        className="flex items-center gap-2 px-3 py-1.5 rounded-full"
+        style={{
+          background: 'rgba(56,189,248,0.06)',
+          border: '1px solid rgba(56,189,248,0.15)',
+        }}
+      >
+        <div
+          className="w-1.5 h-1.5 rounded-full"
+          style={{ background: '#38bdf8' }}
+        />
+        <span
+          className="text-[10px] font-mono uppercase tracking-widest"
+          style={{ color: 'rgba(56,189,248,0.6)' }}
+        >
+          Context updated
+        </span>
+      </div>
+    </motion.div>
+  )
+}
+```
+
+This appears as a subtle centered pill in the chat — like a system message in iMessage. Not spoken, just visible.
+
+---
+
+## FEATURE 3 — DAILY/WEEKLY REVIEW
+
+### What It Does
+When you say a review trigger phrase, Jarvis generates a proper end-of-day summary covering completions, carry-overs, Timeline progress, and one honest observation about your patterns.
+
+### Step 1 — Trigger Detection in `src/lib/jarvis.ts`
+
+Add `daily_review` to `IntentType`:
+
+```typescript
+type IntentType =
+  | 'task_creation'
+  | 'task_management'
+  | 'task_query'
+  | 'memory_capture'
+  | 'memory_query'
+  | 'search_query'
+  | 'conversation'
+  | 'daily_review'    // NEW
+  | 'quick_capture'   // NEW (Feature 6)
+```
+
+Add detection patterns to `classifyIntent`:
+
+```typescript
+const REVIEW_PATTERNS = [
+  /give me (a |my )?(daily |day'?s? |end.of.day )?review/i,
+  /how (did|was) (my |today|the day)/i,
+  /end of day/i,
+  /day review/i,
+  /wrap up (today|the day)/i,
+  /summarize (my |today|the day)/i,
+  /how am i (doing|tracking)/i,
+  /weekly review/i,
+  /week in review/i,
+]
+
+if (REVIEW_PATTERNS.some(p => p.test(message))) return 'daily_review'
+```
+
+### Step 2 — Review Generator in `src/lib/jarvis.ts`
+
+Add a dedicated function:
+
+```typescript
+async function generateDailyReview(): Promise<string> {
+  const todayStr = new Date().toLocaleDateString('en-CA')
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+    .toLocaleDateString('en-CA')
+
+  // Fetch all needed data in parallel
+  const [
+    { data: todayTasks },
+    { data: weekTasks },
+    timelineMonths,
+  ] = await Promise.all([
+    supabase
+      .from('horizon_tasks')
+      .select('*')
+      .eq('task_date', todayStr)
+      .order('task_time', { ascending: true }),
+    supabase
+      .from('horizon_tasks')
+      .select('*')
+      .gte('task_date', weekAgo)
+      .order('task_date', { ascending: true }),
+    fetchTimelineContext(),
+  ])
+
+  const completed = todayTasks?.filter(t => t.completed) ?? []
+  const pending = todayTasks?.filter(t => !t.completed) ?? []
+
+  // Habit analysis for honest observation
+  const habitInsight = analyzeHabits(weekTasks ?? [])
+
+  const reviewPrompt = `
+Generate a concise end-of-day review. Be honest and direct — not a cheerleader.
+
+TODAY (${todayStr}):
+Completed (${completed.length}): ${completed.map(t => t.title).join(', ') || 'none'}
+Still pending (${pending.length}): ${pending.map(t => t.title).join(', ') || 'none'}
+
+THIS WEEK PATTERN:
+${habitInsight}
+
+TIMELINE GOALS:
+${timelineMonths.slice(-2).map(m => `[${m.monthKey}]: ${m.context.slice(0, 150)}`).join('\n')}
+
+Format your response as:
+1. What got done today (1-2 sentences, honest)
+2. What carries over (1 sentence)  
+3. Timeline progress (1 sentence)
+4. One honest observation about patterns this week — this is the most important part, be direct
+
+Keep total response under 120 words. Speak like a sharp, honest advisor — not a therapist.
+`
+
+  return reviewPrompt
+}
+```
+
+### Step 3 — Wire Into `handleCommand` in `src/lib/jarvis.ts`
+
+In `handleCommand`, add the `daily_review` path:
+
+```typescript
+if (intent === 'daily_review') {
+  transitionAudioState('processing')
+  try {
+    const reviewPrompt = await generateDailyReview()
+    const response = await geminiAPI.generate(
+      [{ role: 'user', parts: [{ text: reviewPrompt }] }],
+      _state.systemPrompt
+    )
+    // Goes through normal TTS — this SHOULD be spoken
+    ttsQueue.enqueue(cleanTextForSpeech(response))
+    transitionAudioState('speaking')
+    return response
+  } catch (err) {
+    console.error('[JARVIS] Daily review failed:', err)
+    return 'I ran into an issue generating your review. Try again.'
+  }
+}
+```
+
+---
+
+## FEATURE 4 — HABIT TRACKING AWARENESS
+
+### What It Does
+Jarvis analyzes your last 7 days of Horizon task completion by domain and surfaces patterns. Injected into the system prompt so Jarvis references it naturally in conversation.
+
+### Step 1 — Habit Analyzer in `src/lib/jarvis.ts`
+
+Add this function:
+
+```typescript
+interface HabitPattern {
+  domain: string
+  completionRate: number
+  streak: number
+  lastActive: string | null
+  trend: 'improving' | 'declining' | 'consistent' | 'inactive'
+}
+
+async function analyzeHabits(
+  tasks?: Array<{ task_date: string, title: string, completed: boolean, description: string | null }>
+): Promise<string> {
+  try {
+    // If tasks not provided, fetch last 7 days
+    if (!tasks) {
+      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+        .toLocaleDateString('en-CA')
+
+      const { data } = await supabase
+        .from('horizon_tasks')
+        .select('task_date, title, completed, description')
+        .gte('task_date', weekAgo)
+        .order('task_date', { ascending: true })
+
+      tasks = data ?? []
+    }
+
+    if (tasks.length === 0) return 'No task history available for habit analysis.'
+
+    // Timeline domain keywords for classification
+    const DOMAIN_KEYWORDS: Record<string, string[]> = {
+      gym: ['gym', 'workout', 'exercise', 'fitness', 'strength', 'cardio', 'training'],
+      development: ['code', 'dev', 'build', 'implement', 'javascript', 'react', 'project'],
+      cricket: ['cricket', 'batting', 'bowling', 'practice', 'match'],
+      freelance: ['client', 'freelance', 'project', 'deliver', 'invoice'],
+      study: ['study', 'learn', 'revision', 'exam', 'course'],
+      ai: ['ai', 'jarvis', 'ml', 'model', 'gemini'],
+    }
+
+    // Classify tasks by domain
+    const domainStats: Record<string, { total: number, completed: number, dates: string[] }> = {}
+
+    for (const task of tasks) {
+      const titleLower = task.title.toLowerCase()
+      let domain = 'general'
+
+      for (const [d, keywords] of Object.entries(DOMAIN_KEYWORDS)) {
+        if (keywords.some(k => titleLower.includes(k))) {
+          domain = d
+          break
+        }
+      }
+
+      // Also check Timeline prefix in description
+      if (task.description) {
+        const match = task.description.match(/\[timeline:[^:]+:([^\]]+)\]/)
+        if (match) domain = match[1]
+      }
+
+      if (!domainStats[domain]) {
+        domainStats[domain] = { total: 0, completed: 0, dates: [] }
+      }
+
+      domainStats[domain].total++
+      if (task.completed) {
+        domainStats[domain].completed++
+        if (!domainStats[domain].dates.includes(task.task_date)) {
+          domainStats[domain].dates.push(task.task_date)
+        }
+      }
+    }
+
+    // Build insight string
+    const insights: string[] = []
+
+    for (const [domain, stats] of Object.entries(domainStats)) {
+      if (stats.total < 2) continue // not enough data
+
+      const rate = Math.round((stats.completed / stats.total) * 100)
+      const activeDays = stats.dates.length
+
+      if (rate === 0 && stats.total >= 2) {
+        insights.push(`${domain}: 0% completion this week (${stats.total} tasks skipped)`)
+      } else if (rate >= 80) {
+        insights.push(`${domain}: strong week — ${rate}% completion, active ${activeDays} days`)
+      } else if (rate < 40 && stats.total >= 3) {
+        insights.push(`${domain}: low engagement — only ${rate}% done this week`)
+      }
+    }
+
+    return insights.length > 0
+      ? `Weekly habit patterns:\n${insights.join('\n')}`
+      : 'Consistent effort across all areas this week.'
+  } catch {
+    return ''
+  }
+}
+```
+
+### Step 2 — Inject Into System Prompt
+
+In `buildJarvisSystemPrompt`, add habit context. Update `initJarvisSession` to fetch habit data:
+
+```typescript
+// In initJarvisSession, add to Promise.all:
+const [sessionId, memories, summaries, timelineMonths, habitInsight] = 
+  await Promise.all([
+    startSession(),
+    getRecentMemories(20),
+    getRecentSessionSummaries(3),
+    fetchTimelineContext(),
+    analyzeHabits(), // NEW
+  ])
+```
+
+Update `buildJarvisSystemPrompt` signature:
+
+```typescript
+export function buildJarvisSystemPrompt(
+  userContext: string,
+  recentMemories: Memory[],
+  sessionSummaries: string[],
+  timelineMonths?: TimelineMonthContext[],
+  habitInsight?: string  // NEW
+): string
+```
+
+Add to the prompt string:
+
+```typescript
+const habitSection = habitInsight
+  ? `\nWEEKLY HABITS:\n${habitInsight}\n`
+  : ''
+```
+
+Append `habitSection` before the conversational behavior block.
+
+---
+
+## FEATURE 5 — VOICE NOTE QUICK CAPTURE
+
+### What It Does
+Messages starting with "note:" are captured instantly — saved to memory, optionally converted to a task, confirmed in one word. No back-and-forth conversation.
+
+### Step 1 — Detection in `src/lib/jarvis.ts`
+
+In `classifyIntent`, add detection BEFORE all other checks — quick capture has highest priority:
+
+```typescript
+// FIRST check — before anything else
+const QUICK_CAPTURE_PATTERNS = [
+  /^note[:\s]/i,
+  /^quick note[:\s]/i,
+  /^capture[:\s]/i,
+  /^jot down[:\s]/i,
+  /^remember to\s/i,
+  /^log[:\s]/i,
+]
+
+if (QUICK_CAPTURE_PATTERNS.some(p => p.test(message.trim()))) {
+  return 'quick_capture'
+}
+```
+
+### Step 2 — Quick Capture Handler in `src/lib/jarvis.ts`
+
+Add to `handleCommand` as highest-priority check before intent routing:
+
+```typescript
+if (intent === 'quick_capture') {
+  // Strip the prefix
+  const content = userMessage
+    .replace(/^(note|quick note|capture|jot down|log)[:\s]+/i, '')
+    .trim()
+
+  if (!content) return 'Got it.'
+
+  // Save to memory immediately — no Gemini call needed
+  try {
+    await supabase.from('jarvis_memory').insert({
+      content,
+      memory_type: 'general',
+      source_session_id: _state.currentSessionId,
+      created_at: new Date().toISOString(),
+    })
+
+    // Check if it sounds like a task — simple heuristic
+    const looksLikeTask = /\b(by|before|at|on|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next week|tonight|\d+(am|pm))\b/i.test(content)
+
+    if (looksLikeTask) {
+      // Let Gemini parse the task details
+      const taskResult = await executeToolCall(
+        'create_task',
+        { title: content, taskDate: new Date().toLocaleDateString('en-CA'), taskTime: '09:00', priority: 'medium' },
+        _state.currentSessionId ?? ''
+      )
+      ttsQueue.enqueue('Saved.')
+      return `Noted. ${taskResult}`
+    }
+
+    ttsQueue.enqueue('Noted.')
+    return 'Noted.'
+  } catch {
+    ttsQueue.enqueue('Saved.')
+    return 'Saved.'
+  }
+}
+```
+
+Quick capture responds with a single word spoken aloud — "Noted." or "Saved." — and returns immediately. No Gemini generation, no follow-up questions.
+
+---
+
+## FEATURE 6 — MULTI-STEP BATCH TASK CREATION
+
+### What It Does
+One voice command creates multiple tasks. "Set up my week" → multiple tasks created simultaneously.
+
+### Step 1 — New Tool in `src/lib/gemini.ts`
+
+Add `create_tasks_batch` to `JARVIS_TOOLS`:
+
+```typescript
+{
+  name: 'create_tasks_batch',
+  description: `Creates multiple tasks at once when the user wants to schedule several things in one command. Use this instead of create_task when the user mentions 2 or more tasks in a single message. Examples: "Set up my week", "Add gym Monday Wednesday Friday and coding Tuesday Thursday", "Schedule these meetings".`,
+  parameters: {
+    type: 'object',
+    properties: {
+      tasks: {
+        type: 'array',
+        description: 'Array of tasks to create',
+        items: {
+          type: 'object',
+          properties: {
+            title: { type: 'string' },
+            taskDate: { type: 'string', description: 'YYYY-MM-DD' },
+            taskTime: { type: 'string', description: 'HH:MM 24h format' },
+            priority: { type: 'string', enum: ['low', 'medium', 'high'] },
+            description: { type: 'string' }
+          },
+          required: ['title', 'taskDate', 'taskTime', 'priority']
+        }
+      }
+    },
+    required: ['tasks']
+  }
+}
+```
+
+### Step 2 — Batch Task Function in `src/lib/horizon.ts`
+
+Add after existing `addTaskDirect`:
+
+```typescript
+export async function addTasksBatch(
+  tasks: Array<{
+    title: string
+    taskDate: string
+    taskTime: string
+    priority: 'low' | 'medium' | 'high'
+    description?: string
+  }>
+): Promise<{ created: number, failed: number }> {
+  let created = 0
+  let failed = 0
+
+  // Insert all tasks in parallel
+  const results = await Promise.allSettled(
+    tasks.map(task => addTaskDirect(task))
+  )
+
+  for (const result of results) {
+    if (result.status === 'fulfilled') {
+      created++
+    } else {
+      failed++
+      console.error('[Horizon] Batch task failed:', result.reason)
+    }
+  }
+
+  return { created, failed }
+}
+```
+
+### Step 3 — Handle In `executeToolCall` in `src/lib/gemini.ts`
+
+Add handler:
+
+```typescript
+case 'create_tasks_batch': {
+  const { tasks } = toolArgs as {
+    tasks: Array<{
+      title: string
+      taskDate: string
+      taskTime: string
+      priority: 'low' | 'medium' | 'high'
+      description?: string
+    }>
+  }
+
+  if (!tasks || tasks.length === 0) {
+    return 'No tasks provided.'
+  }
+
+  const { created, failed } = await addTasksBatch(tasks)
+
+  if (failed === 0) {
+    return `Created ${created} task${created > 1 ? 's' : ''} successfully.`
+  } else {
+    return `Created ${created} tasks. ${failed} failed — check your Horizon page.`
+  }
+}
+```
+
+---
+
+## NON-NEGOTIABLE REQUIREMENTS
+
+**Proactive Intelligence:**
+- `addProactiveMessage` must NEVER call `ttsQueue.enqueue()` — visual only
+- Proactive check must be silent on error — wrapped in try/catch returning void
+- Only ONE proactive notification at a time — use `return` after first match
+- `startProactiveChecks()` called in `jarvis.enable()`, `stopProactiveChecks()` in `jarvis.disable()`
+
+**Smart Context Update:**
+- `update_user_context` tool must check for duplicate content before appending
+- Context update notification in chat must NOT go through TTS
+- The `CONTEXT_UPDATED:` prefix in tool return value is the signal — parse it correctly
+
+**Daily Review:**
+- Review trigger detection runs BEFORE `search_query` detection in `classifyIntent`
+- Review response DOES go through TTS — spoken aloud unlike proactive alerts
+- `generateDailyReview` must handle empty task data gracefully
+
+**Habit Tracking:**
+- `analyzeHabits()` must return empty string on any error — never throw
+- Only surfaces insights for domains with 2+ tasks — single tasks not enough data
+- Injected into system prompt — not spoken proactively
+
+**Quick Capture:**
+- Quick capture detection runs FIRST in `classifyIntent` — highest priority
+- Response is exactly one word spoken: "Noted." or "Saved."
+- No Gemini generation call for quick capture — direct Supabase insert only
+- Task creation from quick capture uses existing `executeToolCall('create_task')` — not a new flow
+
+**Batch Tasks:**
+- `addTasksBatch` uses `Promise.allSettled` — one failure doesn't abort others
+- `create_tasks_batch` and `create_task` tools are separate — don't modify `create_task`
+- Gemini decides whether to use `create_task` vs `create_tasks_batch` based on tool descriptions
+
+**General:**
+- Zero TypeScript errors
+- Zero `any` types
+- All new Supabase queries wrapped in try/catch
+- `initJarvisSession` `Promise.all` must include `analyzeHabits()` as 5th item
+- `buildJarvisSystemPrompt` signature change is backwards compatible — all new params optional
