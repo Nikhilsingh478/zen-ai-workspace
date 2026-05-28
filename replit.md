@@ -4,7 +4,7 @@
 
 AI Metrics is a React 19 SPA that fuses a curated AI tools directory, a drag-and-drop OS-style desktop launcher, a prompt library, a link board, an image board, a Markdown message board, a calendar and AI-generated life planner (Horizon + Timeline), a **JARVIS AI assistant** with a minimal Linear/Perplexity-aesthetic 3-column command center, persistent memory banks, session history, native function calling, real-time web search grounding, a daily morning briefing system, and a standalone Gemini AI chat. All structured data lives in Supabase with real-time subscriptions. The app is installable as a PWA and compiles to a native Android app via Capacitor.
 
-The JARVIS module is the crown jewel — Phase 1 of "JARVIS Evolution" ships a full 6-state audio state machine, Gemini function calling with 7 tool declarations, a TTSQueue sentence splitter, an intent pre-classifier (7 intent types including `search_query`), Google Search Grounding integration with dynamic per-type result rendering, a daily morning briefing delivered once per calendar day, persistent cross-session memory, and paginated session history — all wired into a precision minimal `#0a0a0a` command center with Space Mono monospacing and arctic-blue state accents.
+The JARVIS module is the crown jewel — two phases of "JARVIS Evolution" ship a full 6-state audio state machine, Gemini function calling with 9 tool declarations, a TTSQueue sentence splitter, an intent pre-classifier (9 intent types including `search_query`, `quick_capture`, and `daily_review`), Google Search Grounding integration with dynamic per-type result rendering, a daily morning briefing delivered once per calendar day, persistent cross-session memory, paginated session history, 15-minute proactive intelligence alerts, smart context auto-update, habit-pattern analysis, quick capture bypass, multi-step batch task creation, and a daily/weekly review generator — all wired into a precision minimal `#0a0a0a` command center with Space Mono monospacing and arctic-blue state accents.
 
 ---
 
@@ -514,11 +514,12 @@ select cron.schedule(
 - **Quick command chips** — 4 preset commands ("What's pending today?", "Open Horizon", "Search latest news", "Open Ask") that call `jarvis.sendText()` immediately on click
 
 **Center Column — orb + transcript + state hint:**
-- `AICore` component (120px diameter) — minimal single circle with centered `Mic` icon
-  - **Listening:** `#38bdf8` border + stronger glow + `#38bdf8` mic icon
-  - **Processing:** `#fbbf24` (amber) border + spinning amber dashed ring overlay (360° rotation, 2.5s linear infinite)
-  - **Speaking:** `#34d399` (green) border + gentle `scale: [1, 1.04, 1]` breathe animation + green mic icon
-  - **Idle:** near-invisible `rgba(255,255,255,0.08)` border + dim grey mic icon
+- `AICore` component (SVG orb, default 300px) — multi-layer SVG animation, award-level restraint
+  - **Idle:** Ambient field at 0.25 opacity, single orbit ring at 12 opacity (20s rotation), two slow pulse rings (4.2s), orb steady glow
+  - **Listening:** Ambient field brightens (0.65), orbit ring brighter (0.30 opacity, 14s), pulse rings speed up (2.6s), orb radius expands (22→27px)
+  - **Processing:** Orbit ring switches to short-dash pattern, faster rotation (6s), orb gently breathes (22↔24px, 0.9s mirror), processing dots below
+  - **Speaking:** Orbit ring at full brightness (0.42 opacity, 10s), pulse rings fastest (1.9s), orb scale breathes organically `[1, 1.055, 1.02, 1.07, 1.01, 1.055, 1]` on 1.8s cycle, bloom radius pulses, waveform bars below
+  - **All states:** HUD corner brackets always visible, opacity varies (0.18 idle → 0.62 speaking)
 - Transcript bubble — what JARVIS is hearing — fades in/out with `AnimatePresence` spring
 - State hint text below orb — "tap orb or type below" / "type below to talk" — only shown when not active
 
@@ -544,6 +545,8 @@ All message types render distinctly in the CHAT tab:
 | `morning_briefing` | Full-width card, `Sparkles` icon header ("Morning Briefing"), `rgba(8,47,73,0.4)` background, `rgba(56,189,248,0.15)` border |
 | `search_result` | `SearchResult` component card — see Search Grounding section below |
 | `interrupted` | Centered monospace dash separator — `— interrupted —` |
+| `proactive_alert` | Amber-tinted badge — `PROACTIVE ALERT` label + message text; visual-only, never spoken |
+| `context_update` | Purple-tinted badge — `CONTEXT · [type]` label + confirmation; fires after `update_user_context` tool succeeds |
 
 #### Input Bar
 - Fixed bottom bar: mic button (toggles voice / `MicOff` icon when listening), text input, send button
@@ -697,38 +700,50 @@ Renders Gemini search grounding results with a type-appropriate header and full 
 
 ---
 
-### `AICore` Component — Redesigned (`src/components/jarvis/ai-core.tsx`)
+### `AICore` Component — Award-Level SVG Redesign (`src/components/jarvis/ai-core.tsx`)
 
-The original complex SVG orb (concentric arcs, radar sweep, pulse rings, HUD brackets) has been replaced with a minimal precision circle. The design philosophy shifted to match the Linear/Perplexity aesthetic of the new JARVIS page.
+Completely rebuilt as a multi-layer SVG with a strict design philosophy: **one primary element at a time, restraint over quantity**. The previous version had 13+ simultaneous spinning/pulsing elements (3 SpinningArcs, PlasmaRing×2, ChromaticArcs, RadarSweep, RadialEqualizer with 24 bars, 6 EnergyParticles, InnerHalo, SpeakingCorona, SpeakingRipples×5). The redesign uses 6 layers total — every duration is intentional, every opacity value earns its place.
 
 **Props:**
 ```typescript
 interface AICoreProps {
   voiceState: JarvisVoiceState;
   isAwake: boolean;
-  size?: number;        // default: 120
-  onClick?: () => void; // optional — makes orb tappable; absent on non-voice-supported browsers
+  size?: number;  // default: 300 — scales all SVG elements proportionally
 }
 ```
 
-**Visual behavior by state:**
+**Layer stack (bottom → top):**
 
-| State | Border | Box-Shadow Glow | Mic Icon Color | Extra |
-|---|---|---|---|---|
-| `idle` | `rgba(255,255,255,0.08)` | `rgba(56,189,248,0.06)` | `#52525b` grey | None |
-| `listening` | `rgba(56,189,248,0.4)` sky-blue | `rgba(56,189,248,0.15)` | `#38bdf8` blue | None |
-| `processing` | `rgba(251,191,36,0.25)` amber | `rgba(251,191,36,0.08)` | `#fbbf24` amber | Spinning dashed amber ring at `inset: -3px` |
-| `speaking` | `rgba(52,211,153,0.25)` green | `rgba(52,211,153,0.08)` | `#34d399` green | `scale: [1, 1.04, 1]` breathe loop (2s) |
+| Layer | Element | Purpose |
+|---|---|---|
+| 1 | `AmbientField` | Radial gradient fill — pure atmosphere, opacity/scale vary by state |
+| 2 | `PulseRings` | 2 expanding rings max — slow ripple effect, staggered by half-duration |
+| 3 | `OrbitRing` | **Single** orbit ring — speed and dasharray morph by state |
+| 4 | `OrbBloom` | Blurred glow circle (`feGaussianBlur stdDeviation 6–8.5`) behind orb surface |
+| 5 | `Orb` | Hero element — gradient circle with breathing scale + drop-shadow only |
+| 6 | `HUDBrackets` | 4 corner paths, always present, opacity-only variation |
 
-- The processing ring is a separate `motion.div` with `border: 1px dashed rgba(251,191,36,0.3)` animated to `rotate: 360` on 2.5s linear loop
-- All color and shadow transitions use `transition: "border-color 0.3s ease, box-shadow 0.3s ease"` inline
-- Mic icon size = `Math.round(size * 0.25)` — scales proportionally
+**State behavior:**
+
+| State | OrbitRing | PulseRings | Orb |
+|---|---|---|---|
+| `idle` | 20s rotation, dasharray `188 44`, 0.12 opacity | 4.2s, max-r 58, 0.22 start-opacity | Steady drop-shadow, 5px glow |
+| `listening` | 14s rotation, same dash, 0.30 opacity | 2.6s, max-r 70, 0.40 start-opacity | Radius 22→27px spring |
+| `processing` | 6s rotation, dasharray `28 12` (short), 0.50 opacity | 2.6s | Radius 22↔24px mirror loop, processing dots below |
+| `speaking` | 10s rotation, full dash, 0.42 opacity | 1.9s, max-r 82, 0.55 start-opacity | Scale `[1, 1.055, 1.02, 1.07, 1.01, 1.055, 1]` on 1.8s organic cycle; waveform bars below |
+
+**Animation principles:**
+- Easing: `[0.25, 0.46, 0.45, 0.94]` (easeOutQuart) for state transitions; `[0.45, 0.05, 0.55, 0.95]` (easeInOut) for continuous loops
+- No element spins faster than 6s. Idle orbit is 20s. This is intentional.
+- Drop-shadow is the only effect on the orb surface — no SVG filters on the hero element itself
+- `StatusLabel` below the orb: `Waveform` (8 bars, 0.68s+) for speaking; `ProcessingDots` (3 dots, 0.9s bounce) for processing; green dot + "Listening" for active mic; "Online" when awake and idle
 
 ---
 
 ### Gemini Function Calling (`src/lib/gemini.ts`)
 
-JARVIS uses Gemini's native function calling API — not JSON-in-text parsing. 7 tool declarations for non-search intents:
+JARVIS uses Gemini's native function calling API — not JSON-in-text parsing. 9 tool declarations for non-search intents:
 
 | Tool | Triggers When… |
 |---|---|
@@ -739,6 +754,8 @@ JARVIS uses Gemini's native function calling API — not JSON-in-text parsing. 7
 | `recall_memories` | User asks what JARVIS remembers or references past context |
 | `delete_task` | User says to remove or cancel a task |
 | `update_task` | User wants to reschedule or modify a task |
+| `update_user_context` | User shares a life update ("I just got a freelance client", "I'm learning Rust") — writes to `localStorage["jarvis:user-context"]` with date-stamped entry; deduplicates near-similar entries before saving |
+| `create_tasks_batch` | User requests multiple tasks at once ("set up my week", "add 3 things for tomorrow") — parallel `Promise.allSettled` over individual `addTaskDirect` calls; reports partial failures |
 
 **`generateWithTools()` flow:**
 1. First call to Gemini with full tool declarations
@@ -783,19 +800,25 @@ Invalid transitions are blocked with `canTransitionTo()`. Every state change is 
 
 ### Intent Pre-Classifier (`src/lib/jarvis.ts`)
 
-Before every Gemini call, `classifyIntent(message)` runs a regex-based keyword scan and returns one of 7 intent types:
+Before every Gemini call, `classifyIntent(message)` runs a regex-based keyword scan and returns one of 9 intent types. **Classification order matters** — `quick_capture` is tested first (highest priority bypass), `daily_review` before `search_query` (so "how did today go" doesn't become a web search):
 
-| Intent | Sample Triggers | Routes To |
-|---|---|---|
-| `task_creation` | "remind me", "add task", "tomorrow at", "deadline", "book a" | `generateWithTools()` |
-| `memory_capture` | "remember that", "save this", "make a note" | `generateWithTools()` |
-| `task_query` | "what do I have", "what's today", "pending tasks" | `generateWithTools()` |
-| `memory_query` | "what do you remember", "what did I tell you" | `generateWithTools()` |
-| `task_management` | "delete task", "reschedule", "cancel meeting" | `generateWithTools()` |
-| `search_query` | "search for", "look up", "latest news", "what happened", "price of" | `generateWithSearch()` |
-| `conversation` | everything else | `generateWithTools()` |
+| Priority | Intent | Sample Triggers | Routes To |
+|---|---|---|---|
+| 1st | `quick_capture` | "note:", "jot down:", "capture:", "quick note" | Local save — **no Gemini call at all** |
+| 2nd | `task_creation` | "remind me", "add task", "tomorrow at", "deadline", "book a" | `generateWithTools()` |
+| 3rd | `task_query` | "what do I have", "what's today", "pending tasks" | `generateWithTools()` |
+| 4th | `memory_capture` | "remember that", "save this", "make a note", life-update phrases | `generateWithTools()` |
+| 5th | `task_query` | (second pass — broader patterns) | `generateWithTools()` |
+| 6th | `memory_query` | "what do you remember", "what did I tell you" | `generateWithTools()` |
+| 7th | `task_management` | "delete task", "reschedule", "cancel meeting" | `generateWithTools()` |
+| 8th | `daily_review` | "daily review", "how did today go", "wrap up", "weekly review" | `generateContent()` (no tools) |
+| 9th | `search_query` | "search for", "look up", "latest news", "what happened", "price of" | `generateWithSearch()` |
+| 10th | `conversation` | everything else | `generateWithTools()` |
 
-`search_query` is the only intent that bypasses function calling entirely and routes to Google Search Grounding. All other intents receive the intent as a hint appended to the system prompt.
+- `quick_capture` exits before any API call — instant response ("Noted.")
+- `daily_review` uses `geminiAPI.generateContent()` directly — no tools, no history, purpose-built prompt
+- `search_query` bypasses function calling entirely — routes to Google Search Grounding
+- Life-update phrases ("I just got…", "I'm now learning…", "I've decided to…") route as `memory_capture` so the `update_user_context` tool can fire
 
 ---
 
@@ -809,7 +832,7 @@ On JARVIS page mount → `initJarvisSession()`:
 
 Every message → `saveMessage()` persists to `jarvis_messages` (fire-and-forget, non-blocking).
 
-**Extended `messageType` values:** `"conversation"` | `"task_created"` | `"memory_saved"` | `"error"` | `"morning_briefing"` | `"search_result"`
+**Extended `messageType` values:** `"conversation"` | `"task_created"` | `"memory_saved"` | `"error"` | `"morning_briefing"` | `"search_result"` | `"proactive_alert"` | `"context_update"`
 
 On page leave (unmount + `beforeunload`) → `endSession()`:
 1. If ≥ 4 messages, calls Gemini to generate a 2-3 sentence session summary
@@ -821,13 +844,14 @@ All failures are silently caught — JARVIS never crashes due to missing Supabas
 
 ### System Prompt Builder (`src/lib/jarvis.ts`)
 
-`buildJarvisSystemPrompt()` injects on every fresh session:
+`buildJarvisSystemPrompt(params?)` injects on every fresh session:
 - Current date, time, today's key, tomorrow's key
 - User's personal context from `localStorage["jarvis:user-context"]`
 - All pending tasks for today (title, time, priority)
 - High-priority tasks flagged separately
 - All persistent memories (last 20, by type)
 - Last 3 session summaries
+- **Habit insights** — weekly domain pattern from `analyzeHabits()`, e.g. "You've been active in: gym (5×), development (4×), cricket (2×) this week" — injected when non-empty
 - Full JARVIS personality spec (honest, direct, non-sycophantic, push-back capable, emotionally aware)
 - Navigation routing rules (`[NAVIGATE:/route]` block)
 
@@ -842,6 +866,142 @@ Module-level `conversationHistory` array in `jarvis.ts`:
 - System prompt injected as a fake first user+model exchange per Gemini's requirement (no native `system` role in REST API)
 
 **`search_query` history:** Search responses are also written into `conversationHistory` — `{ role: "model", parts: [{ text: searchResult.text }] }` — so follow-up conversation references prior search results correctly.
+
+---
+
+### Phase 2 — Proactive Intelligence (`src/lib/jarvis.ts`)
+
+JARVIS checks for actionable context every 15 minutes and injects alerts without interrupting the user. Alerts are visual-only — no TTS, no audio.
+
+**Functions:**
+
+`startProactiveChecks(): void`
+- Calls `runProactiveCheck()` immediately (first check on activation)
+- Sets `_proactiveCheckInterval = setInterval(runProactiveCheck, 15 * 60 * 1000)`
+- Module-level interval — persists across renders; must be cleared in `jarvis.disable()`
+
+`stopProactiveChecks(): void`
+- Clears and nulls `_proactiveCheckInterval`
+
+`runProactiveCheck(): Promise<void>`
+- Fetches today's tasks from Horizon
+- Checks in order — returns after first match (one alert at a time):
+  1. **15-minute warning** — task due within next 15 min and not completed → "Heads up: '[task]' is due at [time]"
+  2. **Overdue high-priority** — past-due high-priority incomplete task → "Overdue: '[task]' was due at [time]"
+  3. **7pm productivity nudge** — if after 19:00 and zero tasks completed that day → "You haven't completed any tasks today. Still time to close something out."
+- All alerts injected via `addProactiveMessage()` — never via TTS
+
+`addProactiveMessage(text): void`
+- Creates a `JarvisMessage` with `type: "proactive_alert"`, `role: "assistant"`
+- Appends directly to `state.messages` — bypasses conversation history and TTS queue entirely
+- Emits to all `useJarvis()` subscribers
+
+**UI rendering in `jarvis.tsx`:** `proactive_alert` messages render as amber `PROACTIVE ALERT` pill + message text. Never entered into `conversationHistory`.
+
+---
+
+### Phase 2 — Smart Context Auto-Update (`src/lib/gemini.ts` + `src/lib/jarvis.ts`)
+
+Allows JARVIS to silently update user context when you share a life change, without interrupting conversation flow.
+
+**Mechanism:**
+- Module-level `_pendingContextUpdate: { type, value } | null` in `gemini.ts`
+- The `update_user_context` tool handler in `executeToolCall()`:
+  1. Reads existing `localStorage["jarvis:user-context"]`
+  2. Checks for near-duplicate entries (same type + similar content within 200 chars) — skips if duplicate
+  3. Prepends new entry: `[${new Date().toLocaleDateString()}] ${type}: ${value}`
+  4. Writes back to localStorage
+  5. Sets `_pendingContextUpdate = { type, value }`
+- Exported `takePendingContextUpdate(): { type, value } | null` — atomically reads and clears `_pendingContextUpdate`
+- After `generateWithTools()` returns, `handleCommand` calls `takePendingContextUpdate()`; if non-null, injects a `context_update` message into the feed
+
+**Why module-level state:** `executeToolCall` runs deep inside `generateWithTools()` with no return path back to `handleCommand`. Events or callbacks would create circular imports. Module-level variable is the cleanest signal channel.
+
+**Routing:** Life-update phrases ("I just got…", "I'm now learning…", "I've decided to…") are detected in `classifyIntent()` and routed as `memory_capture` (which IS in `TOOLS_INTENTS`). Gemini then chooses between `save_memory` and `update_user_context` based on context.
+
+**UI rendering:** `context_update` messages render as a purple `CONTEXT · [type]` badge in the feed.
+
+---
+
+### Phase 2 — Daily/Weekly Review (`src/lib/jarvis.ts`)
+
+Generates an honest spoken + visual summary of the day on demand.
+
+**Function:** `generateDailyReview(): Promise<string>`
+1. Fetches today's tasks and last 7 days in parallel (`Promise.all`)
+2. Calculates: total tasks today, completed, completion rate, high-priority stats
+3. Gets the last 7 days of tasks for weekly pattern
+4. Builds a structured review prompt: actual task names, times, priorities, completion status
+5. Calls `geminiAPI.generateContent(reviewPrompt)` — no conversation history, no tools, standalone generation
+6. Returns the review text (≤120 words, plain English, honest, no markdown)
+
+**Routing:**
+- `daily_review` intent (8th priority in classifier) catches: "daily review", "how did today go", "wrap up my day", "review my week", "weekly review", "end of day"
+- Positioned before `search_query` to prevent "how did today go" from becoming a web search
+- The `handleCommand` branch calls `generateDailyReview()`, creates a `text` message, and enqueues it in TTSQueue — identical to a normal assistant response
+
+---
+
+### Phase 2 — Habit Tracking (`src/lib/jarvis.ts`)
+
+Provides JARVIS with automatic awareness of the user's weekly domain activity patterns, injected into every session's system prompt.
+
+**Function:** `analyzeHabits(tasks?: HorizonTask[]): Promise<string>`
+- **Without argument:** Fetches the last 7 days of tasks from Supabase (used by `initJarvisSession`)
+- **With argument:** Uses provided tasks array — skips the fetch (used by `generateDailyReview` which already has the data)
+- Domain detection order: checks `description` for `[timeline:…:domain]` tag first; falls back to title keyword matching
+- Domains tracked: `gym`, `development`, `cricket`, `freelance`, `study`, `ai`
+- Keyword maps per domain (e.g., gym: ["gym", "workout", "exercise", "weights", "run", "cricket"])
+- Returns: `"You've been active in: gym (5×), development (4×) this week"` — or `""` on error/no data
+- **Never throws** — all errors return `""`
+
+**Mount wiring in `initJarvisSession()`:**
+```typescript
+const [sessions, memories, habitInsight] = await Promise.all([
+  getSessions(1, 3),
+  getMemories(20),
+  analyzeHabits(),
+]);
+buildJarvisSystemPrompt({ sessions, memories, tasks, habitInsight });
+```
+
+---
+
+### Phase 2 — Quick Capture (`src/lib/jarvis.ts`)
+
+Allows instant note/task capture without a Gemini API call — the lowest-latency path in JARVIS.
+
+**Trigger patterns (checked first in `handleCommand`, before `classifyIntent`):**
+- Prefix patterns: `"note: "`, `"jot down: "`, `"capture: "`, `"quick note: "`
+- Natural phrases: `"note that "`, `"jot this down: "`, `"capture this: "`
+
+**Flow:**
+1. Strips the capture prefix from the message
+2. Saves to memory via `saveMemory(content, "general")` (Supabase, non-blocking)
+3. If the content contains a time reference (tomorrow, tonight, at [time], on [day]) → also creates a task via `addTaskDirect()`
+4. Responds immediately: `"Noted."` (no API call, ~0ms latency)
+5. Returns without entering the normal intent-classification pipeline
+
+**TOOLS_INTENTS bypass:** `quick_capture` intentionally returns before `classifyIntent()` is even called. It is the only path in `handleCommand` that skips intent classification entirely.
+
+---
+
+### Phase 2 — Batch Task Creation (`src/lib/horizon.ts` + `src/lib/gemini.ts`)
+
+Handles multi-task requests in a single JARVIS command via the `create_tasks_batch` Gemini tool.
+
+**`addJarvisTasksBatch(tasks: TaskInput[]): Promise<{ created: number; failed: number }>`** — in `horizon.ts`
+- Distinct from existing `addTasksBatch()` (which bulk-inserts and returns a count)
+- Uses `Promise.allSettled()` over individual `addTaskDirect()` calls
+- One task failure never aborts the rest
+- Returns `{ created, failed }` for granular reporting
+
+**`create_tasks_batch` tool** in Gemini tool declarations:
+- Accepts `tasks: Array<{ title, date, time, priority, description? }>`
+- Handler in `executeToolCall()` calls `addJarvisTasksBatch(tasks)`
+- Result text: `"Created [n] tasks."` or `"Created [n] tasks. [m] failed — check your Horizon page."` if partial failures
+
+**Routing:** Triggered when the user says things like "set up my week", "add these 3 tasks", "create tasks for tomorrow morning" — `task_creation` intent routes to `generateWithTools()`, Gemini chooses `create_tasks_batch` over `create_task` when multiple items are detected.
 
 ---
 
@@ -1005,20 +1165,26 @@ All tokens are `oklch` CSS variables in `src/styles.css`.
 | **JARVIS — Search Result UI** | ✅ Complete | `SearchResult` component, 9 typed layouts, source attribution with up to 4 links |
 | **JARVIS — search_query intent** | ✅ Complete | 7th intent type; bypasses function calling; routes to search grounding pipeline |
 | **JARVIS — UI Overhaul (v3)** | ✅ Complete | Linear/Perplexity aesthetic; `#0a0a0a`; minimal AICore; 3-column with flat tab bar |
-| **JARVIS — AICore redesign** | ✅ Complete | Minimal circle + Mic icon; state-reactive border/glow; processing spinner ring |
+| **JARVIS — AICore award redesign** | ✅ Complete | 6-layer SVG orb; single orbit ring; two pulse rings; restrained timing (6–20s); no vibecoded clutter |
 | **JARVIS — Morning Briefing bubble** | ✅ Complete | Distinct `Sparkles`-headered card in chat feed |
 | JARVIS — Wake word system | ✅ Complete | Passive + command modes, 7s timeout, inline commands |
-| JARVIS — Gemini function calling | ✅ Complete | 7 tools, native API (no JSON parsing), dual-call flow |
+| JARVIS — Gemini function calling | ✅ Complete | 9 tools (inc. `update_user_context`, `create_tasks_batch`), native API, dual-call flow |
 | JARVIS — 6-state audio machine | ✅ Complete | idle/listening/processing/speaking/interrupted/error |
 | JARVIS — TTSQueue | ✅ Complete | Sentence splitting, interrupt detection, voice preference |
-| JARVIS — Intent classifier | ✅ Complete | Regex pre-classifier, 7 intent types (inc. `search_query`), hint injected to Gemini |
+| JARVIS — Intent classifier | ✅ Complete | Regex pre-classifier, 9 intent types (inc. `quick_capture`, `daily_review`), ordered by priority |
 | JARVIS — Persistent sessions | ✅ Complete | Requires `JARVIS_EVOLUTION_SETUP.sql`; graceful degradation without it |
 | JARVIS — Memory banks | ✅ Complete | 5 memory types, filterable panel, delete, recalled_count tracking |
 | JARVIS — Session history | ✅ Complete | Paginated list, AI summaries, delete |
 | JARVIS — 3-tab right panel | ✅ Complete | Chat / History / Memory with flat tab bar |
 | JARVIS — Duplicate messages fix | ✅ Fixed | `userMsg` patched once; `jarvisMsg` appended separately |
-| JARVIS — messageType extended | ✅ Complete | Supports `morning_briefing` and `search_result` in DB + feed |
+| JARVIS — messageType extended | ✅ Complete | Supports `morning_briefing`, `search_result`, `proactive_alert`, `context_update` |
 | JARVIS floating orb | ✅ Complete | Global, state-reactive (pulse/spin/waveform) |
+| **JARVIS Phase 2 — Proactive Intelligence** | ✅ Complete | 15-min interval checks; task warnings, overdue alerts, 7pm nudge; visual-only, no TTS |
+| **JARVIS Phase 2 — Smart Context Auto-Update** | ✅ Complete | `update_user_context` tool; module-level signal via `takePendingContextUpdate()`; dedup guard |
+| **JARVIS Phase 2 — Daily/Weekly Review** | ✅ Complete | `generateDailyReview()` — standalone Gemini call; 7-day data; `daily_review` intent (priority 8) |
+| **JARVIS Phase 2 — Habit Tracking** | ✅ Complete | `analyzeHabits()` — 6 domains, keyword + tag detection; injected into system prompt |
+| **JARVIS Phase 2 — Quick Capture** | ✅ Complete | Prefix bypass, zero API latency, optional task creation on time-reference detection |
+| **JARVIS Phase 2 — Batch Task Creation** | ✅ Complete | `create_tasks_batch` tool; `addJarvisTasksBatch()` with `Promise.allSettled`; partial failure reporting |
 | Context Window | ✅ Complete | Personal context editor, `localStorage["jarvis:user-context"]` |
 | Collapsible sidebar | ✅ Complete | Spring animation, icon-only, hover tooltips, localStorage persisted |
 | Splashscreen | ✅ Complete | Icon + wordmark + loading bar, fades at 1.6s |
@@ -1053,6 +1219,13 @@ All tokens are `oklch` CSS variables in `src/styles.css`.
 - **JARVIS task time is UTC** — `task_time` has no timezone. Push reminder timing may be off if the user's local timezone differs from UTC.
 - **Capacitor build requires Android Studio** — `npm run cap:open` opens Android Studio which must be installed separately. Always `npm run build` before syncing native assets.
 - **JARVIS design is intentionally isolated** — the `/jarvis` route uses its own `#0a0a0a` palette and Space Mono typography. Do not bleed the app-wide arctic-glass `oklch` tokens into JARVIS components — the two systems are deliberately separate.
+- **Proactive checks only run while JARVIS is enabled** — `startProactiveChecks()` is called inside `jarvis.enable()` and `stopProactiveChecks()` inside `jarvis.disable()`. If the JARVIS toggle is off, no interval exists and no alerts fire. The toggle persists via `localStorage["jarvis:enabled"]`.
+- **`addJarvisTasksBatch` vs `addTasksBatch`** — these are two different functions in `horizon.ts`. `addTasksBatch` is the original bulk-insert (returns `number` count). `addJarvisTasksBatch` uses `Promise.allSettled` so partial failures don't abort the batch — always use `addJarvisTasksBatch` for JARVIS tool calls.
+- **`update_user_context` deduplicates but not perfectly** — it checks if an entry with the same `type` and similar content (string includes check) exists within the last 200 chars of the stored context. Very different phrasings of the same fact will not be detected as duplicates.
+- **`daily_review` intent must remain before `search_query`** — if order changes, "how did today go?" or "wrap up my day" will classify as `search_query` and go to Google Search instead of the review generator.
+- **`quick_capture` bypasses `classifyIntent` entirely** — it's checked at the top of `handleCommand` before intent classification. This is intentional for zero-latency capture. Do not refactor it into the intent system.
+- **AICore animation timing is deliberately slow** — idle orbit ring is 20s, speaking is 10s. Do not "optimize" these to faster speeds. The restraint is the design. Fast spinning = vibecoded slop.
+- **`analyzeHabits()` uses localStorage timeline tag detection first** — tasks with `[timeline:month:domain]` in their description get the domain from the tag. Keyword matching is only the fallback. Timeline tasks that have been retitled won't keyword-match correctly if they've lost their prefix.
 
 ---
 
