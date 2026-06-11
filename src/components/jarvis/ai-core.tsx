@@ -224,12 +224,14 @@ function OrbBloom({
     <motion.circle
       cx={CX}
       cy={CY}
+      r={22}
       fill={
         isSpeaking
           ? `${BLUE}0.85)`
           : `${SKY}${isActive ? "0.55" : "0.28"})`
       }
       filter="url(#jv-bloom)"
+      initial={{ r: 22 }}
       animate={{
         r:       isSpeaking ? [23, 28, 21, 26, 23] : isProcessing ? [22, 25, 22] : 22,
         opacity: isSpeaking ? [0.75, 1, 0.65, 0.95, 0.75] : isActive ? 0.85 : 0.45,
@@ -277,8 +279,10 @@ function Orb({
     <motion.circle
       cx={CX}
       cy={CY}
+      r={22}
       fill="url(#jv-orb)"
       style={{ originX: "50%", originY: "50%" }}
+      initial={{ r: 22 }}
       animate={{
         r: isListening ? 27 : isProcessing ? [22, 24, 22] : 22,
         scale: isSpeaking

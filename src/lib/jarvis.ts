@@ -2462,7 +2462,9 @@ export const jarvis = {
     }
     patch({ enabled: true });
     transitionAudioState("idle");
-    void startWakeWordDetection();
+    if (!_wakeWordActive && !_wakeWordInitializing) {
+      void startWakeWordDetection();
+    }
     startProactiveChecks();
   },
 
