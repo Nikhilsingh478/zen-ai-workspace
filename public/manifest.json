@@ -1,6 +1,6 @@
 {
-  "name": "AI Metrics",
-  "short_name": "AI Metrics",
+  "name": "AI Matrix",
+  "short_name": "AI Matrix",
   "description": "Personal AI operating system — tools, prompts, tasks, and insights.",
   "start_url": "/",
   "display": "standalone",
@@ -9,10 +9,22 @@
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/icon.svg",
-      "sizes": "192x192 512x512",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "src": "/favicon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ],
   "categories": ["productivity", "utilities"],
@@ -22,14 +34,14 @@
       "short_name": "Calendar",
       "description": "Open your task calendar",
       "url": "/horizon",
-      "icons": [{ "src": "/icon.svg", "sizes": "192x192 512x512", "type": "image/svg+xml" }]
+      "icons": [{ "src": "/favicon.png", "sizes": "192x192", "type": "image/png" }]
     },
     {
       "name": "Ask Jarvis",
       "short_name": "Ask",
       "description": "Open AI chat",
       "url": "/ask",
-      "icons": [{ "src": "/icon.svg", "sizes": "192x192 512x512", "type": "image/svg+xml" }]
+      "icons": [{ "src": "/favicon.png", "sizes": "192x192", "type": "image/png" }]
     }
   ]
 }
