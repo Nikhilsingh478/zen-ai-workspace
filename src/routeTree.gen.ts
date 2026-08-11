@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as TimelineRouteImport } from './routes/timeline'
 import { Route as PromptsRouteImport } from './routes/prompts'
+import { Route as MoodRouteImport } from './routes/mood'
 import { Route as MessagesRouteImport } from './routes/messages'
 import { Route as LinksRouteImport } from './routes/links'
 import { Route as JarvisRouteImport } from './routes/jarvis'
@@ -30,6 +31,11 @@ const TimelineRoute = TimelineRouteImport.update({
 const PromptsRoute = PromptsRouteImport.update({
   id: '/prompts',
   path: '/prompts',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MoodRoute = MoodRouteImport.update({
+  id: '/mood',
+  path: '/mood',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MessagesRoute = MessagesRouteImport.update({
@@ -94,6 +100,7 @@ export interface FileRoutesByFullPath {
   '/jarvis': typeof JarvisRoute
   '/links': typeof LinksRoute
   '/messages': typeof MessagesRoute
+  '/mood': typeof MoodRoute
   '/prompts': typeof PromptsRoute
   '/timeline': typeof TimelineRoute
 }
@@ -108,6 +115,7 @@ export interface FileRoutesByTo {
   '/jarvis': typeof JarvisRoute
   '/links': typeof LinksRoute
   '/messages': typeof MessagesRoute
+  '/mood': typeof MoodRoute
   '/prompts': typeof PromptsRoute
   '/timeline': typeof TimelineRoute
 }
@@ -123,6 +131,7 @@ export interface FileRoutesById {
   '/jarvis': typeof JarvisRoute
   '/links': typeof LinksRoute
   '/messages': typeof MessagesRoute
+  '/mood': typeof MoodRoute
   '/prompts': typeof PromptsRoute
   '/timeline': typeof TimelineRoute
 }
@@ -139,6 +148,7 @@ export interface FileRouteTypes {
     | '/jarvis'
     | '/links'
     | '/messages'
+    | '/mood'
     | '/prompts'
     | '/timeline'
   fileRoutesByTo: FileRoutesByTo
@@ -153,6 +163,7 @@ export interface FileRouteTypes {
     | '/jarvis'
     | '/links'
     | '/messages'
+    | '/mood'
     | '/prompts'
     | '/timeline'
   id:
@@ -167,6 +178,7 @@ export interface FileRouteTypes {
     | '/jarvis'
     | '/links'
     | '/messages'
+    | '/mood'
     | '/prompts'
     | '/timeline'
   fileRoutesById: FileRoutesById
@@ -182,6 +194,7 @@ export interface RootRouteChildren {
   JarvisRoute: typeof JarvisRoute
   LinksRoute: typeof LinksRoute
   MessagesRoute: typeof MessagesRoute
+  MoodRoute: typeof MoodRoute
   PromptsRoute: typeof PromptsRoute
   TimelineRoute: typeof TimelineRoute
 }
@@ -200,6 +213,13 @@ declare module '@tanstack/react-router' {
       path: '/prompts'
       fullPath: '/prompts'
       preLoaderRoute: typeof PromptsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mood': {
+      id: '/mood'
+      path: '/mood'
+      fullPath: '/mood'
+      preLoaderRoute: typeof MoodRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/messages': {
@@ -286,6 +306,7 @@ const rootRouteChildren: RootRouteChildren = {
   JarvisRoute: JarvisRoute,
   LinksRoute: LinksRoute,
   MessagesRoute: MessagesRoute,
+  MoodRoute: MoodRoute,
   PromptsRoute: PromptsRoute,
   TimelineRoute: TimelineRoute,
 }

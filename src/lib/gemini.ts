@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { addTaskDirect, getHorizonTasks, addJarvisTasksBatch } from "@/lib/horizon";
+import { addMoodEntryDirect, getMoodEntries, buildMoodContext, MOOD_CONFIG } from "@/lib/mood";
 import type { HorizonTask } from "@/lib/horizon";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -229,6 +230,37 @@ const JARVIS_TOOLS = [
       required: ["tasks"],
     },
   },
+  {
+    name: "log_mood",
+    description:
+      "Logs the user's mood when they express how they're feeling, mention their energy/stress/focus/sleep, or ask to record a mood entry. " +
+      'Examples: "Log my mood as 4", "I\'m feeling really good today", "I\'m exhausted", "Record that I felt stressed", "Log mood: good, energy 3".',
+    parameters: {
+      type: "object",
+      properties: {
+        mood: {
+          type: "integer",
+          description: "Mood level 1–5 (1=Very Low, 2=Low, 3=Neutral, 4=Good, 5=Very Good)",
+          minimum: 1,
+          maximum: 5,
+        },
+        stress: { type: "integer", description: "Stress level 1–5 (optional)", minimum: 1, maximum: 5 },
+        energy: { type: "integer", description: "Energy level 1–5 (optional)", minimum: 1, maximum: 5 },
+        focus:  { type: "integer", description: "Focus level 1–5 (optional)", minimum: 1, maximum: 5 },
+        sleep_quality: { type: "integer", description: "Sleep quality 1–5 (optional)", minimum: 1, maximum: 5 },
+        reason: { type: "string", description: "Brief reason or context (optional, max 500 chars)" },
+        reflection: { type: "string", description: "Longer reflection text (optional, max 5000 chars)" },
+      },
+      required: ["mood"],
+    },
+  },
+  {
+    name: "get_mood_summary",
+    description:
+      "Returns a summary of the user's recent mood data when they ask about how they've been feeling, their mood patterns, energy levels, or stress trends. " +
+      'Examples: "What has my mood been like?", "How have I been feeling lately?", "Am I more stressed recently?", "What\'s my average focus?"',
+    parameters: { type: "object", properties: {} },
+  },
 ];
 
 // ─── Tool Execution ───────────────────────────────────────────────────────────
@@ -432,6 +464,55 @@ export async function executeToolCall(
         return `Created ${created} task${created > 1 ? "s" : ""} successfully.`;
       }
       return `Created ${created} tasks. ${failed} failed — check your Horizon page.`;
+    }
+
+    if (toolName === "log_mood") {
+      const raw = toolArgs as {
+        mood?: unknown;
+        stress?: unknown;
+        energy?: unknown;
+        focus?: unknown;
+        sleep_quality?: unknown;
+        reason?: unknown;
+        reflection?: unknown;
+      };
+
+      const moodVal = Math.max(1, Math.min(5, Math.round(Number(raw.mood ?? 3)))) as 1 | 2 | 3 | 4 | 5;
+      const stressVal = raw.stress != null ? Math.max(1, Math.min(5, Math.round(Number(raw.stress)))) : null;
+      const energyVal = raw.energy != null ? Math.max(1, Math.min(5, Math.round(Number(raw.energy)))) : null;
+      const focusVal  = raw.focus  != null ? Math.max(1, Math.min(5, Math.round(Number(raw.focus))))  : null;
+      const sleepVal  = raw.sleep_quality != null ? Math.max(1, Math.min(5, Math.round(Number(raw.sleep_quality)))) : null;
+      const reason     = raw.reason     ? String(raw.reason).slice(0, 500)    : null;
+      const reflection = raw.reflection ? String(raw.reflection).slice(0, 5000) : null;
+
+      const cfg = MOOD_CONFIG[moodVal];
+      const entry = await addMoodEntryDirect({
+        mood: moodVal,
+        moodLabel: cfg.label,
+        stress: stressVal,
+        energy: energyVal,
+        focus: focusVal,
+        sleepQuality: sleepVal,
+        reason,
+        reflection,
+      });
+
+      if (!entry) return "Failed to log mood — database error.";
+
+      const parts = [`Mood logged: ${moodVal}/5 (${cfg.label}).`];
+      if (energyVal != null) parts.push(`Energy: ${energyVal}.`);
+      if (focusVal  != null) parts.push(`Focus: ${focusVal}.`);
+      if (stressVal != null) parts.push(`Stress: ${stressVal}.`);
+      if (sleepVal  != null) parts.push(`Sleep: ${sleepVal}.`);
+      return parts.join(" ");
+    }
+
+    if (toolName === "get_mood_summary") {
+      const entries = getMoodEntries();
+      if (!entries.length) {
+        return "No mood entries found yet. Log your first mood in the Mood section.";
+      }
+      return buildMoodContext(entries);
     }
 
     return `Unknown tool: ${toolName}`;

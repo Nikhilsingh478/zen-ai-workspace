@@ -19,6 +19,7 @@ import {
   BarChart3,
   Bell,
   BellOff,
+  Activity,
 } from "lucide-react";
 import {
   LineChart,
@@ -39,6 +40,8 @@ import { getInsightsData, type InsightsData } from "@/lib/usage-tracking";
 import { useHorizon, formatDateKey } from "@/lib/horizon";
 import { useFCMStatus } from "@/lib/fcm";
 import { faviconFor } from "@/lib/store";
+import { getMoodEntries, getMoodStats, MOOD_CONFIG } from "@/lib/mood";
+import { Link } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/insights")({
@@ -709,9 +712,112 @@ function InsightsPage() {
         </Section>
       )}
 
+      {/* ── Mood summary section ─────────────────────────────────────────── */}
+      <MoodInsightsSummary />
+
       <div className="mt-6 text-center text-[11px] text-white/15 pb-4">
         {d.weekEvents} AI events tracked this week · auto-refreshes every 30s
       </div>
+    </div>
+  );
+}
+
+// ─── Mood summary for Insights page ─────────────────────────────────────────
+
+function MoodInsightsSummary() {
+  const entries = getMoodEntries();
+  if (!entries.length) return null;
+
+  const stats = getMoodStats(entries, 30);
+  if (stats.totalEntries === 0) return null;
+
+  const recentEntry = entries[0];
+  const recentCfg = MOOD_CONFIG[recentEntry.mood];
+
+  return (
+    <div className="mt-6">
+      <div className="flex items-center gap-2.5 mb-4">
+        <div
+          className="h-5 w-5 rounded-lg grid place-items-center"
+          style={{ background: "rgba(56,189,248,0.12)", border: "1px solid rgba(56,189,248,0.2)" }}
+        >
+          <Activity className="h-2.5 w-2.5" style={{ color: "#38BDF8" }} />
+        </div>
+        <span
+          className="text-[11px] font-semibold uppercase tracking-widest"
+          style={{ color: "#38BDF8" }}
+        >
+          Mood
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 md:gap-3 mb-3">
+        <MetricCard
+          label="7-day avg"
+          value={getMoodStats(entries, 7).averageMood?.toFixed(1) ?? "—"}
+          sub="mood score"
+          icon={Activity}
+          delay={0.58}
+          accent="#38BDF8"
+        />
+        <MetricCard
+          label="30-day avg"
+          value={stats.averageMood?.toFixed(1) ?? "—"}
+          sub="mood score"
+          icon={Activity}
+          delay={0.6}
+          accent="#38BDF8"
+        />
+        <MetricCard
+          label="Trend"
+          value={stats.trendLabel === "Stable" ? "Stable" : stats.trend != null ? `${stats.trend > 0 ? "+" : ""}${stats.trend}` : "—"}
+          sub={stats.trend != null && stats.trendLabel !== "Stable" ? "vs previous period" : "last 30 days"}
+          icon={stats.trend != null && stats.trend > 0 ? TrendingUp : TrendingDown}
+          delay={0.62}
+          accent={stats.trend != null && stats.trend > 0.2 ? "#34D399" : stats.trend != null && stats.trend < -0.2 ? "#F87171" : "#94A3B8"}
+        />
+        <MetricCard
+          label="Entries"
+          value={stats.totalEntries}
+          sub="logged this month"
+          icon={Brain}
+          delay={0.64}
+          accent="#A78BFA"
+        />
+      </div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, delay: 0.66, ease: [0.22, 1, 0.36, 1] }}
+        className="rounded-2xl border border-white/[0.07] bg-[#18181B] p-4 md:p-5 flex items-center justify-between gap-4"
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <div
+            className="h-2.5 w-2.5 rounded-full shrink-0"
+            style={{ background: recentCfg.color }}
+          />
+          <div className="min-w-0">
+            <p className="text-[13px] font-medium text-foreground truncate">
+              Most recent: <span style={{ color: recentCfg.color }}>{recentCfg.label}</span>
+              <span className="text-copy-muted font-normal ml-1.5 text-[12px]">
+                {new Date(recentEntry.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+              </span>
+            </p>
+            {stats.averageEnergy != null && (
+              <p className="text-[11px] text-copy-muted mt-0.5">
+                Avg energy {stats.averageEnergy?.toFixed(1)} · focus {stats.averageFocus?.toFixed(1) ?? "—"}
+              </p>
+            )}
+          </div>
+        </div>
+        <Link
+          to="/mood"
+          className="shrink-0 flex items-center gap-1.5 rounded-xl border border-border bg-[var(--surface-3)] hover:border-white/15 px-3 py-1.5 text-[12px] font-medium text-copy-secondary hover:text-foreground transition"
+        >
+          Open Mood
+        </Link>
+      </motion.div>
     </div>
   );
 }

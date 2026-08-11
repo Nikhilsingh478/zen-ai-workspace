@@ -10,6 +10,7 @@ import { useWebsites, usePrompts, useDesktopStorage } from "@/lib/store";
 import { useLinkBoard } from "@/lib/link-board";
 import { useImportantMessages } from "@/lib/important-messages";
 import { useVoiceInput, isSpeechSupported } from "@/hooks/use-voice-input";
+import { getMoodEntries, buildMoodContext } from "@/lib/mood";
 // import { useWakeWord, isWakeWordSupported } from "@/hooks/use-wake-word"; // JARVIS DISABLED
 import { cn } from "@/lib/utils";
 
@@ -111,7 +112,16 @@ function AskPage() {
         parts: [{ text: m.content }],
       }));
 
-      const reply = await geminiAPI.generateContent(value, geminiHistory, context);
+      // Detect mood-related queries and inject concise mood context
+      const moodKeywords = /mood|feeling|energy|stress|focus|sleep|how.*(i|i've) been|mental/i;
+      const isMoodQuery = moodKeywords.test(value);
+      const moodCtx = isMoodQuery ? buildMoodContext(getMoodEntries()) : "";
+
+      const promptWithMood = moodCtx
+        ? `${value}\n\n[Mood context for this query]\n${moodCtx}`
+        : value;
+
+      const reply = await geminiAPI.generateContent(promptWithMood, geminiHistory, context);
 
       setMessages((prev) => [
         ...prev,
