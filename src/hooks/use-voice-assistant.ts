@@ -108,64 +108,75 @@ function containsWakePhrase(text: string, configuredWakeWord: string): boolean {
  * Falls back to browser default if no male voice is found.
  */
 function speak(text: string, onEnd?: () => void): void {
-  if (!("speechSynthesis" in window)) { onEnd?.(); return; }
-  window.speechSynthesis.cancel();
+  if (typeof window === "undefined" || !("speechSynthesis" in window) || !window.speechSynthesis) {
+    onEnd?.();
+    return;
+  }
+  try {
+    window.speechSynthesis.cancel();
 
-  const utt = new SpeechSynthesisUtterance(text);
-  utt.rate = 1.0; utt.pitch = 1.0; utt.volume = 1.0; utt.lang = "en-US";
+    const utt = new SpeechSynthesisUtterance(text);
+    utt.rate = 1.0; utt.pitch = 1.0; utt.volume = 1.0; utt.lang = "en-US";
 
-  const trySpeak = () => {
-    const voices = window.speechSynthesis.getVoices();
+    const trySpeak = () => {
+      try {
+        const voices = window.speechSynthesis?.getVoices?.() ?? [];
 
-    // Preference order: named male voices first, then any male-labeled voice
-    const malePreferences = [
-      "Google UK English Male",
-      "Microsoft David Desktop",
-      "Microsoft David",
-      "David",
-      "Google US English",  // Usually male default in Chrome
-    ];
+        // Preference order: named male voices first, then any male-labeled voice
+        const malePreferences = [
+          "Google UK English Male",
+          "Microsoft David Desktop",
+          "Microsoft David",
+          "David",
+          "Google US English",  // Usually male default in Chrome
+        ];
 
-    let chosen = malePreferences
-      .map((name) => voices.find((v) => v.name.toLowerCase().includes(name.toLowerCase())))
-      .find(Boolean);
+        let chosen = malePreferences
+          .map((name) => voices.find((v) => v.name.toLowerCase().includes(name.toLowerCase())))
+          .find(Boolean);
 
-    // Fallback: any English voice whose name suggests male (no "female" or "woman")
-    if (!chosen) {
-      chosen = voices.find(
-        (v) =>
-          v.lang.startsWith("en") &&
-          !v.name.toLowerCase().includes("female") &&
-          !v.name.toLowerCase().includes("woman") &&
-          !v.name.toLowerCase().includes("samantha") &&
-          !v.name.toLowerCase().includes("zira") &&
-          !v.name.toLowerCase().includes("hazel") &&
-          !v.name.toLowerCase().includes("karen") &&
-          !v.name.toLowerCase().includes("moira") &&
-          !v.name.toLowerCase().includes("tessa") &&
-          !v.name.toLowerCase().includes("victoria"),
-      );
-    }
+        // Fallback: any English voice whose name suggests male (no "female" or "woman")
+        if (!chosen) {
+          chosen = voices.find(
+            (v) =>
+              v.lang.startsWith("en") &&
+              !v.name.toLowerCase().includes("female") &&
+              !v.name.toLowerCase().includes("woman") &&
+              !v.name.toLowerCase().includes("samantha") &&
+              !v.name.toLowerCase().includes("zira") &&
+              !v.name.toLowerCase().includes("hazel") &&
+              !v.name.toLowerCase().includes("karen") &&
+              !v.name.toLowerCase().includes("moira") &&
+              !v.name.toLowerCase().includes("tessa") &&
+              !v.name.toLowerCase().includes("victoria"),
+          );
+        }
 
-    if (chosen) utt.voice = chosen;
-    utt.onend = () => onEnd?.();
-    utt.onerror = () => onEnd?.();
-    window.speechSynthesis.speak(utt);
-  };
-
-  const voices = window.speechSynthesis.getVoices();
-  if (voices.length > 0) {
-    trySpeak();
-  } else {
-    // Voices not yet loaded — wait for the event
-    window.speechSynthesis.onvoiceschanged = () => {
-      window.speechSynthesis.onvoiceschanged = null;
-      trySpeak();
+        if (chosen) utt.voice = chosen;
+        utt.onend = () => onEnd?.();
+        utt.onerror = () => onEnd?.();
+        window.speechSynthesis?.speak?.(utt);
+      } catch {
+        onEnd?.();
+      }
     };
-    // Safety timeout: speak anyway after 300ms even if event never fires
-    setTimeout(() => {
-      if (!utt.voice) trySpeak();
-    }, 300);
+
+    const voices = window.speechSynthesis?.getVoices?.() ?? [];
+    if (voices.length > 0) {
+      trySpeak();
+    } else if (window.speechSynthesis) {
+      // Voices not yet loaded — wait for the event
+      window.speechSynthesis.onvoiceschanged = () => {
+        if (window.speechSynthesis) window.speechSynthesis.onvoiceschanged = null;
+        trySpeak();
+      };
+      // Safety timeout: speak anyway after 300ms even if event never fires
+      setTimeout(() => {
+        if (!utt.voice) trySpeak();
+      }, 300);
+    }
+  } catch {
+    onEnd?.();
   }
 }
 

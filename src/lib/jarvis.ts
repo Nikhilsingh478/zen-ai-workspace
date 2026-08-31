@@ -456,22 +456,35 @@ function selectBestMaleVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoi
  * and the async case (browser fires voiceschanged after page load).
  */
 function preloadVoices(): void {
+  if (typeof window === "undefined" || !("speechSynthesis" in window) || !window.speechSynthesis) {
+    return;
+  }
   const tryLoad = () => {
-    const voices = window.speechSynthesis.getVoices();
-    if (voices.length > 0) {
-      _voicesLoaded = true;
-      _cachedMaleVoice = selectBestMaleVoice(voices);
-      console.log("[TTS] Voices pre-loaded:", _cachedMaleVoice?.name ?? "default");
+    try {
+      const voices = window.speechSynthesis?.getVoices?.() ?? [];
+      if (voices.length > 0) {
+        _voicesLoaded = true;
+        _cachedMaleVoice = selectBestMaleVoice(voices);
+        console.log("[TTS] Voices pre-loaded:", _cachedMaleVoice?.name ?? "default");
+      }
+    } catch (e) {
+      console.warn("[TTS] Error getting voices:", e);
     }
   };
 
   tryLoad();
 
-  if (!_voicesLoaded) {
-    window.speechSynthesis.onvoiceschanged = () => {
-      tryLoad();
-      window.speechSynthesis.onvoiceschanged = null; // fire once
-    };
+  if (!_voicesLoaded && window.speechSynthesis) {
+    try {
+      window.speechSynthesis.onvoiceschanged = () => {
+        tryLoad();
+        if (window.speechSynthesis) {
+          window.speechSynthesis.onvoiceschanged = null; // fire once
+        }
+      };
+    } catch {
+      // Ignore
+    }
   }
 }
 
@@ -482,8 +495,6 @@ class TTSQueue {
   private isPlaying = false;
   private onDoneCallback: (() => void) | null = null;
   private keepAliveInterval: ReturnType<typeof setInterval> | null = null;
-  private currentSource: AudioBufferSourceNode | null = null;
-
   enqueue(text: string, onDone?: () => void): void {
     this.onDoneCallback = onDone ?? null;
     const sentences = this.splitIntoSentences(text);
@@ -493,6 +504,15 @@ class TTSQueue {
       this.startKeepAlive();
       void this.playNext();
     }
+  }
+
+  private splitIntoSentences(text: string): string[] {
+    const raw = text
+      .replace(/([.!?])\s+/g, "$1\n")
+      .split("\n")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    return raw.length > 0 ? raw : [text.trim()];
   }
 
   private async playNext(): Promise<void> {
@@ -509,53 +529,58 @@ class TTSQueue {
     const sentence = this.queue.shift()!;
 
     // Browser TTS (only reliable option — Kokoro was removed due to consistent model failures)
-    if (!("speechSynthesis" in window)) {
+    if (typeof window === "undefined" || !("speechSynthesis" in window) || !window.speechSynthesis) {
       void this.playNext();
       return;
     }
 
     console.log("[TTS] Speaking via browser TTS:", _cachedMaleVoice?.name ?? "default");
 
-    const utterance = new SpeechSynthesisUtterance(sentence);
-    utterance.rate = 0.92;   // slightly slower — more natural pacing
-    utterance.pitch = 0.85;  // lower pitch — masculine
-    utterance.volume = 1.0;
-    utterance.lang = "en-US";
+    try {
+      const utterance = new SpeechSynthesisUtterance(sentence);
+      utterance.rate = 0.92;   // slightly slower — more natural pacing
+      utterance.pitch = 0.85;  // lower pitch — masculine
+      utterance.volume = 1.0;
+      utterance.lang = "en-US";
 
-    // Use the pre-loaded cached voice — avoids empty-list race on first call
-    const voice = _cachedMaleVoice ?? selectBestMaleVoice(window.speechSynthesis.getVoices());
-    if (voice) utterance.voice = voice;
+      // Use the pre-loaded cached voice — avoids empty-list race on first call
+      const voice = _cachedMaleVoice ?? (window.speechSynthesis?.getVoices ? selectBestMaleVoice(window.speechSynthesis.getVoices()) : null);
+      if (voice) utterance.voice = voice;
 
-    // Track whether onend has fired to prevent double-transitions
-    let settled = false;
+      // Track whether onend has fired to prevent double-transitions
+      let settled = false;
 
-    const finishSentence = (isError = false) => {
-      if (settled) return;
-      settled = true;
-      if (isError) {
-        console.warn("[TTS] utterance error on:", sentence.slice(0, 40));
-        // On error just move to next sentence rather than killing everything
-        if (!isLastSentence) {
-          void this.playNext();
-          return;
+      const finishSentence = (isError = false) => {
+        if (settled) return;
+        settled = true;
+        if (isError) {
+          console.warn("[TTS] utterance error on:", sentence.slice(0, 40));
+          // On error just move to next sentence rather than killing everything
+          if (!isLastSentence) {
+            void this.playNext();
+            return;
+          }
         }
-      }
-      if (isLastSentence) {
-        this.isPlaying = false;
-        this.stopKeepAlive();
-        transitionAudioState("idle", { isAwake: false, transcript: "" });
-        startConversationCooldown();
-        this.onDoneCallback?.();
-        this.onDoneCallback = null;
-      } else {
-        void this.playNext();
-      }
-    };
+        if (isLastSentence) {
+          this.isPlaying = false;
+          this.stopKeepAlive();
+          transitionAudioState("idle", { isAwake: false, transcript: "" });
+          startConversationCooldown();
+          this.onDoneCallback?.();
+          this.onDoneCallback = null;
+        } else {
+          void this.playNext();
+        }
+      };
 
-    utterance.onend = () => finishSentence(false);
-    utterance.onerror = () => finishSentence(true);
+      utterance.onend = () => finishSentence(false);
+      utterance.onerror = () => finishSentence(true);
 
-    window.speechSynthesis.speak(utterance);
+      window.speechSynthesis.speak(utterance);
+    } catch (err) {
+      console.warn("[TTS] Speak failed:", err);
+      void this.playNext();
+    }
   }
 
   /**
@@ -566,7 +591,7 @@ class TTSQueue {
   private startKeepAlive(): void {
     if (this.keepAliveInterval) return;
     this.keepAliveInterval = setInterval(() => {
-      if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+      if (typeof window === "undefined" || !("speechSynthesis" in window) || !window.speechSynthesis) return;
       const synth = window.speechSynthesis;
       // Resume if it auto-paused (common Chrome bug)
       if (synth.paused) {
@@ -596,7 +621,9 @@ class TTSQueue {
       try { this.currentSource.stop(); } catch { /* ignore — already stopped */ }
       this.currentSource = null;
     }
-    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+    if (typeof window !== "undefined" && "speechSynthesis" in window && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
     transitionAudioState("interrupted");
     setTimeout(() => {
       if (_state.voiceState === "interrupted") {
@@ -611,13 +638,6 @@ class TTSQueue {
     } else {
       this.onDoneCallback = fn;
     }
-  }
-
-  private splitIntoSentences(text: string): string[] {
-    return text
-      .split(/(?<=[.!?])\s+|\n/)
-      .map((s) => s.trim())
-      .filter(Boolean);
   }
 }
 
@@ -2458,7 +2478,9 @@ export const jarvis = {
     void stopWakeWordDetection();
     stopRecognition();
     ttsQueue.interrupt();
-    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+    if (typeof window !== "undefined" && "speechSynthesis" in window && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
     stopProactiveChecks();
     patch({ enabled: false, isAwake: false, transcript: "" });
     transitionAudioState("idle");
@@ -2494,7 +2516,9 @@ export const jarvis = {
 
   dismiss() {
     ttsQueue.interrupt();
-    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+    if (typeof window !== "undefined" && "speechSynthesis" in window && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
     stopRecognition();
     patch({ isAwake: false, transcript: "" });
     transitionAudioState("idle");
