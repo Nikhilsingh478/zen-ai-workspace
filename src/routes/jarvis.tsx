@@ -1355,7 +1355,7 @@ function JarvisPage() {
                 )}
               </AnimatePresence>
 
-              <AICore voiceState={voiceState} onTap={handleOrbTap} />
+              <AICore voiceState={voiceState} isAwake={isActive} size={coreSize} />
 
               <AnimatePresence>
                 {voiceState !== "idle" && (
