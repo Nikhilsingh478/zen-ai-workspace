@@ -31,11 +31,12 @@ import {
   type Priority,
 } from "@/lib/horizon";
 import {
-  useFCMStatus,
-  requestNotificationPermission,
-  getNotificationStatus,
-  sendTestNotification,
-} from "@/lib/fcm";
+  getNativeNotificationPermissionStatus,
+  requestNativeNotificationPermission,
+  sendNativeTestNotification,
+  type NativeNotificationPermissionStatus,
+} from "@/lib/native-notifications";
+import { Platform } from "@/lib/platform";
 import {
   Dialog,
   DialogContent,
@@ -146,9 +147,13 @@ function HorizonPage() {
   const [editingTask, setEditingTask] = useState<HorizonTask | null>(null);
   const [testingNotif, setTestingNotif] = useState(false);
   const [confirmDeleteDay, setConfirmDeleteDay] = useState(false);
+  const [nativePermStatus, setNativePermStatus] = useState<NativeNotificationPermissionStatus>("default");
 
   const { tasks, tasksForDate, datesWithTasks, add, update, toggle, remove } = useHorizon();
-  const notifStatus = useFCMStatus();
+
+  useEffect(() => {
+    getNativeNotificationPermissionStatus().then(setNativePermStatus).catch(console.error);
+  }, []);
 
   const tasksWithReminders = tasks.filter((t) => t.notificationEnabled && !t.completed).length;
 
@@ -254,62 +259,61 @@ function HorizonPage() {
 
           {/* Notification status pill */}
           <AnimatePresence>
-            {tasksWithReminders > 0 && notifStatus === "denied" && (
+            {tasksWithReminders > 0 && nativePermStatus === "denied" && (
               <motion.span
                 initial={{ opacity: 0, scale: 0.88 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.88 }}
                 transition={{ duration: 0.2, ease: EASE }}
-                className="flex items-center gap-1 px-2 py-0.5 rounded-lg border border-white/[0.07] bg-white/[0.03] text-[10px] text-white/55"
-                title="Notifications blocked — enable in browser settings"
+                className="flex items-center gap-1 px-2 py-0.5 rounded-lg border border-red-500/20 bg-red-500/10 text-[10px] text-red-300/80"
+                title="Notifications blocked — enable in system settings"
               >
                 <BellOff className="h-2.5 w-2.5" />
-                Blocked
+                Blocked in Settings
               </motion.span>
             )}
-            {tasksWithReminders > 0 && notifStatus === "granted" && (
+            {tasksWithReminders > 0 && nativePermStatus === "granted" && (
               <motion.span
                 initial={{ opacity: 0, scale: 0.88 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.88 }}
                 transition={{ duration: 0.2, ease: EASE }}
-                className="flex items-center gap-1 px-2 py-0.5 rounded-lg border border-white/[0.06] bg-white/[0.02] text-[10px] text-white/55"
+                className="flex items-center gap-1 px-2 py-0.5 rounded-lg border border-sky-400/20 bg-sky-400/10 text-[10px] text-sky-300/90"
               >
                 <BellRing className="h-2.5 w-2.5" />
-                {tasksWithReminders} reminder{tasksWithReminders > 1 ? "s" : ""}
+                {tasksWithReminders} active reminder{tasksWithReminders > 1 ? "s" : ""}
               </motion.span>
             )}
           </AnimatePresence>
 
           {/* Test notification button */}
           <AnimatePresence>
-            {notifStatus === "granted" && (
-              <motion.button
-                initial={{ opacity: 0, scale: 0.88 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.88 }}
-                transition={{ duration: 0.2, ease: EASE }}
-                whileHover={{ scale: 1.04 }}
-                whileTap={{ scale: 0.96 }}
-                disabled={testingNotif}
-                onClick={async () => {
-                  setTestingNotif(true);
-                  try {
-                    await sendTestNotification();
-                    toast.success("Test notification sent — check your OS notification tray");
-                  } catch (err) {
-                    toast.error("Notification failed: " + (err instanceof Error ? err.message : String(err)));
-                  } finally {
-                    setTestingNotif(false);
-                  }
-                }}
-                className="flex items-center gap-1 px-2 py-0.5 rounded-lg border border-white/[0.07] bg-white/[0.03] text-[10px] text-white/55 hover:text-white/80 hover:border-white/[0.16] transition-all duration-200 disabled:opacity-40"
-                title="Send a test notification"
-              >
-                <Bell className="h-2.5 w-2.5" />
-                {testingNotif ? "Sending…" : "Test"}
-              </motion.button>
-            )}
+            <motion.button
+              initial={{ opacity: 0, scale: 0.88 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.88 }}
+              transition={{ duration: 0.2, ease: EASE }}
+              whileHover={{ scale: 1.04 }}
+              whileTap={{ scale: 0.96 }}
+              disabled={testingNotif}
+              onClick={async () => {
+                setTestingNotif(true);
+                try {
+                  await sendNativeTestNotification();
+                  setNativePermStatus("granted");
+                  toast.success("Test reminder dispatched — check your OS notification tray");
+                } catch (err) {
+                  toast.error("Notification test failed: " + (err instanceof Error ? err.message : String(err)));
+                } finally {
+                  setTestingNotif(false);
+                }
+              }}
+              className="flex items-center gap-1 px-2 py-0.5 rounded-lg border border-white/[0.07] bg-white/[0.03] text-[10px] text-white/55 hover:text-white/80 hover:border-white/[0.16] transition-all duration-200 disabled:opacity-40"
+              title="Test notification delivery"
+            >
+              <Bell className="h-2.5 w-2.5" />
+              {testingNotif ? "Sending…" : "Test Reminder"}
+            </motion.button>
           </AnimatePresence>
         </motion.div>
 
@@ -1073,26 +1077,25 @@ function TaskModal({
       onChange(false);
       return;
     }
-    const status = getNotificationStatus();
+    const status = await getNativeNotificationPermissionStatus();
     if (status === "unsupported") {
-      toast.error("Push notifications aren't supported in this browser.");
-      return;
-    }
-    if (status === "unconfigured") {
-      toast.error("Notification service isn't configured yet.");
+      toast.error("Notifications aren't supported on this device/browser.");
       return;
     }
     if (status === "denied") {
-      toast.error("Notifications are blocked. Enable them in your browser settings, then try again.");
+      toast.error("Notifications are blocked. Enable them in Android/browser Settings, then try again.", {
+        duration: 4000,
+      });
       return;
     }
     if (status === "granted") {
       onChange(true);
       return;
     }
-    const result = await requestNotificationPermission();
+    const result = await requestNativeNotificationPermission();
     if (result === "granted") {
       onChange(true);
+      toast.success("Notification reminder enabled");
     } else if (result === "denied") {
       toast.error("Permission denied — reminder won't be sent.");
     }

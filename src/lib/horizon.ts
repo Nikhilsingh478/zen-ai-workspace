@@ -1,6 +1,11 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
+import {
+  scheduleHorizonTaskNotification,
+  cancelHorizonTaskNotification,
+  syncAllHorizonTaskNotifications,
+} from "@/lib/native-notifications";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -143,6 +148,12 @@ export async function ensureBooted() {
   try {
     await refetch();
     setupRealtime();
+    // Recovery reconciliation: ensure pending alarms match active tasks
+    if (state.tasks.length > 0) {
+      syncAllHorizonTaskNotifications(state.tasks).catch((e) =>
+        console.warn("[horizon] startup notification sync:", e),
+      );
+    }
   } catch (err: unknown) {
     const code = (err as { code?: string })?.code;
     // PGRST205 = table doesn't exist yet — silent fallback, no toast
@@ -183,6 +194,14 @@ export function useHorizon() {
       const task = rowToTask(data as Row);
       setState({ tasks: [...state.tasks, task].sort(sortTasks) });
       toast.success("Task added", { duration: 1500 });
+
+      // Immediate native Android scheduling (primary path)
+      if (task.notificationEnabled && !task.completed) {
+        scheduleHorizonTaskNotification(task).catch((e) =>
+          console.error("[horizon] Failed to schedule notification:", e),
+        );
+      }
+
       return true;
     } catch (err) {
       console.error("[horizon] add error", err);
@@ -213,6 +232,16 @@ export function useHorizon() {
         tasks: prev.map((t) => (t.id === id ? updated : t)).sort(sortTasks),
       });
       toast.success("Task updated", { duration: 1500 });
+
+      // Immediate cancel previous schedule & reschedule if enabled
+      cancelHorizonTaskNotification(id)
+        .then(() => {
+          if (updated.notificationEnabled && !updated.completed) {
+            return scheduleHorizonTaskNotification(updated);
+          }
+        })
+        .catch((e) => console.error("[horizon] Failed to update notification schedule:", e));
+
       return true;
     } catch (err) {
       console.error("[horizon] update error", err);
@@ -226,9 +255,20 @@ export function useHorizon() {
     const task = state.tasks.find((t) => t.id === id);
     if (!task) return;
     const next = !task.completed;
+    const updatedTask: HorizonTask = { ...task, completed: next };
+
     setState({
-      tasks: state.tasks.map((t) => (t.id === id ? { ...t, completed: next } : t)),
+      tasks: state.tasks.map((t) => (t.id === id ? updatedTask : t)),
     });
+
+    // If completing task -> cancel pending notification
+    // If un-completing task -> reschedule if notificationEnabled
+    if (next) {
+      cancelHorizonTaskNotification(id).catch(console.error);
+    } else if (task.notificationEnabled) {
+      scheduleHorizonTaskNotification(updatedTask).catch(console.error);
+    }
+
     try {
       const { error } = await supabase
         .from("horizon_tasks")
@@ -241,12 +281,22 @@ export function useHorizon() {
       setState({
         tasks: state.tasks.map((t) => (t.id === id ? { ...t, completed: task.completed } : t)),
       });
+      // Revert notification status on database error
+      if (next && task.notificationEnabled) {
+        scheduleHorizonTaskNotification(task).catch(console.error);
+      } else if (!next) {
+        cancelHorizonTaskNotification(id).catch(console.error);
+      }
     }
   };
 
   const remove = async (id: string) => {
     const prev = state.tasks;
     setState({ tasks: state.tasks.filter((t) => t.id !== id) });
+
+    // Cancel pending notification immediately
+    cancelHorizonTaskNotification(id).catch(console.error);
+
     try {
       const { error } = await supabase.from("horizon_tasks").delete().eq("id", id);
       if (error) throw error;
@@ -255,6 +305,11 @@ export function useHorizon() {
       console.error("[horizon] remove error", err);
       toast.error("Failed to delete task");
       setState({ tasks: prev });
+      // Restore notification if deletion failed
+      const existing = prev.find((t) => t.id === id);
+      if (existing && existing.notificationEnabled && !existing.completed) {
+        scheduleHorizonTaskNotification(existing).catch(console.error);
+      }
     }
   };
 
@@ -302,6 +357,14 @@ export async function addTasksBatch(inputs: HorizonTaskInput[]): Promise<number>
     if (error) throw error;
     const newTasks = (data as Row[]).map(rowToTask);
     setState({ tasks: [...state.tasks, ...newTasks].sort(sortTasks) });
+
+    // Schedule native reminders for newly added batch tasks
+    for (const task of newTasks) {
+      if (task.notificationEnabled && !task.completed) {
+        scheduleHorizonTaskNotification(task).catch(console.error);
+      }
+    }
+
     return newTasks.length;
   } catch (err) {
     console.error("[horizon] addTasksBatch error", err);
@@ -370,6 +433,12 @@ export async function addTaskDirect(input: HorizonTaskInput): Promise<HorizonTas
     if (error) throw error;
     const task = rowToTask(data as Row);
     setState({ tasks: [...state.tasks, task].sort(sortTasks) });
+
+    // Schedule native reminder immediately
+    if (task.notificationEnabled && !task.completed) {
+      scheduleHorizonTaskNotification(task).catch(console.error);
+    }
+
     return task;
   } catch (err) {
     console.error("[horizon] addTaskDirect error", err);
@@ -389,6 +458,11 @@ export async function deleteTasksByMonthKey(monthKey: string): Promise<number> {
   const ids = toDelete.map((t) => t.id);
   const prevTasks = state.tasks;
   setState({ tasks: state.tasks.filter((t) => !ids.includes(t.id)) });
+
+  // Cancel notifications for all deleted timeline tasks
+  for (const id of ids) {
+    cancelHorizonTaskNotification(id).catch(console.error);
+  }
 
   try {
     const { error } = await supabase

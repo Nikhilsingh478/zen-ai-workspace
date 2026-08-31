@@ -6,6 +6,9 @@
 
 import { useSyncExternalStore } from "react";
 import { WakeWordEngine } from "openwakeword-wasm-browser"; // Keep for wake-word detection only
+import { Capacitor } from '@capacitor/core';
+import { WakeWord } from '../../plugins/wake-word/src';
+import { LocalNotifications } from '@capacitor/local-notifications';
 import {
   geminiAPI,
   SentenceChunker,
@@ -124,6 +127,11 @@ const SpeechRecognitionCtor: (new () => unknown) | undefined =
   win?.SpeechRecognition ?? win?.webkitSpeechRecognition;
 
 export const isJarvisSupported = Boolean(SpeechRecognitionCtor);
+
+// Platform detection
+const IS_NATIVE_MOBILE = Capacitor.isNativePlatform();
+const IS_ANDROID = Capacitor.getPlatform() === 'android';
+const IS_IOS = Capacitor.getPlatform() === 'ios';
 
 const WAKE_WORDS = ["jarvis", "hey jarvis", "okay jarvis"];
 
@@ -1228,7 +1236,8 @@ async function generateDailyReview(): Promise<string> {
 /**
  * Adds a silent proactive alert to the chat feed — visual only, never spoken aloud.
  */
-function addProactiveMessage(text: string): void {
+async function addProactiveMessage(text: string): Promise<void> {
+  // Add to chat feed (existing behavior)
   patch({
     messages: [
       ..._state.messages,
@@ -1241,6 +1250,27 @@ function addProactiveMessage(text: string): void {
       },
     ],
   });
+
+  // On native mobile — also fire a local notification
+  // This ensures the alert reaches user even when app is backgrounded
+  if (IS_NATIVE_MOBILE) {
+    try {
+      await LocalNotifications.schedule({
+        notifications: [{
+          id: Math.floor(Math.random() * 100000),
+          title: 'JARVIS',
+          body: text,
+          schedule: { at: new Date(Date.now() + 100) }, // immediate
+          sound: undefined, // silent
+          smallIcon: 'ic_stat_jarvis',
+          iconColor: '#38bdf8',
+          extra: { type: 'proactive_alert' }
+        }]
+      });
+    } catch {
+      // Silent — notification failure should never break the app
+    }
+  }
 }
 
 async function runProactiveCheck(): Promise<void> {
@@ -1423,9 +1453,96 @@ CONVERSATIONAL BEHAVIOR:
 - Current dialogue mode: ${_conversationRuntime.policy}`;
 }
 
+// ─── Native Wake Word (Mobile) ────────────────────────────────────────────────
+
+let _nativeWakeWordListener: { remove: () => void } | null = null;
+let _nativeErrorListener: { remove: () => void } | null = null;
+let _nativeListening = false;
+
+async function startNativeWakeWord(): Promise<void> {
+  if (!IS_NATIVE_MOBILE) return;
+  if (_nativeListening) return;
+
+  try {
+    // Check permission first
+    const { granted } = await WakeWord.checkPermission();
+    if (!granted) {
+      const { granted: nowGranted } = await WakeWord.requestPermission();
+      if (!nowGranted) {
+        console.warn('[NativeWakeWord] Microphone permission denied');
+        return;
+      }
+    }
+
+    // Listen for wake word detections
+    _nativeWakeWordListener = await WakeWord.addListener(
+      'wakeWordDetected',
+      ({ score, timestamp }) => {
+        console.log(`[NativeWakeWord] Detected (score: ${score.toFixed(2)})`);
+
+        // Debounce — same as web implementation
+        const now = Date.now();
+        if (now - _lastWakeWordAt < WAKE_DEBOUNCE_MS) return;
+        _lastWakeWordAt = now;
+
+        // Activate JARVIS
+        if (_state.voiceState === 'idle' && _state.enabled) {
+          transitionAudioState('listening');
+          startCommandListening();
+        }
+      }
+    );
+
+    // Listen for errors
+    _nativeErrorListener = await WakeWord.addListener(
+      'error',
+      ({ message }) => {
+        console.error('[NativeWakeWord] Error:', message);
+      }
+    );
+
+    // Start native listening
+    await WakeWord.startListening({
+      sensitivity: 0.4,  // matches web threshold
+      cooldownMs: 3000,  // matches WAKE_DEBOUNCE_MS
+    });
+
+    _nativeListening = true;
+    console.log('[JARVIS] Native wake word active — say "Hey Jarvis"');
+  } catch (err) {
+    console.warn('[NativeWakeWord] Failed to start:', (err as Error).message);
+    _nativeListening = false;
+  }
+}
+
+async function stopNativeWakeWord(): Promise<void> {
+  if (!IS_NATIVE_MOBILE) return;
+
+  _nativeListening = false;
+
+  _nativeWakeWordListener?.remove();
+  _nativeWakeWordListener = null;
+
+  _nativeErrorListener?.remove();
+  _nativeErrorListener = null;
+
+  try {
+    await WakeWord.stopListening();
+  } catch {
+    // Silent — already stopped
+  }
+}
+
 // ─── OpenWakeWord engine ──────────────────────────────────────────────────────
 
 async function startWakeWordDetection(): Promise<void> {
+  // Mobile — use native implementation
+  if (IS_NATIVE_MOBILE) {
+    await startNativeWakeWord();
+    return;
+  }
+
+  // Desktop web — use existing openwakeword-wasm-browser
   // Only on desktop — mobile users tap-to-talk exclusively
   if (isMobileUA()) return;
   if (_wakeWordActive) return;
@@ -1491,6 +1608,13 @@ async function startWakeWordDetection(): Promise<void> {
 }
 
 async function stopWakeWordDetection(): Promise<void> {
+  // Mobile — stop native
+  if (IS_NATIVE_MOBILE) {
+    await stopNativeWakeWord();
+    return;
+  }
+
+  // Desktop web — existing stop logic
   _wakeWordActive = false;
   _wakeWordInitializing = false;
 

@@ -1,0 +1,17 @@
+{
+  "name": "wake-word",
+  "version": "0.0.1",
+  "description": "Native wake word detection plugin for AI Metrics",
+  "main": "dist/plugin.cjs.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
+  "unpkg": "dist/plugin.js",
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    },
+    "android": {
+      "src": "android"
+    }
+  }
+}

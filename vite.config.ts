@@ -66,6 +66,7 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: "dist",
       emptyOutDir: true,
+      target: 'es2020',
     },
     optimizeDeps: {
       exclude: ["@tanstack/react-start", "@cloudflare/vite-plugin", "kokoro-js", "openwakeword-wasm-browser"],

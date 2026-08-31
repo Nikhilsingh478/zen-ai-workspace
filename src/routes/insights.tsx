@@ -39,6 +39,7 @@ import {
 import { getInsightsData, type InsightsData } from "@/lib/usage-tracking";
 import { useHorizon, formatDateKey } from "@/lib/horizon";
 import { useFCMStatus } from "@/lib/fcm";
+import { getNativeNotificationPermissionStatus, type NativeNotificationPermissionStatus } from "@/lib/native-notifications";
 import { faviconFor } from "@/lib/store";
 import { getMoodEntries, getMoodStats, MOOD_CONFIG } from "@/lib/mood";
 import { Link } from "@tanstack/react-router";
@@ -309,8 +310,15 @@ function InsightsPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+  const [nativePerm, setNativePerm] = useState<NativeNotificationPermissionStatus | null>(null);
   const horizon = useHorizonStats();
   const notifStatus = useFCMStatus();
+
+  useEffect(() => {
+    getNativeNotificationPermissionStatus().then(setNativePerm).catch(() => {});
+  }, []);
+
+  const effectiveStatus = nativePerm ?? notifStatus;
 
   const load = useCallback(async (showSpinner = false) => {
     if (showSpinner) setRefreshing(true);
@@ -488,8 +496,8 @@ function InsightsPage() {
           whileHover={{ y: -2, transition: { duration: 0.15 } }}
           className="rounded-2xl p-4 md:p-5 flex flex-col gap-3 transition-all duration-300"
           style={{
-            background: notifStatus === "granted" ? "rgba(52,211,153,0.08)" : "rgba(248,113,113,0.06)",
-            border: `1px solid ${notifStatus === "granted" ? "rgba(52,211,153,0.25)" : "rgba(248,113,113,0.2)"}`,
+            background: effectiveStatus === "granted" ? "rgba(52,211,153,0.08)" : "rgba(248,113,113,0.06)",
+            border: `1px solid ${effectiveStatus === "granted" ? "rgba(52,211,153,0.25)" : "rgba(248,113,113,0.2)"}`,
           }}
         >
           <div className="flex items-center justify-between">
@@ -497,11 +505,11 @@ function InsightsPage() {
             <div
               className="h-7 w-7 rounded-lg grid place-items-center shrink-0"
               style={{
-                background: notifStatus === "granted" ? "rgba(52,211,153,0.15)" : "rgba(248,113,113,0.12)",
-                border: `1px solid ${notifStatus === "granted" ? "rgba(52,211,153,0.3)" : "rgba(248,113,113,0.2)"}`,
+                background: effectiveStatus === "granted" ? "rgba(52,211,153,0.15)" : "rgba(248,113,113,0.12)",
+                border: `1px solid ${effectiveStatus === "granted" ? "rgba(52,211,153,0.3)" : "rgba(248,113,113,0.2)"}`,
               }}
             >
-              {notifStatus === "granted" ? (
+              {effectiveStatus === "granted" ? (
                 <Bell className="h-3.5 w-3.5" style={{ color: "#34D399" }} />
               ) : (
                 <BellOff className="h-3.5 w-3.5" style={{ color: "#F87171" }} />
@@ -511,18 +519,18 @@ function InsightsPage() {
           <div>
             <p
               className="text-lg md:text-2xl font-bold tracking-tight leading-tight capitalize"
-              style={{ color: notifStatus === "granted" ? "#34D399" : "#F87171" }}
+              style={{ color: effectiveStatus === "granted" ? "#34D399" : "#F87171" }}
             >
-              {notifStatus === "granted" ? "Active" :
-               notifStatus === "denied" ? "Blocked" :
-               notifStatus === "default" ? "Not set" :
-               notifStatus === "unconfigured" ? "Not configured" : "Unsupported"}
+              {effectiveStatus === "granted" ? "Active" :
+               effectiveStatus === "denied" ? "Blocked" :
+               effectiveStatus === "default" ? "Not set" :
+               effectiveStatus === "unconfigured" ? "Not configured" : "Unsupported"}
             </p>
             <p className="text-[10px] md:text-[11px] text-white/30 mt-1">
-              {notifStatus === "granted" ? "Push notifications enabled" :
-               notifStatus === "denied" ? "Enable in browser settings" :
-               notifStatus === "default" ? "Enable a reminder to prompt" :
-               "Browser push not available"}
+              {effectiveStatus === "granted" ? "Scheduled reminders enabled" :
+               effectiveStatus === "denied" ? "Enable in system settings" :
+               effectiveStatus === "default" ? "Enable a reminder to prompt" :
+               "Notifications not available"}
             </p>
           </div>
         </motion.div>

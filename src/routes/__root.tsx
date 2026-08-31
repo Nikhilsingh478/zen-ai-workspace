@@ -1,4 +1,4 @@
-import { Outlet, createRootRoute, useRouterState } from "@tanstack/react-router";
+import { Outlet, createRootRoute, useRouterState, useRouter } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import { Toaster } from "sonner";
 import { useEffect, useState } from "react";
@@ -9,6 +9,8 @@ import { InAppNotificationHost } from "@/components/in-app-notification";
 import { JarvisFloatingOrb } from "@/components/jarvis/floating-orb";
 import { jarvis } from "@/lib/jarvis";
 import { initNativeLifecycle, initStatusBar, hideSplashScreen } from "@/lib/platform/native-lifecycle";
+import { ensureNotificationChannels, initNativeNotificationListeners } from "@/lib/native-notifications";
+import { useHorizon } from "@/lib/horizon";
 
 // ─── Route ────────────────────────────────────────────────────────────────────
 
@@ -128,6 +130,8 @@ function AIMetricsIcon() {
 
 function RootComponent() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const router = useRouter();
+  const { toggle } = useHorizon();
   const [splashDone, setSplashDone] = useState(false);
 
   useEffect(() => {
@@ -135,7 +139,24 @@ function RootComponent() {
     jarvis.autoStartIfEnabled();
     initStatusBar().catch(() => {});
     initNativeLifecycle().catch(() => {});
-  }, []);
+    ensureNotificationChannels().catch(() => {});
+
+    let cleanupListeners: (() => void) | undefined;
+    initNativeNotificationListeners({
+      onNavigate: (url) => {
+        router.navigate({ href: url });
+      },
+      onCompleteTask: (taskId) => {
+        toggle(taskId);
+      },
+    }).then((cleanup) => {
+      cleanupListeners = cleanup;
+    });
+
+    return () => {
+      if (cleanupListeners) cleanupListeners();
+    };
+  }, [router, toggle]);
 
   return (
     <>

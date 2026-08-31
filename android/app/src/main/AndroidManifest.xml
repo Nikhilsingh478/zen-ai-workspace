@@ -39,6 +39,13 @@
             android:exported="false"
             android:foregroundServiceType="microphone" />
 
+        <!-- WakeWordForegroundService for background microphone access -->
+        <service
+            android:name=".WakeWordForegroundService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -56,6 +63,7 @@
 
     <!-- ── Notifications ─────────────────────────────────────────────────── -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 

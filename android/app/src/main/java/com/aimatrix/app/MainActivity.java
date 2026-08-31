@@ -8,6 +8,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         // Register Capacitor plugins before super.onCreate()
         registerPlugin(JarvisPlugin.class);
+        registerPlugin(WakeWordPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }
