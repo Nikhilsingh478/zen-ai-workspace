@@ -495,6 +495,8 @@ class TTSQueue {
   private isPlaying = false;
   private onDoneCallback: (() => void) | null = null;
   private keepAliveInterval: ReturnType<typeof setInterval> | null = null;
+  private currentSource: AudioBufferSourceNode | null = null;
+
   enqueue(text: string, onDone?: () => void): void {
     this.onDoneCallback = onDone ?? null;
     const sentences = this.splitIntoSentences(text);
