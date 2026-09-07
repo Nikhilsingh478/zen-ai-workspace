@@ -66,17 +66,29 @@ class JarvisPlugin : Plugin() {
         }
     }
 
+    private val commandReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val transcript = intent.getStringExtra(JarvisService.EXTRA_TRANSCRIPT) ?: return
+            notifyListeners("command", JSObject().apply { put("transcript", transcript) })
+        }
+    }
+
     override fun load() {
         // Register for wake-word broadcasts from JarvisService
         LocalBroadcastManager.getInstance(context).registerReceiver(
             wakeWordReceiver,
             IntentFilter(JarvisService.WAKE_WORD_ACTION)
         )
+        LocalBroadcastManager.getInstance(context).registerReceiver(
+            commandReceiver,
+            IntentFilter(JarvisService.COMMAND_ACTION)
+        )
         Log.d(TAG, "JarvisPlugin loaded, wake-word receiver registered")
     }
 
     override fun handleOnDestroy() {
         LocalBroadcastManager.getInstance(context).unregisterReceiver(wakeWordReceiver)
+        LocalBroadcastManager.getInstance(context).unregisterReceiver(commandReceiver)
         super.handleOnDestroy()
     }
 
@@ -117,6 +129,40 @@ class JarvisPlugin : Plugin() {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to stop JarvisService: ${e.message}")
             call.reject("Failed to stop Jarvis service: ${e.message}")
+        }
+    }
+
+    @PluginMethod
+    fun startCommandListening(call: PluginCall) {
+        try {
+            val intent = Intent(context, JarvisService::class.java).apply {
+                action = JarvisService.ACTION_START_COMMAND
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+            call.resolve(JSObject().apply { put("success", true) })
+        } catch (e: Exception) {
+            call.reject("Failed to start native command recognition: ${e.message}")
+        }
+    }
+
+    @PluginMethod
+    fun cancelCommandListening(call: PluginCall) {
+        try {
+            val intent = Intent(context, JarvisService::class.java).apply {
+                action = JarvisService.ACTION_CANCEL_COMMAND
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+            call.resolve(JSObject().apply { put("success", true) })
+        } catch (e: Exception) {
+            call.reject("Failed to cancel native command recognition: ${e.message}")
         }
     }
 

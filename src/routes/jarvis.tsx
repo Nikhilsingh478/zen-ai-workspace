@@ -18,6 +18,8 @@ import { useHorizon } from "@/lib/horizon";
 import { AICore } from "@/components/jarvis/ai-core";
 import { SearchResult } from "@/components/jarvis/search-result";
 import { isVoiceAssistantSupported } from "@/hooks/use-voice-assistant";
+import { JarvisNative } from "@/lib/platform/jarvis-native";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/jarvis")({ component: JarvisPage });
 
@@ -1011,6 +1013,7 @@ function JarvisPage() {
   const navigate = useNavigate();
 
   const isMobileNative = Capacitor.isNativePlatform();
+  const voiceInputAvailable = isMobileNative || isVoiceAssistantSupported;
   const [input, setInput] = useState("");
   const [showChat, setShowChat] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -1243,10 +1246,42 @@ function JarvisPage() {
     [input],
   );
 
-  const handleVoice = () => {
-    if (!enabled) { jarvis.enable(); return; }
+  const ensureMobilePermissions = useCallback(async (): Promise<boolean> => {
+    if (!isMobileNative) return true;
+    try {
+      const permissions = await JarvisNative.requestPermissions();
+      if (permissions.microphone !== "granted") {
+        toast.error("Microphone access is required for JARVIS voice commands.");
+        return false;
+      }
+      if (permissions.notifications !== "granted") {
+        toast.message("Notifications are off. Voice commands still work, but background status may be limited.");
+      }
+      return true;
+    } catch {
+      toast.error("Couldn’t request JARVIS permissions. Please try again.");
+      return false;
+    }
+  }, [isMobileNative]);
+
+  const handlePower = useCallback(async () => {
+    if (enabled) {
+      jarvis.disable();
+      return;
+    }
+    if (!(await ensureMobilePermissions())) return;
+    jarvis.enable();
+  }, [enabled, ensureMobilePermissions]);
+
+  const handleVoice = useCallback(async () => {
+    if (!enabled) {
+      if (!(await ensureMobilePermissions())) return;
+      jarvis.enable();
+      jarvis.activate();
+      return;
+    }
     voiceState === "listening" ? jarvis.dismiss() : jarvis.activate();
-  };
+  }, [enabled, ensureMobilePermissions, voiceState]);
 
   const stateInfo = STATE_DISPLAY[voiceState] ?? STATE_DISPLAY.idle;
   const isListening = voiceState === "listening";
@@ -1283,7 +1318,7 @@ function JarvisPage() {
           <SignalBars />
 
           <motion.button
-            onClick={() => (enabled ? jarvis.disable() : jarvis.enable())}
+            onClick={() => void handlePower()}
             whileTap={{ scale: 0.95 }}
             style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 12px", borderRadius: 8, fontFamily: "'Space Mono', monospace", fontSize: 9, fontWeight: 700, letterSpacing: "0.16em", cursor: "pointer", transition: "all 0.2s ease", background: enabled ? "rgba(125,211,252,0.1)" : "rgba(125,211,252,0.03)", border: `1px solid ${enabled ? "rgba(125,211,252,0.4)" : "rgba(125,211,252,0.12)"}`, color: enabled ? "#7DD3FC" : "rgba(125,211,252,0.35)", boxShadow: enabled ? "0 0 16px rgba(125,211,252,0.15)" : "none" }}
           >
@@ -1621,11 +1656,11 @@ function JarvisPage() {
         <form onSubmit={handleSubmit} style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <motion.button
             type="button"
-            onClick={handleVoice}
+            onClick={() => void handleVoice()}
             whileHover={{ scale: 1.06 }}
             whileTap={{ scale: 0.92 }}
-            disabled={!isVoiceAssistantSupported}
-            style={{ height: 36, width: 36, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.2s ease", background: isListening ? "rgba(125,211,252,0.15)" : "rgba(125,211,252,0.04)", border: `1px solid ${isListening ? "rgba(125,211,252,0.48)" : "rgba(125,211,252,0.12)"}`, boxShadow: isListening ? "0 0 16px rgba(125,211,252,0.22)" : "none", color: isListening ? "#7DD3FC" : "rgba(125,211,252,0.38)", cursor: isVoiceAssistantSupported ? "pointer" : "not-allowed" }}
+            disabled={!voiceInputAvailable}
+            style={{ height: 36, width: 36, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.2s ease", background: isListening ? "rgba(125,211,252,0.15)" : "rgba(125,211,252,0.04)", border: `1px solid ${isListening ? "rgba(125,211,252,0.48)" : "rgba(125,211,252,0.12)"}`, boxShadow: isListening ? "0 0 16px rgba(125,211,252,0.22)" : "none", color: isListening ? "#7DD3FC" : "rgba(125,211,252,0.38)", cursor: voiceInputAvailable ? "pointer" : "not-allowed" }}
           >
             {isListening ? <MicOff size={14} /> : <Mic size={14} />}
           </motion.button>

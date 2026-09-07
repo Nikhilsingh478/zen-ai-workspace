@@ -34,6 +34,8 @@ export type MoodEntryInput = {
   sleepQuality?: number | null;
   reason?: string | null;
   reflection?: string | null;
+  /** Optional local check-in time, supplied by the mood tracker form. */
+  createdAt?: string;
 };
 
 export type MoodStats = {
@@ -165,6 +167,7 @@ export function useMood() {
   const add = async (input: MoodEntryInput): Promise<MoodEntry | null> => {
     try {
       const now = new Date().toISOString();
+      const createdAt = input.createdAt ?? now;
       const { data, error } = await supabase
         .from("mood_entries")
         .insert({
@@ -176,7 +179,7 @@ export function useMood() {
           sleep_quality: input.sleepQuality ?? null,
           reason: input.reason?.trim() || null,
           reflection: input.reflection?.trim() || null,
-          created_at: now,
+          created_at: createdAt,
           updated_at: now,
         })
         .select("*")
@@ -284,6 +287,7 @@ export async function addMoodEntryDirect(input: MoodEntryInput): Promise<MoodEnt
   try {
     await ensureMoodBooted();
     const now = new Date().toISOString();
+    const createdAt = input.createdAt ?? now;
     const { data, error } = await supabase
       .from("mood_entries")
       .insert({
@@ -295,7 +299,7 @@ export async function addMoodEntryDirect(input: MoodEntryInput): Promise<MoodEnt
         sleep_quality: input.sleepQuality ?? null,
         reason: input.reason?.trim() || null,
         reflection: input.reflection?.trim() || null,
-        created_at: now,
+        created_at: createdAt,
         updated_at: now,
       })
       .select("*")
@@ -508,5 +512,32 @@ export function buildMoodContext(entries: MoodEntry[]): string {
     observations.forEach((o) => parts.push(`- ${o}`));
   }
 
+  const latestAnalysis = getMoodAnalysis();
+  if (latestAnalysis?.text) {
+    parts.push(`\n### Latest dashboard note (${new Date(latestAnalysis.generatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })})`);
+    parts.push(`- ${latestAnalysis.text.replace(/\s+/g, " ").slice(0, 700)}`);
+  }
+
   return parts.join("\n");
+}
+
+export type MoodAnalysis = { text: string; generatedAt: string; entryCount: number };
+const ANALYSIS_KEY = "mood-tracker:latest-analysis";
+
+/** Kept locally: a dashboard note is personal and does not require extra schema. */
+export function getMoodAnalysis(): MoodAnalysis | null {
+  try {
+    const value = localStorage.getItem(ANALYSIS_KEY);
+    if (!value) return null;
+    const parsed = JSON.parse(value) as MoodAnalysis;
+    return parsed?.text && parsed?.generatedAt ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveMoodAnalysis(text: string, entryCount: number): MoodAnalysis {
+  const analysis = { text: text.trim(), generatedAt: new Date().toISOString(), entryCount };
+  try { localStorage.setItem(ANALYSIS_KEY, JSON.stringify(analysis)); } catch { /* unavailable storage */ }
+  return analysis;
 }

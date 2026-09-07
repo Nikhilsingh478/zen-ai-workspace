@@ -1,411 +1,49 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { motion, AnimatePresence } from "framer-motion";
-import { useState, useMemo } from "react";
-import { Activity, ChevronRight } from "lucide-react";
-import { useMood, getMoodStats, MOOD_CONFIG, type MoodEntry, type MoodEntryInput } from "@/lib/mood";
-import { MoodEntryForm } from "@/components/mood/mood-entry-form";
-import { MoodHistory } from "@/components/mood/mood-history";
-import { MoodTrendChart } from "@/components/mood/mood-trend-chart";
-import { MoodStatsRow } from "@/components/mood/mood-stats";
-import { MoodInsights } from "@/components/mood/mood-insights";
-import { MoodEntryDetail } from "@/components/mood/mood-entry-detail";
+import { AnimatePresence, motion } from "framer-motion";
+import { Download, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { toast } from "sonner";
+import { geminiAPI } from "@/lib/gemini";
+import { getMoodAnalysis, saveMoodAnalysis, useMood, type MoodEntry } from "@/lib/mood";
 import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/mood")({
-  head: () => ({
-    meta: [
-      { title: "Mood — AI Metrics" },
-      { name: "description", content: "A private place to check in with yourself." },
-    ],
-  }),
-  component: MoodPage,
-});
-
+export const Route = createFileRoute("/mood")({ head: () => ({ meta: [{ title: "Mood Tracker — AI Metrics" }] }), component: MoodPage });
+type Tab = "adder" | "dashboard"; type Period = "daily" | "weekly" | "monthly";
 const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
+const dateInput = (d = new Date()) => new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 
-type TimeRange = 7 | 30 | 90;
-
-// ─── Section wrapper (matches insights.tsx pattern) ──────────────────────────
-
-function Section({
-  title,
-  children,
-  className,
-  delay = 0,
-  action,
-}: {
-  title: string;
-  children: React.ReactNode;
-  className?: string;
-  delay?: number;
-  action?: React.ReactNode;
-}) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, delay, ease: EASE }}
-      className={cn(
-        "rounded-2xl border border-white/[0.07] bg-[#18181B] p-4 md:p-5 overflow-hidden",
-        className,
-      )}
-    >
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-[11px] font-semibold uppercase tracking-widest text-white/35">
-          {title}
-        </h2>
-        {action}
-      </div>
-      {children}
-    </motion.div>
-  );
+function inPeriod(entries: MoodEntry[], period: Period) {
+  const now = new Date(); const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (period === "weekly") start.setDate(start.getDate() - 6); if (period === "monthly") start.setMonth(start.getMonth() - 1);
+  return entries.filter((e) => new Date(e.createdAt) >= start && new Date(e.createdAt) <= now);
 }
-
-// ─── Range selector ───────────────────────────────────────────────────────────
-
-function RangeSelector({
-  value,
-  onChange,
-}: {
-  value: TimeRange;
-  onChange: (r: TimeRange) => void;
-}) {
-  const options: { label: string; value: TimeRange }[] = [
-    { label: "7d", value: 7 },
-    { label: "30d", value: 30 },
-    { label: "90d", value: 90 },
-  ];
-  return (
-    <div
-      className="flex items-center rounded-lg border border-border overflow-hidden"
-      style={{ background: "rgba(255,255,255,0.02)" }}
-    >
-      {options.map((opt) => (
-        <button
-          key={opt.value}
-          onClick={() => onChange(opt.value)}
-          className={cn(
-            "px-2.5 py-1 text-[11px] font-medium transition-colors",
-            value === opt.value
-              ? "bg-white/10 text-foreground"
-              : "text-copy-muted hover:text-copy-secondary",
-          )}
-        >
-          {opt.label}
-        </button>
-      ))}
-    </div>
-  );
+function exportCsv(entries: MoodEntry[], period: Period) {
+  const quote = (v: string) => `"${v.replaceAll('"', '""')}"`;
+  const csv = ["timestamp,mood,message", ...inPeriod(entries, period).map((e) => [new Date(e.createdAt).toISOString(), e.moodLabel, e.reflection ?? ""].map(quote).join(","))].join("\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); const a = document.createElement("a"); a.href = url; a.download = `mood-${period}-${dateInput().slice(0, 10)}.csv`; a.click(); URL.revokeObjectURL(url); toast.success(`${period} mood data exported.`);
 }
-
-// ─── Skeleton ─────────────────────────────────────────────────────────────────
-
-function MoodSkeleton() {
-  return (
-    <div className="space-y-4">
-      {[0, 1, 2].map((i) => (
-        <div
-          key={i}
-          className="h-32 rounded-2xl bg-white/[0.04] animate-pulse"
-          style={{ animationDelay: `${i * 0.08}s` }}
-        />
-      ))}
-    </div>
-  );
-}
-
-// ─── Today card (logged state) ────────────────────────────────────────────────
-
-function TodayCard({
-  entry,
-  onViewDetail,
-}: {
-  entry: MoodEntry;
-  onViewDetail: (e: MoodEntry) => void;
-}) {
-  const cfg = MOOD_CONFIG[entry.mood];
-  const timeStr = new Date(entry.createdAt).toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3, ease: EASE }}
-      className="rounded-2xl border p-4 md:p-5"
-      style={{
-        background: cfg.accent,
-        borderColor: `${cfg.color}35`,
-      }}
-    >
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-[11px] uppercase tracking-wider font-medium text-copy-muted">
-          Today&apos;s mood
-        </p>
-        <button
-          onClick={() => onViewDetail(entry)}
-          className="flex items-center gap-0.5 text-[11px] text-copy-muted hover:text-copy-secondary transition-colors"
-          aria-label="View full entry"
-        >
-          View <ChevronRight className="h-3 w-3" />
-        </button>
-      </div>
-
-      <div className="flex items-end gap-3">
-        <div>
-          <p className="text-2xl font-bold tracking-tight" style={{ color: cfg.color }}>
-            {cfg.label}
-          </p>
-          <p className="text-[13px] text-copy-muted mt-0.5">
-            {entry.mood} / 5 · logged {timeStr}
-          </p>
-        </div>
-      </div>
-
-      {/* Optional metrics strip */}
-      {(entry.stress != null || entry.energy != null || entry.focus != null || entry.sleepQuality != null) && (
-        <div className="flex items-center gap-3 mt-3 pt-3 border-t border-white/[0.06]">
-          {entry.stress != null && (
-            <span className="text-[11px] text-copy-muted">
-              Stress <span className="text-copy-secondary font-medium">{entry.stress}</span>
-            </span>
-          )}
-          {entry.energy != null && (
-            <span className="text-[11px] text-copy-muted">
-              Energy <span className="text-copy-secondary font-medium">{entry.energy}</span>
-            </span>
-          )}
-          {entry.focus != null && (
-            <span className="text-[11px] text-copy-muted">
-              Focus <span className="text-copy-secondary font-medium">{entry.focus}</span>
-            </span>
-          )}
-          {entry.sleepQuality != null && (
-            <span className="text-[11px] text-copy-muted">
-              Sleep <span className="text-copy-secondary font-medium">{entry.sleepQuality}</span>
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* Reflection preview */}
-      {entry.reflection && (
-        <p className="mt-3 pt-3 border-t border-white/[0.06] text-[13px] leading-relaxed text-copy-secondary line-clamp-2 italic">
-          &ldquo;{entry.reflection}&rdquo;
-        </p>
-      )}
-    </motion.div>
-  );
-}
-
-// ─── Empty state ──────────────────────────────────────────────────────────────
-
-function EmptyState() {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, ease: EASE }}
-      className="py-14 flex flex-col items-center text-center gap-3"
-    >
-      <div
-        className="h-12 w-12 rounded-2xl grid place-items-center"
-        style={{
-          background: "rgba(56,189,248,0.07)",
-          border: "1px solid rgba(56,189,248,0.12)",
-        }}
-      >
-        <Activity className="h-5 w-5 text-sky-400/50" strokeWidth={1.75} />
-      </div>
-      <div className="space-y-1">
-        <p className="text-[15px] font-medium text-foreground">No mood history yet</p>
-        <p className="text-[13px] text-copy-muted max-w-xs leading-relaxed">
-          Log a reflection whenever you feel like it.
-        </p>
-      </div>
-    </motion.div>
-  );
-}
-
-// ─── Page ─────────────────────────────────────────────────────────────────────
 
 function MoodPage() {
-  const { entries, loaded, todayEntry, add, update, remove } = useMood();
-  const [range, setRange] = useState<TimeRange>(30);
-  const [detailEntry, setDetailEntry] = useState<MoodEntry | null>(null);
-  const [detailOpen, setDetailOpen] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
-
-  const rangeEntries = useMemo(() => {
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - range);
-    return entries.filter((e) => new Date(e.createdAt) >= cutoff);
-  }, [entries, range]);
-
-  const stats = useMemo(() => getMoodStats(entries, range), [entries, range]);
-
-  const hasAnyEntries = entries.length > 0;
-
-  const handleAdd = async (input: MoodEntryInput) => {
-    await add(input);
-  };
-
-  const handleUpdate = async (id: string, input: MoodEntryInput) => {
-    await update(id, input);
-    setDetailOpen(false);
-  };
-
-  const handleDelete = async (id: string) => {
-    await remove(id);
-    setDetailOpen(false);
-  };
-
-  const handleViewDetail = (entry: MoodEntry) => {
-    setDetailEntry(entry);
-    setDetailOpen(true);
-  };
-
-  const handleDeleteConfirm = (entry: MoodEntry) => {
-    setDetailEntry(entry);
-    setDetailOpen(true);
-  };
-
-  return (
-    <>
-      <div className="px-4 md:px-10 py-6 md:py-10 max-w-5xl mx-auto">
-        {/* ── Header ── */}
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, ease: EASE }}
-          className="mb-8"
-        >
-          <h1 className="text-[28px] md:text-[34px] font-semibold tracking-tight leading-none">
-            Mood
-          </h1>
-          <p className="mt-2 text-sm text-copy-secondary max-w-md">
-            Notice how you&apos;re feeling. JARVIS will help you see patterns over time.
-          </p>
-        </motion.div>
-
-        {!loaded ? (
-          <MoodSkeleton />
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4 md:gap-5">
-
-            {/* ── LEFT COLUMN ─────────────────────────────────────────────── */}
-            <div className="space-y-4 md:space-y-5">
-
-              {/* Today card — logged state */}
-              <AnimatePresence mode="wait">
-                {todayEntry ? (
-                  <div key="today-logged">
-                    <TodayCard entry={todayEntry} onViewDetail={handleViewDetail} />
-                  </div>
-                ) : (
-                  /* Quick log form */
-                  <motion.div
-                    key="log-form"
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.28, ease: EASE }}
-                    className="rounded-2xl border border-border bg-[#18181B] p-4 md:p-6"
-                  >
-                    <h2 className="text-[15px] font-semibold mb-4">How are you feeling?</h2>
-                    <MoodEntryForm onSubmit={handleAdd} />
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              {/* 7-day trend */}
-              <Section title="7-day trend" delay={0.06}>
-                <MoodTrendChart entries={entries} />
-              </Section>
-
-              {/* Insights */}
-              <Section
-                title="What JARVIS is noticing"
-                delay={0.1}
-                className="border-l-[3px] border-l-sky-400/50"
-              >
-                <MoodInsights entries={rangeEntries} delay={0.14} />
-              </Section>
-            </div>
-
-            {/* ── RIGHT COLUMN ─────────────────────────────────────────────── */}
-            <div className="space-y-4 md:space-y-5">
-
-              {/* Stats with range selector */}
-              {hasAnyEntries && (
-                <Section
-                  title="Averages"
-                  delay={0.08}
-                  action={
-                    <RangeSelector value={range} onChange={setRange} />
-                  }
-                >
-                  {stats.totalEntries > 0 ? (
-                    <div className="space-y-4">
-                      <MoodStatsRow stats={stats} delay={0.1} />
-                      {stats.trendLabel && stats.trendLabel !== "Not enough data yet" && (
-                        <p className="text-[12px] text-copy-muted">{stats.trendLabel}</p>
-                      )}
-                      <p className="text-[11px] text-copy-muted">
-                        Based on {stats.totalEntries} {stats.totalEntries === 1 ? "entry" : "entries"}
-                      </p>
-                    </div>
-                  ) : (
-                    <p className="text-[13px] text-copy-muted">
-                      No entries in this period.
-                    </p>
-                  )}
-                </Section>
-              )}
-
-              {/* Recent history */}
-              <Section
-                title="Recent"
-                delay={0.12}
-                action={
-                  entries.length > 5 && (
-                    <button
-                      onClick={() => setShowHistory(!showHistory)}
-                      className="text-[11px] text-copy-muted hover:text-copy-secondary transition-colors"
-                    >
-                      {showHistory ? "Show less" : `Show all ${entries.length}`}
-                    </button>
-                  )
-                }
-              >
-                {!hasAnyEntries ? (
-                  <EmptyState />
-                ) : (
-                  <MoodHistory
-                    entries={entries}
-                    onEdit={handleViewDetail}
-                    onDelete={handleDeleteConfirm}
-                    maxItems={showHistory ? 50 : 7}
-                  />
-                )}
-              </Section>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* ── Entry detail modal ── */}
-      <MoodEntryDetail
-        entry={detailEntry}
-        open={detailOpen}
-        onClose={() => {
-          setDetailOpen(false);
-        }}
-        onUpdate={handleUpdate}
-        onDelete={handleDelete}
-      />
-    </>
-  );
+  const { entries, loaded, add, remove } = useMood(); const [tab, setTab] = useState<Tab>("adder");
+  return <div className="relative min-h-full px-4 pb-28 pt-6 md:px-10 md:pb-10 md:pt-10"><div className="pointer-events-none absolute inset-x-0 top-0 h-72 bg-[radial-gradient(ellipse_at_top,rgba(56,189,248,0.055),transparent_68%)]" /><main className="relative mx-auto max-w-5xl">
+    <motion.header initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .3, ease: EASE }} className="mb-6 md:mb-8"><p className="mb-2 text-[10px] font-semibold uppercase tracking-[.22em] text-sky-300/55">Personal log</p><h1 className="text-2xl font-semibold tracking-tight text-white/95 md:text-3xl">Mood Tracker</h1><p className="mt-2 max-w-xl text-sm text-white/45">A quiet place for quick check-ins. Add what feels useful; leave the rest blank.</p></motion.header>
+    <div className="mb-5 flex w-fit rounded-xl border border-white/[.08] bg-white/[.025] p-1" role="tablist">{([['adder','Mood adder'],['dashboard','Dashboard']] as const).map(([id,label]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={cn("relative min-h-10 rounded-lg px-4 text-xs font-medium", tab === id ? "text-white" : "text-white/40 hover:text-white/70")}>{tab === id && <motion.span layoutId="mood-tab" className="absolute inset-0 rounded-lg border border-sky-300/[.12] bg-sky-300/[.09]" />}<span className="relative">{label}</span></button>)}</div>
+    {!loaded ? <Loading /> : <AnimatePresence mode="wait">{tab === "adder" ? <Adder key="adder" entries={entries} add={add} remove={remove} /> : <Dashboard key="dashboard" entries={entries} />}</AnimatePresence>}
+  </main></div>;
 }
+
+function Adder({ entries, add, remove }: { entries: MoodEntry[]; add: ReturnType<typeof useMood>["add"]; remove: ReturnType<typeof useMood>["remove"] }) {
+  const [word, setWord] = useState(""); const [note, setNote] = useState(""); const [when, setWhen] = useState(dateInput()); const [saving, setSaving] = useState(false);
+  async function submit(e: React.FormEvent) { e.preventDefault(); if (!word.trim()) return toast.error("Add a mood word first."); const d = new Date(when); if (Number.isNaN(d.getTime())) return toast.error("Choose a valid check-in time."); setSaving(true); const result = await add({ mood: 3, moodLabel: word.trim().slice(0, 50), reflection: note.trim().slice(0, 5000), createdAt: d.toISOString() }); setSaving(false); if (result) { setWord(""); setNote(""); setWhen(dateInput()); } }
+  return <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: .25, ease: EASE }} className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]"><form onSubmit={submit} className="rounded-2xl border border-white/[.08] bg-[#18181b]/90 p-5 md:p-6"><div className="mb-7 flex gap-3"><span className="grid h-9 w-9 place-items-center rounded-xl border border-sky-300/[.15] bg-sky-300/[.07] text-sky-300"><Plus className="h-4 w-4" /></span><div><h2 className="text-sm font-medium text-white/90">Add a check-in</h2><p className="mt-1 text-xs text-white/40">A word and a thought, whenever you want.</p></div></div><Label text="Mood word"><input value={word} onChange={(e) => setWord(e.target.value)} maxLength={50} placeholder="e.g. clear, heavy, optimistic" className="field h-12" /></Label><div className="mt-5 grid gap-5 sm:grid-cols-[minmax(0,1fr)_190px]"><Label text="A note" optional><textarea value={note} onChange={(e) => setNote(e.target.value)} maxLength={5000} rows={4} placeholder="What is on your mind?" className="field resize-none py-3" /></Label><Label text="Check-in time"><input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} className="field h-12 text-xs" /></Label></div><div className="mt-6 flex items-center justify-between border-t border-white/[.06] pt-5"><p className="text-[11px] text-white/30">Private to your workspace.</p><button disabled={saving} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-sky-300 px-4 text-xs font-semibold text-slate-950 transition hover:bg-sky-200 disabled:opacity-60"><Plus className="h-3.5 w-3.5" />{saving ? "Saving…" : "Save check-in"}</button></div></form><Recent entries={entries} remove={remove} /></motion.div>;
+}
+function Label({ text, optional, children }: { text: string; optional?: boolean; children: React.ReactNode }) { return <label className="block"><span className="mb-2 block text-[11px] font-medium uppercase tracking-wider text-white/45">{text}{optional && <span className="ml-1 normal-case tracking-normal text-white/25">optional</span>}</span>{children}</label>; }
+function Recent({ entries, remove }: { entries: MoodEntry[]; remove: ReturnType<typeof useMood>["remove"] }) { return <section className="rounded-2xl border border-white/[.08] bg-[#18181b]/70 p-5"><div className="mb-5 flex justify-between"><h2 className="text-sm font-medium text-white/85">Recent check-ins</h2><span className="text-[11px] text-white/30">{entries.length} total</span></div>{entries.length === 0 ? <p className="py-10 text-center text-xs text-white/35">Your check-ins will appear here.</p> : <ol className="relative ml-1 border-l border-sky-300/[.15] pl-5">{entries.slice(0,8).map((e,i) => <motion.li key={e.id} initial={{ opacity: 0, x: 6 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * .035 }} className="group relative pb-5 last:pb-0"><span className="absolute -left-[25px] top-1.5 h-2 w-2 rounded-full border-2 border-[#18181b] bg-sky-300/70 shadow-[0_0_0_3px_rgba(125,211,252,.06)]" /><div className="flex gap-2"><div className="min-w-0 flex-1"><div className="flex justify-between gap-2"><p className="truncate text-sm font-medium capitalize text-white/80">{e.moodLabel}</p><time className="shrink-0 text-[10px] text-white/30">{new Date(e.createdAt).toLocaleDateString(undefined,{month:'short',day:'numeric'})} · {new Date(e.createdAt).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}</time></div>{e.reflection && <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-white/40">{e.reflection}</p>}</div><button onClick={() => { if (window.confirm("Delete this check-in?")) void remove(e.id); }} className="p-1 text-white/25 hover:text-red-300" aria-label="Delete check-in"><Trash2 className="h-3.5 w-3.5" /></button></div></motion.li>)}</ol>}</section>; }
+
+function Dashboard({ entries }: { entries: MoodEntry[] }) {
+  const [analysis, setAnalysis] = useState(() => getMoodAnalysis()); const [loading, setLoading] = useState(false);
+  const words = useMemo(() => Object.entries(entries.reduce<Record<string,number>>((a,e) => { const w=e.moodLabel.trim().toLowerCase(); if(w) a[w]=(a[w]??0)+1; return a; },{})).sort((a,b)=>b[1]-a[1]).slice(0,5), [entries]);
+  async function refresh() { if(entries.length < 3) return toast.message("Add at least three check-ins for an analysis."); setLoading(true); let context=""; try { context=localStorage.getItem("jarvis:user-context")?.trim() ?? ""; } catch {} const data=entries.slice(0,60).map(e=>({at:e.createdAt,mood:e.moodLabel,note:e.reflection??""})); const response=await geminiAPI.generateContent(`Write a concise 80-130 word personal mood-log summary. Use only factual supplied check-ins and saved context. Do not diagnose, give medical advice, claim causes, or quote notes/context verbatim. Mention uncertainty where useful.\n\nSaved context (private background only):\n${context || "None"}\n\nMood entries:\n${JSON.stringify(data)}`); setLoading(false); if(!response || response === "API key not configured.") return toast.error("Couldn't generate an analysis right now."); setAnalysis(saveMoodAnalysis(response,entries.length)); toast.success("Dashboard analysis refreshed."); }
+  return <motion.div initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-6}} transition={{duration:.25,ease:EASE}} className="space-y-5"><section className="grid gap-3 sm:grid-cols-3">{(["daily","weekly","monthly"] as Period[]).map(p => { const amount=inPeriod(entries,p).length; return <div key={p} className="rounded-2xl border border-white/[.08] bg-[#18181b]/80 p-4"><div className="flex justify-between"><p className="text-[11px] font-medium uppercase tracking-wider text-white/40">{p}</p><button onClick={() => exportCsv(entries,p)} className="rounded-lg p-2 text-white/35 hover:bg-white/[.06] hover:text-sky-200" aria-label={`Export ${p} data`}><Download className="h-3.5 w-3.5" /></button></div><p className="mt-5 text-2xl font-semibold text-white/90">{amount}</p><p className="mt-1 text-xs text-white/35">{amount===1?"check-in":"check-ins"} in this period</p></div>; })}</section><section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]"><div className="rounded-2xl border border-white/[.08] bg-[#18181b]/90 p-5 md:p-6"><div className="flex flex-wrap justify-between gap-3"><div><h2 className="text-sm font-medium text-white/90">JARVIS’s reading</h2><p className="mt-1 text-xs text-white/40">A private, non-medical reflection from your check-ins.</p></div><button onClick={() => void refresh()} disabled={loading || entries.length<3} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-sky-300/[.16] bg-sky-300/[.06] px-3 text-xs text-sky-100 disabled:opacity-40">{loading?<Loader2 className="h-3.5 w-3.5 animate-spin"/>:<RefreshCw className="h-3.5 w-3.5"/>}{loading?"Refreshing…":"Refresh analysis"}</button></div><div className="mt-6 border-t border-white/[.06] pt-5">{analysis?<><p className="text-sm leading-7 text-white/65">{analysis.text}</p><p className="mt-4 text-[11px] text-white/30">Updated {new Date(analysis.generatedAt).toLocaleString()} · based on {analysis.entryCount} check-ins</p></>:<p className="text-sm text-white/40">{entries.length<3?"Add at least three check-ins to create a useful summary.":"Refresh when you want a new reading. It won’t run automatically."}</p>}</div></div><div className="rounded-2xl border border-white/[.08] bg-[#18181b]/70 p-5"><h2 className="text-sm font-medium text-white/85">Words you return to</h2>{words.length?<ul className="mt-5 space-y-3">{words.map(([word,count])=><li key={word} className="flex justify-between border-b border-white/[.06] pb-3 last:border-0"><span className="capitalize text-sm text-white/65">{word}</span><span className="text-xs text-white/30">{count}×</span></li>)}</ul>:<p className="mt-4 text-xs text-white/35">Mood words will collect here as you check in.</p>}</div></section></motion.div>;
+}
+function Loading() { return <div className="space-y-4 animate-pulse"><div className="h-52 rounded-2xl bg-white/[.04]"/><div className="h-32 rounded-2xl bg-white/[.03]"/></div>; }

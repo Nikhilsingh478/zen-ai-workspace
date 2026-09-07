@@ -7,7 +7,7 @@
 import { useSyncExternalStore } from "react";
 import { WakeWordEngine } from "openwakeword-wasm-browser"; // Keep for wake-word detection only
 import { Capacitor } from '@capacitor/core';
-import { WakeWord } from '../../plugins/wake-word/src';
+import { JarvisNative } from "@/lib/platform/jarvis-native";
 import { LocalNotifications } from '@capacitor/local-notifications';
 import {
   geminiAPI,
@@ -1477,30 +1477,26 @@ CONVERSATIONAL BEHAVIOR:
 
 // ─── Native Wake Word (Mobile) ────────────────────────────────────────────────
 
-let _nativeWakeWordListener: { remove: () => void } | null = null;
-let _nativeErrorListener: { remove: () => void } | null = null;
+let _nativeWakeWordListener: { remove: () => Promise<void> } | null = null;
+let _nativeCommandListener: { remove: () => Promise<void> } | null = null;
 let _nativeListening = false;
+let _nativeStarting = false;
 
 async function startNativeWakeWord(): Promise<void> {
   if (!IS_NATIVE_MOBILE) return;
-  if (_nativeListening) return;
+  if (_nativeListening || _nativeStarting) return;
+  _nativeStarting = true;
 
   try {
-    // Check permission first
-    const { granted } = await WakeWord.checkPermission();
-    if (!granted) {
-      const { granted: nowGranted } = await WakeWord.requestPermission();
-      if (!nowGranted) {
-        console.warn('[NativeWakeWord] Microphone permission denied');
-        return;
-      }
+    const permissions = await JarvisNative.requestPermissions();
+    if (permissions.microphone !== "granted") {
+      console.warn('[NativeWakeWord] Microphone permission denied');
+      return;
     }
 
     // Listen for wake word detections
-    _nativeWakeWordListener = await WakeWord.addListener(
-      'wakeWordDetected',
-      ({ score, timestamp }) => {
-        console.log(`[NativeWakeWord] Detected (score: ${score.toFixed(2)})`);
+    _nativeWakeWordListener = await JarvisNative.onWakeWord(({ phrase, confidence }) => {
+        console.log(`[NativeWakeWord] Detected: ${phrase} (${confidence.toFixed(2)})`);
 
         // Debounce — same as web implementation
         const now = Date.now();
@@ -1512,28 +1508,29 @@ async function startNativeWakeWord(): Promise<void> {
           transitionAudioState('listening');
           startCommandListening();
         }
-      }
-    );
+      });
 
-    // Listen for errors
-    _nativeErrorListener = await WakeWord.addListener(
-      'error',
-      ({ message }) => {
-        console.error('[NativeWakeWord] Error:', message);
-      }
-    );
+    _nativeCommandListener = await JarvisNative.onCommand(({ transcript }) => {
+      const command = transcript.trim();
+      if (!command || _state.voiceState !== "listening") return;
+      patch({ transcript: command });
+      void handleCommand(command);
+    });
 
     // Start native listening
-    await WakeWord.startListening({
-      sensitivity: 0.4,  // matches web threshold
-      cooldownMs: 3000,  // matches WAKE_DEBOUNCE_MS
-    });
+    await JarvisNative.startService();
 
     _nativeListening = true;
     console.log('[JARVIS] Native wake word active — say "Hey Jarvis"');
   } catch (err) {
     console.warn('[NativeWakeWord] Failed to start:', (err as Error).message);
     _nativeListening = false;
+    await _nativeWakeWordListener?.remove();
+    await _nativeCommandListener?.remove();
+    _nativeWakeWordListener = null;
+    _nativeCommandListener = null;
+  } finally {
+    _nativeStarting = false;
   }
 }
 
@@ -1541,15 +1538,16 @@ async function stopNativeWakeWord(): Promise<void> {
   if (!IS_NATIVE_MOBILE) return;
 
   _nativeListening = false;
+  _nativeStarting = false;
 
-  _nativeWakeWordListener?.remove();
+  await _nativeWakeWordListener?.remove();
   _nativeWakeWordListener = null;
 
-  _nativeErrorListener?.remove();
-  _nativeErrorListener = null;
+  await _nativeCommandListener?.remove();
+  _nativeCommandListener = null;
 
   try {
-    await WakeWord.stopListening();
+    await JarvisNative.stopService();
   } catch {
     // Silent — already stopped
   }
@@ -1653,6 +1651,13 @@ async function stopWakeWordDetection(): Promise<void> {
 }
 
 function startCommandListening(): void {
+  if (IS_NATIVE_MOBILE) {
+    void JarvisNative.startCommandListening().catch(() => {
+      patch({ isAwake: false, transcript: "" });
+      transitionAudioState("idle");
+    });
+    return;
+  }
   stopRecognition();
   accumulatedFinalText = "";
   latestInterimText = "";
@@ -2489,6 +2494,12 @@ export const jarvis = {
   },
 
   activate() {
+    if (IS_NATIVE_MOBILE) {
+      patch({ isAwake: true, transcript: "" });
+      transitionAudioState("listening");
+      startCommandListening();
+      return;
+    }
     stopRecognition();
     accumulatedFinalText = "";
     latestInterimText = "";
@@ -2533,7 +2544,7 @@ export const jarvis = {
   },
 
   autoStartIfEnabled() {
-    if (!SpeechRecognitionCtor) return;
+    if (!IS_NATIVE_MOBILE && !SpeechRecognitionCtor) return;
 
     const doStart = () => {
       if (!_state.enabled) {

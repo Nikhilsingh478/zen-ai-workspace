@@ -57,8 +57,12 @@ class JarvisService : Service(), RecognitionListener {
 
         // LocalBroadcast action — JarvisPlugin listens for this
         const val WAKE_WORD_ACTION = "com.aimatrix.app.WAKE_WORD"
+        const val COMMAND_ACTION = "com.aimatrix.app.COMMAND"
         const val EXTRA_PHRASE     = "phrase"
         const val EXTRA_CONFIDENCE = "confidence"
+        const val EXTRA_TRANSCRIPT = "transcript"
+        const val ACTION_START_COMMAND = "com.aimatrix.app.START_COMMAND"
+        const val ACTION_CANCEL_COMMAND = "com.aimatrix.app.CANCEL_COMMAND"
 
         // Wake-word tokens to match (case-insensitive)
         private val WAKE_WORDS = listOf("jarvis", "hey jarvis", "ok jarvis", "hi jarvis")
@@ -72,6 +76,7 @@ class JarvisService : Service(), RecognitionListener {
     private val handler = Handler(Looper.getMainLooper())
     private var isListening = false
     private var isServiceRunning = false
+    private var commandMode = false
 
     // ─────────────────────────────────────────────────────────────────────────
     // Service lifecycle
@@ -90,7 +95,11 @@ class JarvisService : Service(), RecognitionListener {
         startForeground(NOTIF_ID, buildPersistentNotification())
         isServiceRunning = true
 
-        if (SpeechRecognizer.isRecognitionAvailable(this)) {
+        if (intent?.action == ACTION_START_COMMAND) {
+            startCommandMode()
+        } else if (intent?.action == ACTION_CANCEL_COMMAND) {
+            returnToWakeMode()
+        } else if (SpeechRecognizer.isRecognitionAvailable(this)) {
             initSpeechRecognizer()
             startListening()
         } else {
@@ -201,8 +210,8 @@ class JarvisService : Service(), RecognitionListener {
                 RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
             // Keep listening longer before timing out
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1000L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, if (commandMode) 500L else 1000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, if (commandMode) 1200L else 1500L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1000L)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
@@ -256,19 +265,55 @@ class JarvisService : Service(), RecognitionListener {
         LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
     }
 
+    private fun broadcastCommand(transcript: String) {
+        LocalBroadcastManager.getInstance(this).sendBroadcast(Intent(COMMAND_ACTION).apply {
+            putExtra(EXTRA_TRANSCRIPT, transcript)
+        })
+    }
+
+    private fun startCommandMode() {
+        if (!isServiceRunning) return
+        commandMode = true
+        handler.removeCallbacksAndMessages(null)
+        try { speechRecognizer?.cancel() } catch (_: Exception) {}
+        isListening = false
+        handler.postDelayed({
+            if (isServiceRunning && commandMode) {
+                initSpeechRecognizer()
+                startListening()
+            }
+        }, 180L)
+    }
+
+    private fun returnToWakeMode() {
+        commandMode = false
+        handler.removeCallbacksAndMessages(null)
+        try { speechRecognizer?.cancel() } catch (_: Exception) {}
+        isListening = false
+        scheduleRestart(250L)
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // RecognitionListener implementation
     // ─────────────────────────────────────────────────────────────────────────
 
     override fun onResults(results: Bundle?) {
         Log.d(TAG, "onResults")
-        checkForWakeWord(results)
-        scheduleRestart(RESTART_DELAY_MS)
+        if (commandMode) {
+            val transcript = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                ?.firstOrNull()?.trim().orEmpty()
+            commandMode = false
+            if (transcript.isNotBlank()) broadcastCommand(transcript)
+            scheduleRestart(RESTART_DELAY_MS)
+        } else {
+            checkForWakeWord(results)
+            scheduleRestart(RESTART_DELAY_MS)
+        }
     }
 
     override fun onPartialResults(partialResults: Bundle?) {
         // Check partial results too for faster wake-word response
-        checkForWakeWord(partialResults)
+        if (!commandMode) checkForWakeWord(partialResults)
     }
 
     override fun onError(error: Int) {
@@ -285,6 +330,8 @@ class JarvisService : Service(), RecognitionListener {
             else                                     -> "unknown($error)"
         }
         Log.w(TAG, "Recognition error: $msg")
+
+        if (commandMode) commandMode = false
 
         // Longer delay on network/server errors to avoid hammering the API
         val delay = when (error) {

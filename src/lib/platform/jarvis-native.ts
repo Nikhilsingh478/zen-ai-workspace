@@ -44,6 +44,10 @@ export interface WakeWordEvent {
   confidence: number;
 }
 
+export interface CommandEvent {
+  transcript: string;
+}
+
 export interface ListenerHandle {
   remove: () => Promise<void>;
 }
@@ -133,5 +137,25 @@ export const JarvisNative = {
     }).addListener("wakeWord", callback);
 
     return handle;
+  },
+
+  async onCommand(callback: (event: CommandEvent) => void): Promise<ListenerHandle> {
+    const plugin = await getPlugin();
+    if (!plugin) return { remove: async () => {} };
+    return (plugin as unknown as {
+      addListener: (event: string, cb: (data: CommandEvent) => void) => Promise<ListenerHandle>;
+    }).addListener("command", callback);
+  },
+
+  async startCommandListening(): Promise<{ success: boolean }> {
+    const plugin = await getPlugin();
+    if (!plugin) return { success: false };
+    return plugin.startCommandListening() as Promise<{ success: boolean }>;
+  },
+
+  async cancelCommandListening(): Promise<{ success: boolean }> {
+    const plugin = await getPlugin();
+    if (!plugin) return { success: false };
+    return plugin.cancelCommandListening() as Promise<{ success: boolean }>;
   },
 };

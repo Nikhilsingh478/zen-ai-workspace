@@ -40,7 +40,7 @@ const NAV = [
   { to: "/messages", label: "Messages",  icon: Bell         },
   { to: "/horizon",  label: "Horizon",   icon: CalendarDays },
   { to: "/timeline", label: "Timeline",  icon: GitBranch    },
-  { to: "/mood",     label: "Mood",      icon: Activity     },
+  { to: "/mood",     label: "Mood Tracker", icon: Activity     },
   { to: "/insights", label: "Insights",  icon: BarChart2    },
   { to: "/ask",      label: "Ask",       icon: MessageSquare},
   { to: "/jarvis",   label: "JARVIS",    icon: Cpu          },
@@ -57,7 +57,7 @@ const MOBILE_PRIMARY: readonly NavItem[] = [
 ];
 
 const MOBILE_SECONDARY: readonly NavItem[] = [
-  { to: "/mood",     label: "Mood",     icon: Activity  },
+  { to: "/mood",     label: "Mood Tracker", icon: Activity  },
   { to: "/ask",      label: "Ask",      icon: MessageSquare},
   { to: "/prompts",  label: "Prompts",  icon: Sparkles  },
   { to: "/links",    label: "Links",    icon: Link2     },
