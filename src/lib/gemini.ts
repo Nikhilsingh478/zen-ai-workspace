@@ -913,6 +913,10 @@ class GeminiAPI {
       const { name, args } = functionCallPart.functionCall;
       const toolResult = await executeToolCall(name, args as Record<string, unknown>, sessionId);
 
+      // A tool failure is authoritative. Do not give the model a chance to turn
+      // it into a friendly-but-false confirmation.
+      if (/^(Failed|Tool execution failed)/i.test(toolResult)) return toolResult;
+
       const followUpHistory: GeminiMessage[] = [
         ...messages,
         { role: "model", parts: [functionCallPart] },

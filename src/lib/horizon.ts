@@ -432,6 +432,19 @@ export async function addTaskDirect(input: HorizonTaskInput): Promise<HorizonTas
       .single();
     if (error) throw error;
     const task = rowToTask(data as Row);
+
+    // Never let JARVIS confirm a reminder until Supabase can read back the
+    // inserted row. This catches RLS/replica/network edge cases that can make
+    // an optimistic insert look successful while Horizon has no saved task.
+    const { data: verified, error: verifyError } = await supabase
+      .from("horizon_tasks")
+      .select("id")
+      .eq("id", task.id)
+      .maybeSingle();
+    if (verifyError || !verified) {
+      console.error("[horizon] addTaskDirect verification failed", verifyError);
+      return null;
+    }
     setState({ tasks: [...state.tasks, task].sort(sortTasks) });
 
     // Schedule native reminder immediately
