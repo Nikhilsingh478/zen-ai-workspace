@@ -1,8 +1,7 @@
 apply plugin: 'com.android.application'
 // kotlin-android: enables Kotlin compilation for this module.
-// Required because JarvisService.kt and JarvisPlugin.kt are Kotlin source files.
-// Without this, the Kotlin compiler is never invoked and MainActivity.java
-// cannot resolve JarvisPlugin — producing "cannot find symbol" at build time.
+// Required because JarvisService.kt, JarvisPlugin.kt, JarvisTtsHelper.kt, and
+// BatteryOptimizationHelper.kt are Kotlin source files.
 apply plugin: 'kotlin-android'
 
 android {
@@ -17,6 +16,11 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+        // Only ship the two most-common ABI slices to keep APK size reasonable.
+        // The sherpa-onnx AAR contains arm64-v8a, armeabi-v7a, x86, and x86_64.
+        ndk {
+            abiFilters "arm64-v8a", "armeabi-v7a"
         }
     }
     buildTypes {
@@ -34,10 +38,6 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
     // Explicitly pin the Kotlin JVM target to 17.
-    // Without this, kotlin-android infers the target from the local JDK version.
-    // If the developer's JDK is 21, Kotlin 1.8.22 fails because it only supports
-    // JVM targets up to 19. Pinning to 17 matches the Java compileOptions above
-    // and is guaranteed to work with Kotlin 1.8.x.
     kotlinOptions {
         jvmTarget = '17'
     }
@@ -45,23 +45,30 @@ android {
         resources {
             excludes += ['META-INF/AL2.0', 'META-INF/LGPL2.1']
         }
+        // Prevent duplicate .so files when the sherpa-onnx AAR and other
+        // dependencies ship the same JNI libraries.
+        jniLibs {
+            pickFirsts += ['**/*.so']
+        }
     }
 }
 
 repositories {
-    flatDir{
+    flatDir {
         dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
     }
 }
 
 dependencies {
-    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation fileTree(include: ['*.jar', '*.aar'], dir: 'libs')
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation "androidx.webkit:webkit:$androidxWebkitVersion"
-    // Kotlin stdlib — required because kotlin-android plugin is now applied
+    // Kotlin stdlib
     implementation "org.jetbrains.kotlin:kotlin-stdlib:1.8.22"
+    // Coroutines — used by JarvisTtsHelper for async synthesis
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
     // LocalBroadcastManager — used by JarvisService ↔ JarvisPlugin communication
     implementation "androidx.localbroadcastmanager:localbroadcastmanager:1.1.0"
     implementation project(':capacitor-android')

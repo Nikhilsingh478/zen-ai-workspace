@@ -530,7 +530,35 @@ class TTSQueue {
     const isLastSentence = this.queue.length === 1;
     const sentence = this.queue.shift()!;
 
-    // Browser TTS (only reliable option — Kokoro was removed due to consistent model failures)
+    // Check if running natively on mobile — route to sherpa-onnx Kokoro TTS
+    if (Capacitor.isNativePlatform()) {
+      console.log("[TTS] Speaking via native Kokoro TTS:", sentence.slice(0, 40));
+      try {
+        await JarvisNative.speak(sentence);
+        if (isLastSentence) {
+          this.isPlaying = false;
+          this.stopKeepAlive();
+          transitionAudioState("idle", { isAwake: false, transcript: "" });
+          startConversationCooldown();
+          this.onDoneCallback?.();
+          this.onDoneCallback = null;
+        } else {
+          void this.playNext();
+        }
+      } catch (err) {
+        console.warn("[TTS] Native speak failed:", err);
+        if (isLastSentence) {
+          this.isPlaying = false;
+          this.stopKeepAlive();
+          transitionAudioState("idle", { isAwake: false, transcript: "" });
+        } else {
+          void this.playNext();
+        }
+      }
+      return;
+    }
+
+    // Browser TTS (only reliable option for desktop web)
     if (typeof window === "undefined" || !("speechSynthesis" in window) || !window.speechSynthesis) {
       void this.playNext();
       return;
@@ -622,6 +650,9 @@ class TTSQueue {
     if (this.currentSource) {
       try { this.currentSource.stop(); } catch { /* ignore — already stopped */ }
       this.currentSource = null;
+    }
+    if (Capacitor.isNativePlatform()) {
+      JarvisNative.stopSpeaking().catch(() => {});
     }
     if (typeof window !== "undefined" && "speechSynthesis" in window && window.speechSynthesis) {
       window.speechSynthesis.cancel();

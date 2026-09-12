@@ -28,17 +28,11 @@
             JarvisService: foreground service keeping the assistant alive in the
             background. foregroundServiceType="microphone" is mandatory on
             Android 14+ (API 34+) when accessing the mic from a foreground service.
+            This is the SOLE service that owns the microphone — no other service
+            or plugin acquires audio in this application.
         -->
         <service
             android:name=".JarvisService"
-            android:enabled="true"
-            android:exported="false"
-            android:foregroundServiceType="microphone"
-        />
-
-        <!-- WakeWordForegroundService for background microphone access -->
-        <service
-            android:name=".WakeWordForegroundService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="microphone"
@@ -71,8 +65,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
 
-    <!-- ── Wake lock — reliable reminder delivery ────────────────────────── -->
+    <!-- ── Wake lock — KWS continuous AudioRecord loop + reminder delivery ── -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- ── Battery optimization exemption — required for always-on KWS ───── -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!-- ── Storage — image board uploads (Android 13+) ──────────────────── -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />

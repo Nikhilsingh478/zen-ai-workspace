@@ -19,19 +19,8 @@ import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
 
 /**
- * JarvisPlugin — Capacitor bridge for the JarvisService foreground assistant.
- *
- * Exposes to JavaScript:
- *   - startJarvisService()   → starts the foreground service + wake-word listener
- *   - stopJarvisService()    → stops it cleanly
- *   - isServiceRunning()     → query current state
- *   - requestPermissions()   → runtime mic + notification permission flow
- *   - addListener("wakeWord", handler) → fires when "Hey Jarvis" is detected
- *
- * Usage from TypeScript (src/lib/platform/jarvis-native.ts):
- *   import { Jarvis } from '@/lib/platform/jarvis-native'
- *   await Jarvis.startJarvisService()
- *   Jarvis.addListener('wakeWord', ({ phrase }) => console.log(phrase))
+ * JarvisPlugin — Capacitor bridge for the JarvisService foreground assistant,
+ * offline Kokoro-82M TTS, and background battery exemption management.
  */
 @CapacitorPlugin(
     name = "Jarvis",
@@ -52,10 +41,12 @@ class JarvisPlugin : Plugin() {
         private const val TAG = "JarvisPlugin"
     }
 
+    private var ttsHelper: JarvisTtsHelper? = null
+
     // Receives LocalBroadcasts from JarvisService and forwards to JS
     private val wakeWordReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            val phrase     = intent.getStringExtra(JarvisService.EXTRA_PHRASE) ?: return
+            val phrase = intent.getStringExtra(JarvisService.EXTRA_PHRASE) ?: return
             val confidence = intent.getFloatExtra(JarvisService.EXTRA_CONFIDENCE, 0f)
             Log.i(TAG, "Wake word received in plugin: $phrase")
             val data = JSObject().apply {
@@ -83,22 +74,29 @@ class JarvisPlugin : Plugin() {
             commandReceiver,
             IntentFilter(JarvisService.COMMAND_ACTION)
         )
-        Log.d(TAG, "JarvisPlugin loaded, wake-word receiver registered")
+
+        // Initialize TTS Helper in background
+        ttsHelper = JarvisTtsHelper(context).apply {
+            initialize()
+        }
+
+        Log.d(TAG, "JarvisPlugin loaded, receivers registered, TTS initializing")
     }
 
     override fun handleOnDestroy() {
         LocalBroadcastManager.getInstance(context).unregisterReceiver(wakeWordReceiver)
         LocalBroadcastManager.getInstance(context).unregisterReceiver(commandReceiver)
+        ttsHelper?.release()
+        ttsHelper = null
         super.handleOnDestroy()
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Plugin methods
+    // Jarvis Service Lifecycle
     // ─────────────────────────────────────────────────────────────────────────
 
     @PluginMethod
     fun startJarvisService(call: PluginCall) {
-        // Check microphone permission first
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED) {
             call.reject("Microphone permission not granted. Call requestPermissions() first.")
@@ -168,9 +166,7 @@ class JarvisPlugin : Plugin() {
 
     @PluginMethod
     fun isServiceRunning(call: PluginCall) {
-        // We use a lightweight check via ActivityManager
-        val am = context.getSystemService(Context.ACTIVITY_SERVICE)
-            as android.app.ActivityManager
+        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
         @Suppress("DEPRECATION")
         val running = am.getRunningServices(Int.MAX_VALUE).any {
             it.service.className == JarvisService::class.java.name
@@ -178,11 +174,6 @@ class JarvisPlugin : Plugin() {
         call.resolve(JSObject().apply { put("running", running) })
     }
 
-    /**
-     * Request microphone + notification permissions at runtime.
-     * On Android < 13, POST_NOTIFICATIONS is granted automatically.
-     * On Android 13+, we must ask explicitly.
-     */
     @PluginMethod
     fun requestJarvisPermissions(call: PluginCall) {
         val permsToRequest = mutableListOf<String>()
@@ -222,8 +213,96 @@ class JarvisPlugin : Plugin() {
         }
 
         call.resolve(JSObject().apply {
-            put("microphone",    if (micGranted)   "granted" else "denied")
+            put("microphone", if (micGranted) "granted" else "denied")
             put("notifications", if (notifGranted) "granted" else "denied")
         })
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Native TTS (Kokoro-82M Offline)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @PluginMethod
+    fun speak(call: PluginCall) {
+        val text = call.getString("text")
+        if (text.isNullOrBlank()) {
+            call.resolve(JSObject().apply { put("success", true) })
+            return
+        }
+
+        val sid = call.getInt("sid", 0) ?: 0
+        val speed = call.getFloat("speed", 1.0f) ?: 1.0f
+
+        val helper = ttsHelper ?: JarvisTtsHelper(context).also { ttsHelper = it }
+
+        helper.speak(text, sid, speed) {
+            notifyListeners("ttsDone", JSObject().apply { put("text", text) })
+        }
+        call.resolve(JSObject().apply { put("success", true) })
+    }
+
+    @PluginMethod
+    fun stopSpeaking(call: PluginCall) {
+        ttsHelper?.stopSpeaking()
+        call.resolve(JSObject().apply { put("success", true) })
+    }
+
+    @PluginMethod
+    fun isSpeaking(call: PluginCall) {
+        val speaking = ttsHelper?.isSpeakingNow() ?: false
+        call.resolve(JSObject().apply { put("speaking", speaking) })
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Battery Exemption & OEM Autostart
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @PluginMethod
+    fun checkBatteryOptimization(call: PluginCall) {
+        val isIgnoring = BatteryOptimizationHelper.isIgnoringBatteryOptimizations(context)
+        call.resolve(JSObject().apply {
+            put("isIgnoringBatteryOptimizations", isIgnoring)
+        })
+    }
+
+    @PluginMethod
+    fun requestBatteryOptimization(call: PluginCall) {
+        try {
+            val intent = BatteryOptimizationHelper.createRequestBatteryOptimizationIntent(context)
+            context.startActivity(intent)
+            call.resolve(JSObject().apply { put("success", true) })
+        } catch (e: Exception) {
+            call.reject("Failed to launch battery optimization request: ${e.message}")
+        }
+    }
+
+    @PluginMethod
+    fun checkOemBatteryRestrictions(call: PluginCall) {
+        val oemInfo = BatteryOptimizationHelper.getOemInfo()
+        val isIgnoring = BatteryOptimizationHelper.isIgnoringBatteryOptimizations(context)
+        call.resolve(JSObject().apply {
+            put("manufacturer", oemInfo["manufacturer"])
+            put("oemCategory", oemInfo["oemCategory"])
+            put("hasSpecialAutostart", oemInfo["hasSpecialAutostart"])
+            put("isIgnoringBatteryOptimizations", isIgnoring)
+        })
+    }
+
+    @PluginMethod
+    fun openOemAutostartSettings(call: PluginCall) {
+        val intent = BatteryOptimizationHelper.getOemAutostartIntent(context)
+        if (intent != null) {
+            try {
+                context.startActivity(intent)
+                call.resolve(JSObject().apply { put("success", true) })
+            } catch (e: Exception) {
+                call.reject("Failed to open OEM settings: ${e.message}")
+            }
+        } else {
+            call.resolve(JSObject().apply {
+                put("success", false)
+                put("reason", "No OEM-specific autostart screen found")
+            })
+        }
     }
 }

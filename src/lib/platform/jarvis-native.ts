@@ -1,32 +1,15 @@
 /**
  * jarvis-native.ts — TypeScript bridge to the JarvisPlugin Capacitor plugin.
  *
- * Wraps the native Android foreground service (JarvisService.kt) so the React
- * layer can start/stop the always-on Jarvis assistant and receive wake-word events.
+ * Wraps the native Android foreground service (JarvisService.kt), offline
+ * Kokoro-82M TTS, and OEM battery exemption helpers so the React layer can
+ * interact seamlessly with hardware.
  *
  * All calls are platform-guarded — they are safe to call on web/PWA (they will
- * resolve immediately with a no-op result rather than throwing).
- *
- * Usage:
- *   import { JarvisNative } from '@/lib/platform/jarvis-native'
- *
- *   // Request permissions, then start the background service
- *   const perms = await JarvisNative.requestPermissions()
- *   if (perms.microphone === 'granted') {
- *     await JarvisNative.startService()
- *   }
- *
- *   // Listen for wake word
- *   const handle = await JarvisNative.onWakeWord(({ phrase }) => {
- *     console.log('Wake word:', phrase)  // e.g. "hey jarvis"
- *   })
- *
- *   // Later: stop and clean up
- *   await handle.remove()
- *   await JarvisNative.stopService()
+ * resolve immediately with a safe no-op result rather than throwing).
  */
 
-import { Platform } from "./index";
+import { Capacitor, registerPlugin } from "@capacitor/core";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -52,17 +35,22 @@ export interface ListenerHandle {
   remove: () => Promise<void>;
 }
 
-// ── Internal: lazy-load the Capacitor plugin ──────────────────────────────────
+export interface OemBatteryStatus {
+  manufacturer: string;
+  oemCategory: string;
+  hasSpecialAutostart: boolean;
+  isIgnoringBatteryOptimizations: boolean;
+}
 
-let _plugin: Record<string, (...args: unknown[]) => Promise<unknown>> | null =
-  null;
+// ── Internal: synchronous plugin access ───────────────────────────────────────
 
-async function getPlugin() {
+let _plugin: Record<string, (...args: unknown[]) => Promise<unknown>> | null = null;
+
+function getPlugin() {
   if (_plugin) return _plugin;
-  if (!Platform.isAndroid()) return null;
+  if (!Capacitor.isNativePlatform()) return null;
 
   try {
-    const { registerPlugin } = await import("@capacitor/core");
     _plugin = registerPlugin<Record<string, (...args: unknown[]) => Promise<unknown>>>("Jarvis");
     return _plugin;
   } catch {
@@ -78,11 +66,11 @@ export const JarvisNative = {
    * On web, returns "granted" for both (browser handles permissions separately).
    */
   async requestPermissions(): Promise<PermissionResult> {
-    const plugin = await getPlugin();
+    const plugin = getPlugin();
     if (!plugin) {
       return { microphone: "granted", notifications: "granted" };
     }
-    return plugin.requestJarvisPermissions() as Promise<PermissionResult>;
+    return (await plugin.requestJarvisPermissions()) as PermissionResult;
   },
 
   /**
@@ -90,9 +78,9 @@ export const JarvisNative = {
    * On web, silently resolves (no-op).
    */
   async startService(): Promise<{ success: boolean }> {
-    const plugin = await getPlugin();
+    const plugin = getPlugin();
     if (!plugin) return { success: false };
-    return plugin.startJarvisService() as Promise<{ success: boolean }>;
+    return (await plugin.startJarvisService()) as { success: boolean };
   },
 
   /**
@@ -100,35 +88,34 @@ export const JarvisNative = {
    * On web, silently resolves (no-op).
    */
   async stopService(): Promise<{ success: boolean }> {
-    const plugin = await getPlugin();
+    const plugin = getPlugin();
     if (!plugin) return { success: false };
-    return plugin.stopJarvisService() as Promise<{ success: boolean }>;
+    return (await plugin.stopJarvisService()) as { success: boolean };
   },
 
   /**
    * Query whether the foreground service is currently running.
    */
   async isRunning(): Promise<boolean> {
-    const plugin = await getPlugin();
+    const plugin = getPlugin();
     if (!plugin) return false;
-    const result = await plugin.isServiceRunning() as ServiceStatus;
+    const result = (await plugin.isServiceRunning()) as ServiceStatus;
     return result.running;
   },
 
   /**
-   * Register a callback that fires when the wake word "Hey Jarvis" is detected.
+   * Register a callback that fires when the wake word ("jarvis", "hey jarvis", "ok jarvis") is detected.
    * Returns a handle with a .remove() method to unsubscribe.
    * On web, returns a no-op handle.
    */
   async onWakeWord(
     callback: (event: WakeWordEvent) => void
   ): Promise<ListenerHandle> {
-    const plugin = await getPlugin();
+    const plugin = getPlugin();
     if (!plugin) {
       return { remove: async () => {} };
     }
 
-    // Capacitor's addListener returns a PluginListenerHandle
     const handle = await (plugin as unknown as {
       addListener: (
         event: string,
@@ -140,7 +127,7 @@ export const JarvisNative = {
   },
 
   async onCommand(callback: (event: CommandEvent) => void): Promise<ListenerHandle> {
-    const plugin = await getPlugin();
+    const plugin = getPlugin();
     if (!plugin) return { remove: async () => {} };
     return (plugin as unknown as {
       addListener: (event: string, cb: (data: CommandEvent) => void) => Promise<ListenerHandle>;
@@ -148,14 +135,95 @@ export const JarvisNative = {
   },
 
   async startCommandListening(): Promise<{ success: boolean }> {
-    const plugin = await getPlugin();
+    const plugin = getPlugin();
     if (!plugin) return { success: false };
-    return plugin.startCommandListening() as Promise<{ success: boolean }>;
+    return (await plugin.startCommandListening()) as { success: boolean };
   },
 
   async cancelCommandListening(): Promise<{ success: boolean }> {
-    const plugin = await getPlugin();
+    const plugin = getPlugin();
     if (!plugin) return { success: false };
-    return plugin.cancelCommandListening() as Promise<{ success: boolean }>;
+    return (await plugin.cancelCommandListening()) as { success: boolean };
+  },
+
+  // ── Native TTS ─────────────────────────────────────────────────────────────
+
+  /**
+   * Synthesize and play speech natively via sherpa-onnx Kokoro-82M.
+   */
+  async speak(text: string, sid = 0, speed = 1.0): Promise<{ success: boolean }> {
+    const plugin = getPlugin();
+    if (!plugin) return { success: false };
+    return (await plugin.speak({ text, sid, speed })) as { success: boolean };
+  },
+
+  /**
+   * Stop any current native TTS playback.
+   */
+  async stopSpeaking(): Promise<{ success: boolean }> {
+    const plugin = getPlugin();
+    if (!plugin) return { success: false };
+    return (await plugin.stopSpeaking()) as { success: boolean };
+  },
+
+  /**
+   * Check if native TTS is currently synthesizing or speaking.
+   */
+  async isSpeaking(): Promise<boolean> {
+    const plugin = getPlugin();
+    if (!plugin) return false;
+    const res = (await plugin.isSpeaking()) as { speaking: boolean };
+    return res.speaking;
+  },
+
+  // ── Battery Exemption & OEM Helpers ────────────────────────────────────────
+
+  /**
+   * Check if the app is currently excluded from Android battery optimizations.
+   */
+  async checkBatteryOptimization(): Promise<boolean> {
+    const plugin = getPlugin();
+    if (!plugin) return true;
+    const res = (await plugin.checkBatteryOptimization()) as {
+      isIgnoringBatteryOptimizations: boolean;
+    };
+    return res.isIgnoringBatteryOptimizations;
+  },
+
+  /**
+   * Request battery optimization exemption (shows system dialog).
+   */
+  async requestBatteryOptimization(): Promise<{ success: boolean }> {
+    const plugin = getPlugin();
+    if (!plugin) return { success: false };
+    return (await plugin.requestBatteryOptimization()) as { success: boolean };
+  },
+
+  /**
+   * Check OEM manufacturer info and battery restriction policies.
+   */
+  async checkOemBatteryRestrictions(): Promise<OemBatteryStatus> {
+    const plugin = getPlugin();
+    if (!plugin) {
+      return {
+        manufacturer: "generic",
+        oemCategory: "generic",
+        hasSpecialAutostart: false,
+        isIgnoringBatteryOptimizations: true,
+      };
+    }
+    return (await plugin.checkOemBatteryRestrictions()) as OemBatteryStatus;
+  },
+
+  /**
+   * Open the OEM's custom autostart / background settings screen if supported.
+   */
+  async openOemAutostartSettings(): Promise<{ success: boolean; reason?: string }> {
+    const plugin = getPlugin();
+    if (!plugin) return { success: false };
+    return (await plugin.openOemAutostartSettings()) as {
+      success: boolean;
+      reason?: string;
+    };
   },
 };
