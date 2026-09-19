@@ -413,48 +413,54 @@ export async function addJarvisTasksBatch(
   return { created, failed };
 }
 
-// ─── Standalone addTaskDirect (callable outside React hooks) ─────────────────
-
-export async function addTaskDirect(input: HorizonTaskInput): Promise<HorizonTask | null> {
+export async function addTaskDirect(task: {
+  title: string;
+  taskDate: string;
+  taskTime: string;
+  priority: "low" | "medium" | "high";
+  description: string | null;
+  notificationEnabled?: boolean;
+}): Promise<HorizonTask | null> {
   try {
-    await ensureBooted();
     const { data, error } = await supabase
       .from("horizon_tasks")
       .insert({
-        title: input.title.trim(),
-        description: input.description?.trim() || null,
-        task_date: input.taskDate,
-        task_time: input.taskTime,
-        priority: input.priority,
-        notification_enabled: input.notificationEnabled,
+        title: task.title,
+        task_date: task.taskDate,
+        task_time: task.taskTime,
+        priority: task.priority,
+        description: task.description,
+        completed: false,
+        notification_enabled: task.notificationEnabled ?? false,
       })
-      .select("*")
+      .select()
       .single();
-    if (error) throw error;
-    const task = rowToTask(data as Row);
 
-    // Never let JARVIS confirm a reminder until Supabase can read back the
-    // inserted row. This catches RLS/replica/network edge cases that can make
-    // an optimistic insert look successful while Horizon has no saved task.
-    const { data: verified, error: verifyError } = await supabase
-      .from("horizon_tasks")
-      .select("id")
-      .eq("id", task.id)
-      .maybeSingle();
-    if (verifyError || !verified) {
-      console.error("[horizon] addTaskDirect verification failed", verifyError);
+    if (error) {
+      console.error("[Horizon] addTaskDirect failed:", error.message);
+      return null; // explicit null — caller must handle this
+    }
+
+    if (!data) {
+      console.error("[Horizon] addTaskDirect: no data returned after insert");
       return null;
     }
-    setState({ tasks: [...state.tasks, task].sort(sortTasks) });
+
+    const createdTask = rowToTask(data as Row);
+
+    // Patch in-memory store so Horizon page updates immediately
+    setState({
+      tasks: [...state.tasks, createdTask].sort(sortTasks),
+    });
 
     // Schedule native reminder immediately
-    if (task.notificationEnabled && !task.completed) {
-      scheduleHorizonTaskNotification(task).catch(console.error);
+    if (createdTask.notificationEnabled && !createdTask.completed) {
+      scheduleHorizonTaskNotification(createdTask).catch(console.error);
     }
 
-    return task;
+    return createdTask;
   } catch (err) {
-    console.error("[horizon] addTaskDirect error", err);
+    console.error("[Horizon] addTaskDirect unexpected error:", err);
     return null;
   }
 }

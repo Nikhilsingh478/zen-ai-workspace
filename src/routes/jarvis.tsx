@@ -1287,6 +1287,203 @@ function JarvisPage() {
   const isListening = voiceState === "listening";
   const isActive = isAwake || isListening;
 
+  const mobileEndRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (isMobileNative) {
+      mobileEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, isMobileNative]);
+
+  {/* MOBILE LAYOUT */}
+  if (isMobileNative) {
+    return (
+      <div
+        className="flex flex-col h-screen w-full overflow-hidden"
+        style={{ background: "#050d18" }}
+      >
+        {/* Status bar — compact top strip */}
+        <div
+          className="flex items-center justify-between px-4 py-3 flex-shrink-0"
+          style={{
+            borderBottom: "1px solid rgba(56,189,248,0.08)",
+            paddingTop: `max(12px, env(safe-area-inset-top))`,
+          }}
+        >
+          <div className="flex items-center gap-2">
+            <div
+              className="w-1.5 h-1.5 rounded-full"
+              style={{
+                background:
+                  voiceState === "idle"
+                    ? "#3f3f46"
+                    : voiceState === "listening"
+                      ? "#38bdf8"
+                      : voiceState === "processing"
+                        ? "#fbbf24"
+                        : voiceState === "speaking"
+                          ? "#34d399"
+                          : "#3f3f46",
+                boxShadow:
+                  voiceState !== "idle" ? "0 0 6px currentColor" : "none",
+              }}
+            />
+            <span
+              className="text-[10px] font-mono uppercase tracking-[0.2em]"
+              style={{ color: "rgba(56,189,248,0.5)" }}
+            >
+              J.A.R.V.I.S
+            </span>
+          </div>
+
+          <span
+            className="text-[10px] font-mono uppercase tracking-widest"
+            style={{ color: "rgba(255,255,255,0.2)" }}
+          >
+            {voiceState}
+          </span>
+        </div>
+
+        {/* Orb — centered, fixed height */}
+        <div
+          className="flex items-center justify-center flex-shrink-0 cursor-pointer"
+          style={{ height: "220px" }}
+          onClick={() => void handleVoice()}
+        >
+          <AICore voiceState={voiceState} isAwake={isActive} size={180} />
+        </div>
+
+        {/* Transcript — shown while listening */}
+        {transcript && (
+          <div
+            className="px-6 py-2 text-center flex-shrink-0"
+            style={{ color: "rgba(255,255,255,0.5)", fontSize: "13px" }}
+          >
+            {transcript}
+          </div>
+        )}
+
+        {/* Chat feed — takes remaining space, scrollable */}
+        <div className="flex-1 overflow-y-auto px-4 py-3 min-h-0">
+          <div className="flex flex-col gap-3">
+            {messages.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-center gap-2 py-8 opacity-40">
+                <p className="text-xs font-mono tracking-widest text-sky-400 uppercase">
+                  Awaiting Command
+                </p>
+                <p className="text-[11px] text-zinc-400">Say &quot;Hey Jarvis&quot; or type below</p>
+              </div>
+            ) : (
+              messages.map((msg) => (
+                <MessageBubble
+                  key={msg.id}
+                  msg={msg}
+                  onExpand={(content) => void triggerExtendedWindowSequence(content)}
+                />
+              ))
+            )}
+            <div ref={mobileEndRef} />
+          </div>
+        </div>
+
+        {/* Input bar — pinned to bottom */}
+        <div
+          className="flex-shrink-0 flex items-center gap-3 px-4 py-3"
+          style={{
+            borderTop: "1px solid rgba(56,189,248,0.08)",
+            paddingBottom: `max(12px, env(safe-area-inset-bottom))`,
+            background: "#050d18",
+          }}
+        >
+          {/* Mic button */}
+          <button
+            onPointerDown={() => void handleVoice()}
+            className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-all duration-150"
+            style={{
+              background:
+                voiceState === "listening"
+                  ? "rgba(56,189,248,0.15)"
+                  : "rgba(255,255,255,0.04)",
+              border:
+                voiceState === "listening"
+                  ? "1px solid rgba(56,189,248,0.4)"
+                  : "1px solid rgba(255,255,255,0.08)",
+            }}
+          >
+            <Mic
+              className="w-4 h-4"
+              style={{
+                color: voiceState === "listening" ? "#38bdf8" : "rgba(255,255,255,0.3)",
+              }}
+            />
+          </button>
+
+          {/* Text input */}
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && input.trim()) {
+                void jarvis.sendText(input.trim());
+                setInput("");
+              }
+            }}
+            placeholder="Type or speak..."
+            className="flex-1 bg-transparent outline-none text-sm"
+            style={{
+              color: "#f0f0f0",
+              caretColor: "#38bdf8",
+            }}
+          />
+
+          {/* Send button */}
+          {input.trim() && (
+            <button
+              onClick={() => {
+                void jarvis.sendText(input.trim());
+                setInput("");
+              }}
+              className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center"
+              style={{
+                background: "rgba(56,189,248,0.1)",
+                border: "1px solid rgba(56,189,248,0.3)",
+              }}
+            >
+              <Send className="w-3.5 h-3.5" style={{ color: "#38bdf8" }} />
+            </button>
+          )}
+        </div>
+
+        {/* Extended Window — live chat */}
+        <ExtendedWindow
+          content={extendedWindowContent}
+          messages={messages}
+          onClose={() => void closeExtendedWindowSequence()}
+          isOpen={extendedWindowOpen}
+          isResponding={voiceState === "processing" || voiceState === "speaking"}
+        />
+
+        {/* Extended Window — history session viewer */}
+        <ExtendedWindow
+          content=""
+          messages={historyViewMessages}
+          onClose={() => void handleHistoryViewClose()}
+          isOpen={historyViewOpen}
+          mode="history"
+          historySession={
+            historyViewSession
+              ? {
+                  startedAt: historyViewSession.startedAt,
+                  messageCount: historyViewSession.messageCount,
+                  summary: historyViewSession.summary,
+                }
+              : null
+          }
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="relative h-full flex flex-col overflow-hidden" style={{ background: "#050609" }}>
       <JarvisBackground />
@@ -1344,81 +1541,144 @@ function JarvisPage() {
         </div>
       </div>
 
-      {/* Mobile native gets single-column layout */}
-      {isMobileNative ? (
-        <div className="flex flex-col h-full w-full">
-          {/* Compact status bar at top */}
-          <div className="flex items-center justify-between px-4 py-2 border-b"
-               style={{ borderColor: 'rgba(125,211,252,0.1)' }}>
-            <span className="text-xs font-mono text-sky-400/60">
-              JARVIS
-            </span>
-            <div className="flex items-center gap-2">
-              <div className={`w-1.5 h-1.5 rounded-full ${
-                voiceState === 'listening' ? 'bg-sky-400 animate-pulse' :
-                voiceState === 'speaking' ? 'bg-emerald-400 animate-pulse' :
-                voiceState === 'processing' ? 'bg-amber-400 animate-pulse' :
-                'bg-zinc-600'
-              }`} />
-              <span className="text-[10px] font-mono uppercase text-sky-400/40">
-                {voiceState}
-              </span>
-            </div>
-          </div>
+      {/* Desktop — 3-column HUD layout */}
+      <div className="relative z-10 flex-1 min-h-0 flex overflow-hidden">
 
-          {/* Orb — centered, takes appropriate space */}
-          <div className="flex items-center justify-center py-6 flex-1">
+        {/* Left status panel */}
+        <AnimatePresence>
+          {leftColumnVisible && (
             <motion.div
-              className="flex flex-col items-center justify-center relative"
-              style={{ padding: "20px 24px", overflow: "hidden" }}
-              ref={coreRef}
+              key="left-column"
+              initial={{ opacity: 0, x: -12 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{
+                x: -320,
+                opacity: 0,
+                transition: { duration: 0.35, ease: [0.32, 0, 0.67, 0] },
+              }}
+              transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+              className="hidden md:flex flex-col"
+              style={{ width: 200, flexShrink: 0, padding: 12, borderRight: "1px solid rgba(125,211,252,0.07)", overflowY: "auto", scrollbarWidth: "none", gap: 6 }}
             >
-              <div className="jarvis-scan-line" />
-
-              <AnimatePresence>
-                {transcript && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -10, scale: 0.96 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: -6, scale: 0.97 }}
-                    transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                    className="absolute top-4 left-1/2 -translate-x-1/2 max-w-xs w-full text-center text-[11px] truncate px-4 py-1.5 rounded-full"
-                    style={{ background: "rgba(0,15,25,0.82)", border: "1px solid rgba(125,211,252,0.25)", color: "rgba(125,211,252,0.8)", backdropFilter: "blur(12px)", boxShadow: "0 4px 20px rgba(125,211,252,0.08)", zIndex: 5 }}
-                  >
-                    {transcript}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              <AICore voiceState={voiceState} isAwake={isActive} size={coreSize} />
-
-              <AnimatePresence>
-                {voiceState !== "idle" && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 10 }}
-                    transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-                    className="mt-6"
-                  >
-                    <FreqBars active={isActive} />
-                  </motion.div>
-                )}
-              </AnimatePresence>
+              <StatusPanel
+                voiceState={voiceState}
+                enabled={enabled}
+                conversationMode={conversationMode}
+                conversationTurns={conversationTurns}
+                onEndConversation={() => {
+                  forceEndConversation();
+                  setConversationMode("idle");
+                }}
+              />
             </motion.div>
-          </div>
+          )}
+        </AnimatePresence>
 
-          {/* Chat toggle button for mobile */}
-          <div className="p-4 border-t" style={{ borderColor: 'rgba(125,211,252,0.1)' }}>
-            <button
-              onClick={() => setShowChat(!showChat)}
-              className="w-full py-2 px-4 rounded-lg text-sm font-mono text-sky-400 border border-sky-400/20 hover:bg-sky-400/10 transition-colors"
+        {/* Chevron toggle — shown only when left column is hidden */}
+        <AnimatePresence>
+          {!leftColumnVisible && (
+            <motion.button
+              key="left-column-toggle"
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -10 }}
+              transition={{ duration: 0.2, delay: 0.1 }}
+              onClick={() => setLeftColumnVisible(true)}
+              className="fixed left-0 top-1/2 -translate-y-1/2 z-40
+                         w-5 h-12 bg-zinc-900 border border-zinc-700/50
+                         border-l-0 rounded-r-lg
+                         hidden md:flex items-center justify-center
+                         hover:bg-zinc-800 hover:border-zinc-600
+                         transition-colors duration-150 group"
+              title="Show panel"
             >
-              {showChat ? 'Hide Chat' : 'Show Chat'}
-            </button>
+              <ChevronRight className="w-3 h-3 text-zinc-600 group-hover:text-zinc-400" />
+            </motion.button>
+          )}
+        </AnimatePresence>
+
+        {/* Center: orb + labels + freq bars */}
+        <motion.div
+          animate={
+            isAnimatingToExtended || extendedWindowOpen
+              ? {
+                  scale: 0.45,
+                  y: -180,
+                  transition: { duration: 0.5, ease: [0.32, 0, 0.67, 0], delay: 0.1 },
+                }
+              : {
+                  scale: 1,
+                  y: 0,
+                  transition: { duration: 0.5, ease: [0.33, 1, 0.68, 1] },
+                }
+          }
+          className="flex-1 min-w-0 flex flex-col items-center justify-center relative"
+          style={{ padding: "20px 24px", overflow: "hidden" }}
+          ref={coreRef}
+        >
+          <div className="jarvis-scan-line" />
+
+          <AnimatePresence>
+            {transcript && (
+              <motion.div
+                initial={{ opacity: 0, y: -10, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -6, scale: 0.97 }}
+                transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                className="absolute top-4 left-1/2 -translate-x-1/2 max-w-xs w-full text-center text-[11px] truncate px-4 py-1.5 rounded-full"
+                style={{ background: "rgba(0,15,25,0.82)", border: "1px solid rgba(125,211,252,0.25)", color: "rgba(125,211,252,0.8)", backdropFilter: "blur(12px)", boxShadow: "0 4px 20px rgba(125,211,252,0.08)", zIndex: 5 }}
+              >
+                {transcript}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <motion.div
+            initial={{ opacity: 0, scale: 0.88 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+            style={{ flexShrink: 0, position: "relative" }}
+          >
+            <AICore voiceState={voiceState} isAwake={isActive} size={coreSize} />
+
+            {/* Cooldown ring — visible only during conversation cooldown */}
+            <AnimatePresence>
+              {conversationMode === "cooling-down" && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  transition={{ duration: 0.3 }}
+                  className="absolute inset-0 rounded-full pointer-events-none"
+                  style={{
+                    border: "1px solid rgba(56, 189, 248, 0.2)",
+                    boxShadow: "0 0 20px rgba(56, 189, 248, 0.06)",
+                  }}
+                />
+              )}
+            </AnimatePresence>
+          </motion.div>
+
+          <div style={{ textAlign: "center", flexShrink: 0, marginTop: 12 }}>
+            <AnimatePresence mode="wait">
+              <motion.p
+                key={voiceState}
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.2 }}
+                style={{ fontSize: 14, letterSpacing: "0.12em", fontWeight: 300, color: isActive ? "#7DD3FC" : "rgba(125,211,252,0.38)" }}
+              >
+                {stateInfo.text}
+              </motion.p>
+            </AnimatePresence>
+            <p style={{ fontSize: 9, letterSpacing: "0.12em", color: "rgba(125,211,252,0.2)", marginTop: 4 }}>{stateInfo.sub}</p>
           </div>
 
-          {/* Mobile chat overlay */}
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2" style={{ zIndex: 1 }}>
+            <FreqBars active={isActive} />
+          </div>
+
           <AnimatePresence>
             {showChat && (
               <motion.div
@@ -1426,7 +1686,7 @@ function JarvisPage() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.18 }}
-                className="absolute inset-0 flex flex-col overflow-hidden"
+                className="md:hidden absolute inset-0 flex flex-col overflow-hidden"
                 style={{ background: "rgba(5,6,9,0.97)", backdropFilter: "blur(16px)", zIndex: 20 }}
               >
                 <RightPanel
@@ -1439,186 +1699,25 @@ function JarvisPage() {
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
-      ) : (
-        /* Desktop — existing 3-column HUD layout unchanged */
-        <div className="relative z-10 flex-1 min-h-0 flex overflow-hidden">
+        </motion.div>
 
-          {/* Left status panel */}
-          <AnimatePresence>
-            {leftColumnVisible && (
-              <motion.div
-                key="left-column"
-                initial={{ opacity: 0, x: -12 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{
-                  x: -320,
-                  opacity: 0,
-                  transition: { duration: 0.35, ease: [0.32, 0, 0.67, 0] },
-                }}
-                transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-                className="hidden md:flex flex-col"
-                style={{ width: 200, flexShrink: 0, padding: 12, borderRight: "1px solid rgba(125,211,252,0.07)", overflowY: "auto", scrollbarWidth: "none", gap: 6 }}
-              >
-                <StatusPanel
-                  voiceState={voiceState}
-                  enabled={enabled}
-                  conversationMode={conversationMode}
-                  conversationTurns={conversationTurns}
-                  onEndConversation={() => {
-                    forceEndConversation();
-                    setConversationMode("idle");
-                  }}
-                />
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Chevron toggle — shown only when left column is hidden */}
-          <AnimatePresence>
-            {!leftColumnVisible && (
-              <motion.button
-                key="left-column-toggle"
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -10 }}
-                transition={{ duration: 0.2, delay: 0.1 }}
-                onClick={() => setLeftColumnVisible(true)}
-                className="fixed left-0 top-1/2 -translate-y-1/2 z-40
-                           w-5 h-12 bg-zinc-900 border border-zinc-700/50
-                           border-l-0 rounded-r-lg
-                           hidden md:flex items-center justify-center
-                           hover:bg-zinc-800 hover:border-zinc-600
-                           transition-colors duration-150 group"
-                title="Show panel"
-              >
-                <ChevronRight className="w-3 h-3 text-zinc-600 group-hover:text-zinc-400" />
-              </motion.button>
-            )}
-          </AnimatePresence>
-
-          {/* Center: orb + labels + freq bars */}
-          <motion.div
-            animate={
-              isAnimatingToExtended || extendedWindowOpen
-                ? {
-                    scale: 0.45,
-                    y: -180,
-                    transition: { duration: 0.5, ease: [0.32, 0, 0.67, 0], delay: 0.1 },
-                  }
-                : {
-                    scale: 1,
-                    y: 0,
-                    transition: { duration: 0.5, ease: [0.33, 1, 0.68, 1] },
-                  }
-            }
-            className="flex-1 min-w-0 flex flex-col items-center justify-center relative"
-            style={{ padding: "20px 24px", overflow: "hidden" }}
-            ref={coreRef}
-          >
-            <div className="jarvis-scan-line" />
-
-            <AnimatePresence>
-              {transcript && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10, scale: 0.96 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -6, scale: 0.97 }}
-                  transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                  className="absolute top-4 left-1/2 -translate-x-1/2 max-w-xs w-full text-center text-[11px] truncate px-4 py-1.5 rounded-full"
-                  style={{ background: "rgba(0,15,25,0.82)", border: "1px solid rgba(125,211,252,0.25)", color: "rgba(125,211,252,0.8)", backdropFilter: "blur(12px)", boxShadow: "0 4px 20px rgba(125,211,252,0.08)", zIndex: 5 }}
-                >
-                  {transcript}
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            <motion.div
-              initial={{ opacity: 0, scale: 0.88 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-              style={{ flexShrink: 0, position: "relative" }}
-            >
-              <AICore voiceState={voiceState} isAwake={isActive} size={coreSize} />
-
-              {/* Cooldown ring — visible only during conversation cooldown */}
-              <AnimatePresence>
-                {conversationMode === "cooling-down" && (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.8 }}
-                    transition={{ duration: 0.3 }}
-                    className="absolute inset-0 rounded-full pointer-events-none"
-                    style={{
-                      border: "1px solid rgba(56, 189, 248, 0.2)",
-                      boxShadow: "0 0 20px rgba(56, 189, 248, 0.06)",
-                    }}
-                  />
-                )}
-              </AnimatePresence>
-            </motion.div>
-
-            <div style={{ textAlign: "center", flexShrink: 0, marginTop: 12 }}>
-              <AnimatePresence mode="wait">
-                <motion.p
-                  key={voiceState}
-                  initial={{ opacity: 0, y: 4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -4 }}
-                  transition={{ duration: 0.2 }}
-                  style={{ fontSize: 14, letterSpacing: "0.12em", fontWeight: 300, color: isActive ? "#7DD3FC" : "rgba(125,211,252,0.38)" }}
-                >
-                  {stateInfo.text}
-                </motion.p>
-              </AnimatePresence>
-              <p style={{ fontSize: 9, letterSpacing: "0.12em", color: "rgba(125,211,252,0.2)", marginTop: 4 }}>{stateInfo.sub}</p>
-            </div>
-
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2" style={{ zIndex: 1 }}>
-              <FreqBars active={isActive} />
-            </div>
-
-            <AnimatePresence>
-              {showChat && (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.18 }}
-                  className="md:hidden absolute inset-0 flex flex-col overflow-hidden"
-                  style={{ background: "rgba(5,6,9,0.97)", backdropFilter: "blur(16px)", zIndex: 20 }}
-                >
-                  <RightPanel
-                    messages={messages}
-                    onExpand={(content) => void triggerExtendedWindowSequence(content)}
-                    onSessionClick={(session) => void handleHistoryCardClick(session)}
-                    loadingSessionId={loadingSessionId}
-                    voiceState={voiceState}
-                  />
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </motion.div>
-
-          {/* Right panel with tabs */}
-          <motion.div
-            initial={{ opacity: 0, x: 12 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-            className="hidden md:flex flex-col"
-            style={{ width: 280, flexShrink: 0, borderLeft: "1px solid rgba(125,211,252,0.07)", minHeight: 0, overflow: "hidden" }}
-          >
-            <RightPanel
-              messages={messages}
-              onExpand={(content) => void triggerExtendedWindowSequence(content)}
-              onSessionClick={(session) => void handleHistoryCardClick(session)}
-              loadingSessionId={loadingSessionId}
-              voiceState={voiceState}
-            />
-          </motion.div>
-        </div>
-      )}
+        {/* Right panel with tabs */}
+        <motion.div
+          initial={{ opacity: 0, x: 12 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+          className="hidden md:flex flex-col"
+          style={{ width: 280, flexShrink: 0, borderLeft: "1px solid rgba(125,211,252,0.07)", minHeight: 0, overflow: "hidden" }}
+        >
+          <RightPanel
+            messages={messages}
+            onExpand={(content) => void triggerExtendedWindowSequence(content)}
+            onSessionClick={(session) => void handleHistoryCardClick(session)}
+            loadingSessionId={loadingSessionId}
+            voiceState={voiceState}
+          />
+        </motion.div>
+      </div>
 
       {/* Extended Window — live chat */}
       <ExtendedWindow

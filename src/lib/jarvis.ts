@@ -779,10 +779,18 @@ export function classifyIntent(message: string): IntentType {
 
 export function shouldDeliverMorningBriefing(): boolean {
   if (_briefingDeliveredThisSession) return false;
+
+  const now = new Date();
+  const hour = now.getHours(); // local IST time
+
+  // Only deliver morning briefing between 5am and 11am local time
+  // If user opens JARVIS at night, no briefing — just greet normally
+  if (hour < 5 || hour >= 11) return false;
+
   try {
-    const last = localStorage.getItem("jarvis:last-briefing-date");
-    const today = new Date().toISOString().split("T")[0];
-    return last !== today;
+    const lastDate = localStorage.getItem("jarvis:last-briefing-date");
+    const today = now.toLocaleDateString("en-CA");
+    return lastDate !== today;
   } catch {
     return false;
   }
@@ -791,34 +799,50 @@ export function shouldDeliverMorningBriefing(): boolean {
 function markBriefingDelivered(): void {
   _briefingDeliveredThisSession = true;
   try {
-    localStorage.setItem("jarvis:last-briefing-date", new Date().toISOString().split("T")[0]);
+    localStorage.setItem("jarvis:last-briefing-date", new Date().toLocaleDateString("en-CA"));
   } catch {
     /* ignore */
   }
 }
 
-function buildMorningBriefingPrompt(tasks: HorizonTask[]): string {
+function getTimeGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) return "Good morning";
+  if (hour >= 12 && hour < 17) return "Good afternoon";
+  if (hour >= 17 && hour < 21) return "Good evening";
+  return "Hey"; // late night
+}
+
+export function buildMorningBriefingPrompt(tasks: HorizonTask[]): string {
+  const greeting = getTimeGreeting();
   const now = new Date();
-  const dateStr = now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  const dayName = now.toLocaleDateString("en-IN", { weekday: "long" });
+  const dateStr = now.toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "long",
+  });
 
-  const highPriority = tasks.filter((t) => t.priority === "high");
-  const medLow = tasks.filter((t) => t.priority !== "high");
+  const highPriority = tasks.filter((t) => t.priority === "high" && !t.completed);
+  const allPending = tasks.filter((t) => !t.completed);
 
-  let taskSection = "";
-  if (tasks.length === 0) {
-    taskSection = "The user has no tasks scheduled for today. Acknowledge this and suggest it's a good day to plan.";
-  } else {
-    const lines: string[] = [];
-    if (highPriority.length > 0) {
-      lines.push(`High priority: ${highPriority.map((t) => t.title).join(", ")}`);
-    }
-    if (medLow.length > 0) {
-      lines.push(`Other tasks: ${medLow.map((t) => t.title).join(", ")}`);
-    }
-    taskSection = lines.join(". ");
-  }
+  return `
+Generate a brief, natural greeting for the user.
 
-  return `Today is ${dateStr}. Generate a short morning briefing for the user. ${taskSection}. Rules: vary the greeting (not always "Good morning"), reference the actual date and day, mention high-priority tasks by name first, end with one honest non-cheesy motivational line relevant to their tasks. Keep it under 100 words. Tone: warm but direct, like a sharp friend. No markdown, no asterisks, plain spoken text only.`;
+Start with: "${greeting}"
+Today is: ${dayName}, ${dateStr}
+Current time: ${now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })}
+
+Pending tasks today: ${allPending.length}
+High priority: ${highPriority.map((t) => `"${t.title}" at ${t.taskTime}`).join(", ") || "none"}
+
+Rules:
+- NEVER say "Good morning" if it is afternoon or evening — use the greeting provided above
+- Keep it under 60 words
+- Be direct and honest — if no tasks, say so plainly
+- Don't be cheerful and fake — be like a sharp assistant giving a real briefing
+- Reference actual task names if they exist
+- End with ONE specific actionable thought, not generic advice
+`;
 }
 
 /**
@@ -1405,17 +1429,31 @@ export function buildJarvisSystemPrompt(
   habitInsight?: string,
 ): string {
   const now = new Date();
-  const dateStr = now.toLocaleDateString("en-US", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-  const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
-  const todayKey = now.toISOString().split("T")[0];
-  const tomorrow = new Date(now);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowKey = tomorrow.toISOString().split("T")[0];
+  const currentDateIST = now.toLocaleDateString("en-CA"); // YYYY-MM-DD
+  const currentTimeIST = now.toLocaleTimeString("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }); // HH:MM 24h
+  const currentDayName = now.toLocaleDateString("en-IN", { weekday: "long" });
+  const currentHour = now.getHours();
+
+  const dateTimeContext = `CURRENT DATE AND TIME (IST — Indian Standard Time):
+Date: ${currentDateIST} (${currentDayName})
+Time: ${currentTimeIST} (24h format)
+Hour: ${currentHour}
+
+DATE RESOLUTION RULES — always use these when creating tasks:
+- "today" = ${currentDateIST}
+- "tonight" = ${currentDateIST} (same day, use the time they specify)
+- "tomorrow" = ${new Date(now.getTime() + 86400000).toLocaleDateString("en-CA")}
+- "this weekend" = nearest Saturday from today
+- "next week" = Monday of next week
+- "in an hour" = current time + 1 hour, today's date
+- When user says a time like "11:30" or "11:30 PM" — convert to 24h format: 23:30
+- Priority "highest" or "most important" = "high" in the system
+- NEVER default to any hardcoded date. ALWAYS compute from the current date above.
+`;
 
   let userContext = "";
   try {
@@ -1426,7 +1464,7 @@ export function buildJarvisSystemPrompt(
   }
 
   const allTasks = getHorizonTasks();
-  const todayTasks = allTasks.filter((t) => t.taskDate === todayKey && !t.completed);
+  const todayTasks = allTasks.filter((t) => t.taskDate === currentDateIST && !t.completed);
   const highPriority = todayTasks.filter((t) => t.priority === "high");
 
   const memoriesSection =
@@ -1452,18 +1490,15 @@ export function buildJarvisSystemPrompt(
 
   const taskSection =
     todayTasks.length > 0
-      ? `\nTODAY'S TASKS (${todayKey}) — ${todayTasks.length} pending:\n${todayTasks.map((t) => `• ${t.taskTime} ${t.title} (${t.priority})`).join("\n")}${highPriority.length > 0 ? `\nHIGH PRIORITY TODAY: ${highPriority.map((t) => t.title).join(", ")}` : ""}`
-      : `\nNo tasks scheduled for today (${todayKey}).`;
+      ? `\nTODAY'S TASKS (${currentDateIST}) — ${todayTasks.length} pending:\n${todayTasks.map((t) => `• ${t.taskTime} ${t.title} (${t.priority})`).join("\n")}${highPriority.length > 0 ? `\nHIGH PRIORITY TODAY: ${highPriority.map((t) => t.title).join(", ")}` : ""}`
+      : `\nNo tasks scheduled for today (${currentDateIST}).`;
 
   const habitSection = habitInsight ? `\nWEEKLY HABITS:\n${habitInsight}\n` : "";
 
-  return `You are JARVIS — Just A Rather Very Intelligent System.
+  return `${dateTimeContext}
+You are JARVIS — Just A Rather Very Intelligent System.
 You are the personal AI of a single user: a student, developer, and freelancer who juggles multiple contexts simultaneously.
 ${userContext}
-Current time: ${timeStr} on ${dateStr}
-Today's date: ${todayKey}
-Tomorrow's date: ${tomorrowKey}
-
 PERSONALITY:
 - You are honest, direct, and occasionally blunt.
 - You push back when the user is wrong or making a bad decision. You do this respectfully but without sugarcoating.
@@ -1483,6 +1518,15 @@ RESPONSE STYLE:
 NAVIGATION:
 If user says "open [page]" or "go to [page]", include: [NAVIGATE:/route]
 Routes: /horizon, /ask, /desktop, /prompts, /links, /images, /messages, /insights, /context, /
+
+CRITICAL TOOL FAILURE RULES:
+- If a tool returns text containing "FAILED" or "ERROR", you MUST tell the user 
+  the action did not succeed. Never rewrite a failure as a success.
+- If create_task returns "TASK_CREATION_FAILED", say exactly: 
+  "I wasn't able to add that task — [reason]. Please try again or add it manually in Horizon."
+- Never say "I've added" or "I've created" unless the tool returned "TASK_CREATED_SUCCESS".
+- Never invent explanations like "Horizon automatically puts tasks on the 4th" — 
+  if you don't know why something failed, say you don't know.
 
 IMPORTANT RULES:
 - Never pretend to have done something you haven't.

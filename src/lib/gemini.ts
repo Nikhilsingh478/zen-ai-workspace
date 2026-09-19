@@ -282,19 +282,60 @@ export async function executeToolCall(
 ): Promise<string> {
   try {
     if (toolName === "create_task") {
-      const input = {
-        title: String(toolArgs.title ?? "Untitled"),
-        taskDate: String(toolArgs.taskDate ?? new Date().toISOString().split("T")[0]),
-        taskTime: String(toolArgs.taskTime ?? "09:00"),
-        priority: (["low", "medium", "high"].includes(String(toolArgs.priority))
-          ? toolArgs.priority
-          : "medium") as "low" | "medium" | "high",
-        description: toolArgs.description ? String(toolArgs.description) : null,
-        notificationEnabled: true,
+      const { title, taskDate, taskTime, priority, description } = toolArgs as {
+        title: string;
+        taskDate: string;
+        taskTime: string;
+        priority: "low" | "medium" | "high";
+        description?: string;
       };
-      const task = await addTaskDirect(input);
-      if (!task) return "Failed to create the task — database error.";
-      return `Task created: "${task.title}" on ${task.taskDate} at ${task.taskTime} (${task.priority} priority, id: ${task.id}).`;
+
+      // Validate inputs before attempting creation
+      if (!title || !taskDate || !taskTime || !priority) {
+        return "TASK_CREATION_FAILED: Missing required fields. Cannot create task.";
+      }
+
+      // Validate date format
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      if (!dateRegex.test(taskDate)) {
+        return `TASK_CREATION_FAILED: Invalid date format "${taskDate}". Date must be YYYY-MM-DD.`;
+      }
+
+      // Validate time format
+      const timeRegex = /^\d{2}:\d{2}$/;
+      if (!timeRegex.test(taskTime)) {
+        return `TASK_CREATION_FAILED: Invalid time format "${taskTime}". Time must be HH:MM.`;
+      }
+
+      try {
+        const result = await addTaskDirect({
+          title,
+          taskDate,
+          taskTime,
+          priority,
+          description: description ?? null,
+        });
+
+        if (!result) {
+          return "TASK_CREATION_FAILED: Database insert returned no result. Task was NOT created.";
+        }
+
+        // Verify by reading back from database
+        const { data: verification, error: verifyError } = await supabase
+          .from("horizon_tasks")
+          .select("id, title, task_date, task_time, priority")
+          .eq("id", result.id)
+          .single();
+
+        if (verifyError || !verification) {
+          return `TASK_CREATION_FAILED: Task insert appeared to succeed but verification read failed. Task may NOT have been created. Error: ${verifyError?.message ?? "unknown"}`;
+        }
+
+        return `TASK_CREATED_SUCCESS: "${verification.title}" on ${verification.task_date} at ${verification.task_time} (${verification.priority} priority). ID: ${verification.id}`;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "unknown error";
+        return `TASK_CREATION_FAILED: ${message}. Task was NOT created.`;
+      }
     }
 
     if (toolName === "save_memory") {
