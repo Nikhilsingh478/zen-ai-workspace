@@ -956,7 +956,7 @@ class GeminiAPI {
 
       // A tool failure is authoritative. Do not give the model a chance to turn
       // it into a friendly-but-false confirmation.
-      if (/^(Failed|Tool execution failed)/i.test(toolResult)) return toolResult;
+      if (/FAILED|^(Failed|Tool execution failed)/i.test(toolResult)) return toolResult;
 
       const followUpHistory: GeminiMessage[] = [
         ...messages,
@@ -996,7 +996,62 @@ class GeminiAPI {
         : base || "No response received.";
     }
 
-    if (textPart?.text) return textPart.text;
+    // ── Text-fallback tool call parser ──────────────────────────────────────────
+    // Gemini occasionally writes tool calls as plain text instead of using the
+    // function calling API — e.g. "create_task(title='X', date='Y', ...)".
+    // This catches that pattern, parses the args, and executes them so the task
+    // actually lands in Horizon rather than appearing as raw text in the chat.
+    if (textPart?.text) {
+      const text = textPart.text.trim();
+      const textToolMatch = text.match(/^(\w+)\((.+)\)\s*$/s);
+      if (textToolMatch) {
+        const toolName = textToolMatch[1];
+        const knownTools = new Set(JARVIS_TOOLS.map((t) => t.name));
+        if (knownTools.has(toolName)) {
+          // Parse key=value pairs — handles 'string', "string", and numeric values
+          const rawArgs: Record<string, unknown> = {};
+          const argStr = textToolMatch[2];
+          const argRegex = /(\w+)\s*=\s*(?:'([^']*)'|"([^"]*)"|(-?\d+(?:\.\d+)?))/g;
+          let m: RegExpExecArray | null;
+          while ((m = argRegex.exec(argStr)) !== null) {
+            const key = m[1];
+            const val = m[2] ?? m[3] ?? (m[4] !== undefined ? Number(m[4]) : undefined);
+            if (val !== undefined) rawArgs[key] = val;
+          }
+
+          // Normalise param name aliases Gemini sometimes gets wrong.
+          // Tool schema uses taskDate/taskTime; model may write date/time.
+          if ("date" in rawArgs && !("taskDate" in rawArgs)) rawArgs.taskDate = rawArgs.date;
+          if ("time" in rawArgs && !("taskTime" in rawArgs)) rawArgs.taskTime = rawArgs.time;
+
+          console.warn(
+            `[Gemini] Text-fallback: intercepted "${toolName}()" written as plain text — executing now.`,
+          );
+          const toolResult = await executeToolCall(toolName, rawArgs, sessionId);
+
+          if (/FAILED|^(Failed|Tool execution failed)/i.test(toolResult)) return toolResult;
+
+          // Give model one shot to generate a natural confirmation
+          const followUpHistory: GeminiMessage[] = [
+            ...messages,
+            { role: "model", parts: [{ text }] },
+            { role: "user", parts: [{ text: `Tool result: ${toolResult}` }] },
+          ];
+          const followUpBody: GeminiRequest = {
+            contents: followUpHistory,
+            systemInstruction: { parts: [{ text: systemPrompt }] },
+            generationConfig: { temperature: 0.7, topK: 40, topP: 0.95, maxOutputTokens: 1024 },
+          };
+          const key = this.primaryKey || this.fallbackKey;
+          if (key) {
+            const finalResult = await this._request(key, followUpBody);
+            if (finalResult.ok) return finalResult.text;
+          }
+          return toolResult;
+        }
+      }
+      return text;
+    }
 
     return "No response received.";
   }
