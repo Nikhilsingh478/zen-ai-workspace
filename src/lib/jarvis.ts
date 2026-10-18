@@ -15,7 +15,6 @@ import {
   requiresDeepThinking,
   requiresCodeExecution,
   CODE_EXECUTION_TOOL,
-  executeToolCall,
   takePendingContextUpdate,
 } from "@/lib/gemini";
 import type { GeminiMessage } from "@/lib/gemini";
@@ -338,15 +337,12 @@ function startInterruptListener(): void {
           // Check all alternatives (up to maxAlternatives)
           for (let j = 0; j < result.length; j++) {
             const transcript: string = result[j].transcript.toLowerCase().trim();
-            if (INTERRUPT_WORDS.some((w) => transcript.includes(w))) {
-              ttsQueue.interrupt();
+            const word = INTERRUPT_WORDS.find((w) => transcript.includes(w));
+            // On desktop speakers the mic hears JARVIS itself — ignore a match
+            // that is just the sentence currently being spoken.
+            if (word && !ttsQueue.currentSentence.toLowerCase().includes(word)) {
               stopInterruptListener();
-              transitionAudioState("interrupted");
-              setTimeout(() => {
-                if (_state.voiceState === "interrupted") {
-                  transitionAudioState("idle");
-                }
-              }, 800);
+              ttsQueue.interrupt(); // owns the interrupted → listening transition
               return;
             }
           }
@@ -388,7 +384,9 @@ function startInterruptListener(): void {
 function stopInterruptListener(): void {
   if (_interruptRecognition) {
     try {
-      _interruptRecognition.stop();
+      // abort(), not stop() — the command recogniser starts ~600ms later and
+      // Chrome only runs one recognition session at a time.
+      _interruptRecognition.abort();
     } catch {
       // Ignore
     }
@@ -488,6 +486,66 @@ function preloadVoices(): void {
   }
 }
 
+// ─── Chatterbox (local neural TTS sidecar — see tts-server/) ─────────────────
+
+// Unset → browser speechSynthesis only (previous behaviour).
+const CHATTERBOX_URL = (import.meta.env.VITE_CHATTERBOX_URL ?? "").trim().replace(/\/+$/, "");
+const CHATTERBOX_TIMEOUT_MS = 20_000;
+// After a failure, use browser speech for a while instead of retrying every sentence.
+const CHATTERBOX_RETRY_MS = 30_000;
+let _chatterboxDownUntil = 0;
+
+type ChatterboxRequest = {
+  text: string;
+  controller: AbortController;
+  promise: Promise<Blob | null>;
+};
+
+function chatterboxAvailable(): boolean {
+  return Boolean(CHATTERBOX_URL) && !IS_NATIVE_MOBILE && Date.now() >= _chatterboxDownUntil;
+}
+
+/** Starts generating one sentence. Resolves to WAV audio, or null on any failure. */
+function requestChatterbox(text: string): ChatterboxRequest {
+  const controller = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, CHATTERBOX_TIMEOUT_MS);
+
+  const promise = fetch(`${CHATTERBOX_URL}/tts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+    signal: controller.signal,
+  })
+    .then(async (res) => {
+      if (!res.ok) {
+        const detail = await res.text().catch(() => "");
+        throw Object.assign(new Error(`HTTP ${res.status} ${detail.slice(0, 200)}`), { status: res.status });
+      }
+      return await res.blob();
+    })
+    .catch((err: unknown) => {
+      if (controller.signal.aborted && !timedOut) return null; // interrupted — not a failure
+      const status = (err as { status?: number }).status;
+      // 413/422 = this sentence was rejected; the server itself is fine.
+      if (status !== 413 && status !== 422) {
+        if (Date.now() >= _chatterboxDownUntil) {
+          console.warn(
+            `[TTS] Chatterbox unavailable (${timedOut ? "timed out" : String(err)}) — using browser voice for ${CHATTERBOX_RETRY_MS / 1000}s`,
+          );
+        }
+        _chatterboxDownUntil = Date.now() + CHATTERBOX_RETRY_MS;
+      }
+      return null;
+    })
+    .finally(() => clearTimeout(timer));
+
+  return { text, controller, promise };
+}
+
 // ─── TTSQueue ─────────────────────────────────────────────────────────────────
 
 class TTSQueue {
@@ -496,70 +554,186 @@ class TTSQueue {
   private onDoneCallback: (() => void) | null = null;
   private keepAliveInterval: ReturnType<typeof setInterval> | null = null;
   private currentSource: AudioBufferSourceNode | null = null;
+  // Strong reference — Chrome garbage-collects in-flight utterances and then
+  // never fires onend, which used to leave JARVIS stuck in "speaking".
+  private currentUtterance: SpeechSynthesisUtterance | null = null;
+  private sentenceTimer: ReturnType<typeof setTimeout> | undefined;
+  // Bumped on interrupt so late onend/onerror events from cancelled
+  // utterances can't advance a newer queue.
+  private generation = 0;
+  // While held (streaming), an empty queue means "more is coming", not "done".
+  private held = false;
+  private pendingFinish = false;
+  /** Sentence currently being spoken — used to ignore our own voice echoing into the mic. */
+  currentSentence = "";
+  // Chatterbox: the sentence being generated/played, the next one being
+  // generated ahead of time, and the element playing the current audio.
+  private currentRequest: ChatterboxRequest | null = null;
+  private prefetched: ChatterboxRequest | null = null;
+  private currentAudio: HTMLAudioElement | null = null;
+  private currentAudioUrl: string | null = null;
 
   enqueue(text: string, onDone?: () => void): void {
-    this.onDoneCallback = onDone ?? null;
-    const sentences = this.splitIntoSentences(text);
-    this.queue.push(...sentences);
+    if (onDone) this.onDoneCallback = onDone;
+    this.queue.push(...this.splitIntoSentences(text));
+    if (this.isPlaying) this.prefetchNext(); // streaming: next sentence just arrived
     if (!this.isPlaying) {
+      if (this.queue.length === 0) {
+        if (!this.held) this.finish();
+        return;
+      }
       this.isPlaying = true;
+      this.pendingFinish = false;
       this.startKeepAlive();
       void this.playNext();
     }
   }
 
+  /** Streaming: keep the turn open until release(), even if the queue drains. */
+  hold(): void {
+    this.held = true;
+  }
+
+  release(): void {
+    this.held = false;
+    if (this.pendingFinish && !this.isPlaying) this.finish();
+  }
+
   private splitIntoSentences(text: string): string[] {
-    const raw = text
+    return text
       .replace(/([.!?])\s+/g, "$1\n")
       .split("\n")
       .map((s) => s.trim())
       .filter((s) => s.length > 0);
-    return raw.length > 0 ? raw : [text.trim()];
+  }
+
+  /** Turn complete — return to idle and open the follow-up window. */
+  private finish(): void {
+    this.isPlaying = false;
+    this.pendingFinish = false;
+    this.currentSentence = "";
+    this.prefetched?.controller.abort();
+    this.prefetched = null;
+    this.currentRequest = null;
+    this.stopKeepAlive();
+    transitionAudioState("idle", { isAwake: false, transcript: "" });
+    startConversationCooldown();
+    const cb = this.onDoneCallback;
+    this.onDoneCallback = null;
+    cb?.();
   }
 
   private async playNext(): Promise<void> {
     if (this.queue.length === 0) {
       this.isPlaying = false;
-      this.stopKeepAlive();
-      // Queue is empty — but the last utterance may still be playing.
-      // Cooldown fires from onend/onended of the last sentence, not here.
+      this.currentSentence = "";
+      if (this.held) {
+        this.pendingFinish = true;
+        return;
+      }
+      this.finish();
       return;
     }
 
-    // Capture BEFORE shift — true when this is the final sentence in the queue
-    const isLastSentence = this.queue.length === 1;
     const sentence = this.queue.shift()!;
+    const gen = this.generation;
+    this.currentSentence = sentence;
 
     // Check if running natively on mobile — route to sherpa-onnx Kokoro TTS
     if (Capacitor.isNativePlatform()) {
       console.log("[TTS] Speaking via native Kokoro TTS:", sentence.slice(0, 40));
       try {
         await JarvisNative.speak(sentence);
-        if (isLastSentence) {
-          this.isPlaying = false;
-          this.stopKeepAlive();
-          transitionAudioState("idle", { isAwake: false, transcript: "" });
-          startConversationCooldown();
-          this.onDoneCallback?.();
-          this.onDoneCallback = null;
-        } else {
-          void this.playNext();
-        }
       } catch (err) {
         console.warn("[TTS] Native speak failed:", err);
-        if (isLastSentence) {
-          this.isPlaying = false;
-          this.stopKeepAlive();
-          transitionAudioState("idle", { isAwake: false, transcript: "" });
-        } else {
-          void this.playNext();
-        }
       }
+      if (gen === this.generation) void this.playNext();
       return;
     }
 
+    // Desktop: Chatterbox neural voice when the local sidecar is reachable.
+    // Any failure falls through to browser speech for this sentence only —
+    // the text reply is already in the chat either way.
+    if (chatterboxAvailable()) {
+      const request = this.takeChatterboxRequest(sentence);
+      this.currentRequest = request;
+      this.prefetchNext(); // generate sentence N+1 while N plays
+      const audio = await request.promise;
+      if (gen !== this.generation) return;
+      if (audio && (await this.playChatterboxAudio(audio, sentence, gen))) return;
+      if (gen !== this.generation) return;
+    }
+
+    this.speakWithBrowser(sentence, gen);
+  }
+
+  private takeChatterboxRequest(sentence: string): ChatterboxRequest {
+    if (this.prefetched?.text === sentence) {
+      const request = this.prefetched;
+      this.prefetched = null;
+      return request;
+    }
+    this.prefetched?.controller.abort();
+    this.prefetched = null;
+    return requestChatterbox(sentence);
+  }
+
+  private prefetchNext(): void {
+    if (this.prefetched || this.queue.length === 0 || !chatterboxAvailable()) return;
+    this.prefetched = requestChatterbox(this.queue[0]);
+  }
+
+  /** Resolves true once playback has started (onended advances the queue), false if it couldn't play. */
+  private async playChatterboxAudio(audioBlob: Blob, sentence: string, gen: number): Promise<boolean> {
+    const url = URL.createObjectURL(audioBlob);
+    const audio = new Audio(url);
+    this.currentAudio = audio;
+    this.currentAudioUrl = url;
+
+    const release = () => {
+      URL.revokeObjectURL(url);
+      if (this.currentAudio === audio) {
+        this.currentAudio = null;
+        this.currentAudioUrl = null;
+      }
+    };
+
+    try {
+      await audio.play();
+    } catch (err) {
+      // Autoplay policy (no user gesture yet) or undecodable audio.
+      console.warn("[TTS] Chatterbox playback failed — using browser voice:", err);
+      release();
+      return false;
+    }
+    if (gen !== this.generation) {
+      audio.pause();
+      release();
+      return true; // interrupted while starting — nothing more to do
+    }
+
+    console.log("[TTS] Speaking via Chatterbox:", sentence.slice(0, 40));
+    let settled = false;
+    const finishSentence = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(this.sentenceTimer);
+      release();
+      if (gen !== this.generation) return;
+      void this.playNext();
+    };
+    audio.onended = finishSentence;
+    audio.onerror = finishSentence;
+    clearTimeout(this.sentenceTimer);
+    const durationMs = Number.isFinite(audio.duration) ? audio.duration * 1000 : 4000 + sentence.length * 120;
+    this.sentenceTimer = setTimeout(finishSentence, durationMs + 3000);
+    return true;
+  }
+
+  private speakWithBrowser(sentence: string, gen: number): void {
     // Browser TTS (only reliable option for desktop web)
     if (typeof window === "undefined" || !("speechSynthesis" in window) || !window.speechSynthesis) {
+      this.queue = [];
       void this.playNext();
       return;
     }
@@ -577,35 +751,30 @@ class TTSQueue {
       const voice = _cachedMaleVoice ?? (window.speechSynthesis?.getVoices ? selectBestMaleVoice(window.speechSynthesis.getVoices()) : null);
       if (voice) utterance.voice = voice;
 
-      // Track whether onend has fired to prevent double-transitions
       let settled = false;
-
-      const finishSentence = (isError = false) => {
+      const finishSentence = () => {
         if (settled) return;
         settled = true;
-        if (isError) {
-          console.warn("[TTS] utterance error on:", sentence.slice(0, 40));
-          // On error just move to next sentence rather than killing everything
-          if (!isLastSentence) {
-            void this.playNext();
-            return;
-          }
-        }
-        if (isLastSentence) {
-          this.isPlaying = false;
-          this.stopKeepAlive();
-          transitionAudioState("idle", { isAwake: false, transcript: "" });
-          startConversationCooldown();
-          this.onDoneCallback?.();
-          this.onDoneCallback = null;
-        } else {
-          void this.playNext();
-        }
+        clearTimeout(this.sentenceTimer);
+        if (this.currentUtterance === utterance) this.currentUtterance = null;
+        if (gen !== this.generation) return; // interrupted meanwhile
+        void this.playNext();
       };
 
-      utterance.onend = () => finishSentence(false);
-      utterance.onerror = () => finishSentence(true);
+      utterance.onend = finishSentence;
+      utterance.onerror = (e) => {
+        console.warn("[TTS] utterance error on:", sentence.slice(0, 40), e.error);
+        finishSentence();
+      };
 
+      // Safety net for Chrome sometimes never firing onend at all.
+      clearTimeout(this.sentenceTimer);
+      this.sentenceTimer = setTimeout(() => {
+        console.warn("[TTS] onend never fired — advancing queue");
+        finishSentence();
+      }, 4000 + sentence.length * 120);
+
+      this.currentUtterance = utterance;
       window.speechSynthesis.speak(utterance);
     } catch (err) {
       console.warn("[TTS] Speak failed:", err);
@@ -644,9 +813,28 @@ class TTSQueue {
   }
 
   interrupt(): void {
+    this.generation++;
     this.queue = [];
     this.isPlaying = false;
+    this.held = false;
+    this.pendingFinish = false;
+    this.onDoneCallback = null;
+    this.currentSentence = "";
+    this.currentUtterance = null;
+    clearTimeout(this.sentenceTimer);
     this.stopKeepAlive();
+    this.prefetched?.controller.abort();
+    this.prefetched = null;
+    this.currentRequest?.controller.abort();
+    this.currentRequest = null;
+    if (this.currentAudio) {
+      this.currentAudio.pause();
+      this.currentAudio = null;
+    }
+    if (this.currentAudioUrl) {
+      URL.revokeObjectURL(this.currentAudioUrl);
+      this.currentAudioUrl = null;
+    }
     if (this.currentSource) {
       try { this.currentSource.stop(); } catch { /* ignore — already stopped */ }
       this.currentSource = null;
@@ -657,10 +845,18 @@ class TTSQueue {
     if (typeof window !== "undefined" && "speechSynthesis" in window && window.speechSynthesis) {
       window.speechSynthesis.cancel();
     }
+    const cutOffWhileSpeaking = _state.voiceState === "speaking";
     transitionAudioState("interrupted");
     setTimeout(() => {
-      if (_state.voiceState === "interrupted") {
+      if (_state.voiceState !== "interrupted") return; // dismiss()/disable() already moved on
+      if (cutOffWhileSpeaking && _state.enabled) {
+        // The user talked over JARVIS — actually listen for what they say next.
+        // (Previously this only set the state to "listening" with no recogniser
+        // running, which left JARVIS deaf until a reload.)
         transitionAudioState("listening");
+        startCommandListening();
+      } else {
+        transitionAudioState("idle");
       }
     }, 800);
   }
@@ -703,11 +899,26 @@ const REVIEW_PATTERNS = [
 
 // ─── Intent Classifier ────────────────────────────────────────────────────────
 
+// "add/put/create … task/reminder/horizon/…" — checked before task queries so
+// "add a task for today" isn't mistaken for "what's on today".
+const TASK_CREATE_PATTERN =
+  /\b(add|create|make|put|set up|schedule|log|insert|new)\b[^.?!]{0,60}?\b(tasks?|reminders?|to-?dos?|to do( list)?|horizon|calendar|planner)\b/i;
+// Wake-word latency can clip the first words: "add a task to X" → "task to X".
+const CLIPPED_TASK_PATTERN = /^(a |the )?(task|reminder)s?\b/i;
+// Any time reference — quick captures with one become real tasks.
+const TIME_REFERENCE_PATTERN =
+  /\b(by|before|at|on|today|tomorrow|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next week|\d{1,2}(:\d{2})?\s*(am|pm))\b/i;
+
 export function classifyIntent(message: string): IntentType {
   const lower = message.toLowerCase();
 
-  // Quick capture — highest priority; bypasses Gemini entirely
-  if (QUICK_CAPTURE_PATTERNS.some((p) => p.test(message.trim()))) return "quick_capture";
+  // Quick capture — highest priority; bypasses Gemini entirely unless it has a
+  // time reference, in which case Gemini creates a properly dated task.
+  if (QUICK_CAPTURE_PATTERNS.some((p) => p.test(message.trim()))) {
+    return TIME_REFERENCE_PATTERN.test(message) ? "task_creation" : "quick_capture";
+  }
+
+  if (TASK_CREATE_PATTERN.test(message) || CLIPPED_TASK_PATTERN.test(message.trim())) return "task_creation";
 
   // Task query — expanded patterns for natural phrasing
   const taskQueryPatterns = [
@@ -726,7 +937,7 @@ export function classifyIntent(message: string): IntentType {
   if (taskQueryPatterns.some((p) => p.test(message))) return "task_query";
 
   if (
-    /remind me|add task|schedule|don't forget|dont forget|need to|set a reminder|create a task|appointment|deadline|due (on|by|at)|tomorrow at|today at|book a|meeting at/.test(lower)
+    /remind me|add task|schedule|don't forget|dont forget|need to|set a reminder|set an alarm|create a task|appointment|deadline|due (on|by|at)|tomorrow at|today at|tonight at|book a|meeting at|to horizon|in horizon/.test(lower)
   )
     return "task_creation";
 
@@ -1524,9 +1735,17 @@ CRITICAL TOOL FAILURE RULES:
   the action did not succeed. Never rewrite a failure as a success.
 - If create_task returns "TASK_CREATION_FAILED", say exactly: 
   "I wasn't able to add that task — [reason]. Please try again or add it manually in Horizon."
-- Never say "I've added" or "I've created" unless the tool returned "TASK_CREATED_SUCCESS".
+- Never say "I've added" or "I've created" unless the tool returned "TASK_CREATED_SUCCESS" (or "TASK_CREATED_PARTIAL" for the ones that worked).
+- If you did NOT call a tool this turn, never claim a task was added, saved or scheduled.
 - Never invent explanations like "Horizon automatically puts tasks on the 4th" — 
   if you don't know why something failed, say you don't know.
+
+TASK CREATION RULES:
+- Horizon is the user's task planner. "Add X", "put X in Horizon", "remind me to X", "add a task" all mean: call create_task.
+- Call create_task IMMEDIATELY. Do not ask follow-up questions before creating the task.
+- No date given → omit taskDate (defaults to today). No time given → omit taskTime. No priority given → omit it (defaults to medium). Never ask the user for a priority.
+- Several tasks in one message → call create_tasks_batch (or create_task once per task).
+- If the previous turn was about a task and the user replies with just a time, date or priority, create/update that task now.
 
 TOOL CALLING RULES — READ THIS CAREFULLY:
 - When you need to create a task, call the create_task FUNCTION — do NOT write "create_task(...)" as text.
@@ -1681,8 +1900,14 @@ async function startWakeWordDetection(): Promise<void> {
         return;
       }
       _lastWakeWordAt = now;
-      console.log(`[WakeWord] Detected: ${keyword} (score: ${score.toFixed(2)})`);
-      if (_state.voiceState === "idle" && _state.enabled) {
+      console.log(`[WakeWord] Detected: ${keyword} (score: ${score.toFixed(2)}) in state ${_state.voiceState}`);
+      if (!_state.enabled) return;
+
+      const state = _state.voiceState;
+      // "listening" with no recogniser running is a stuck state — recover it.
+      const stuckListening = state === "listening" && !recRef;
+      if (state === "idle" || state === "error" || state === "interrupted" || stuckListening) {
+        playWakeChime();
         transitionAudioState("listening");
         startCommandListening();
       }
@@ -1700,12 +1925,99 @@ async function startWakeWordDetection(): Promise<void> {
     _wakeWordActive = true;
     _wakeWordInitializing = false;
 
+    keepWakeWordAudioAlive(engine);
+
     console.log('[JARVIS] Wake word detection active — say "Hey Jarvis"');
   } catch (err) {
     _wakeWordInitializing = false;
     _wakeWordActive = false;
     _wakeWordEngine = null;
     console.warn("[WakeWord] Init failed — tap-to-talk still works:", (err as Error).message);
+    if (!_wakeWordFailureNotified) {
+      _wakeWordFailureNotified = true;
+      toast.warning("Wake word unavailable — tap the mic to talk to JARVIS", { duration: 4000 });
+    }
+  }
+}
+
+// The engine keeps its AudioContext/MediaStream private; reach in to keep them healthy.
+type WakeWordEngineInternals = {
+  _audioContext?: AudioContext | null;
+  _mediaStream?: MediaStream | null;
+};
+
+let _wakeWordFailureNotified = false;
+let _gestureResumeInstalled = false;
+
+/**
+ * Chrome's autoplay policy creates an AudioContext "suspended" when it is made
+ * without a user gesture (e.g. auto-start on page load). A suspended context
+ * delivers no audio to the worklet, so the wake word silently never fires.
+ * Resume it now, on the next user interaction, and whenever the tab regains
+ * focus. Also restart the engine if the mic track dies (device change, sleep).
+ */
+function keepWakeWordAudioAlive(engine: InstanceType<typeof WakeWordEngine>): void {
+  const internals = engine as unknown as WakeWordEngineInternals;
+
+  const resume = () => {
+    const ctx = (_wakeWordEngine as unknown as WakeWordEngineInternals | null)?._audioContext;
+    if (ctx && ctx.state === "suspended") {
+      ctx.resume().then(
+        () => console.log("[WakeWord] AudioContext resumed"),
+        () => null,
+      );
+    }
+  };
+  resume();
+  if (internals._audioContext?.state === "suspended") {
+    console.warn("[WakeWord] AudioContext suspended by autoplay policy — will resume on first click/keypress");
+  }
+
+  if (!_gestureResumeInstalled && typeof document !== "undefined") {
+    _gestureResumeInstalled = true;
+    for (const evt of ["pointerdown", "keydown", "touchstart"]) {
+      document.addEventListener(evt, resume, { capture: true, passive: true });
+    }
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") resume();
+    });
+  }
+
+  const track = internals._mediaStream?.getAudioTracks()[0];
+  if (track) {
+    track.onended = () => {
+      if (_wakeWordEngine !== engine) return;
+      console.warn("[WakeWord] Microphone track ended — restarting wake word engine");
+      void stopWakeWordDetection().then(() => {
+        if (_state.enabled) setTimeout(() => void startWakeWordDetection(), 1000);
+      });
+    };
+  }
+}
+
+/**
+ * Short rising two-tone chime on wake-word detection — tells the user JARVIS
+ * heard them and is now listening, so they don't start the command too early.
+ */
+function playWakeChime(): void {
+  try {
+    const ctx = (_wakeWordEngine as unknown as WakeWordEngineInternals | null)?._audioContext;
+    if (!ctx || ctx.state !== "running") return;
+    const t = ctx.currentTime;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.15, t + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+    gain.connect(ctx.destination);
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(660, t);
+    osc.frequency.setValueAtTime(990, t + 0.09);
+    osc.connect(gain);
+    osc.start(t);
+    osc.stop(t + 0.24);
+  } catch {
+    // Cosmetic only
   }
 }
 
@@ -1771,7 +2083,11 @@ let silenceTimer: ReturnType<typeof setTimeout> | undefined;
 let accumulatedFinalText = "";
 let latestInterimText = "";
 
-const SILENCE_THRESHOLD_MS = 1200;
+// Silence after a final result before the command is considered complete.
+// 1.2s cut people off mid-sentence ("add a task… to call mom").
+const SILENCE_THRESHOLD_MS = 1500;
+// Silence after only interim results — Chrome sometimes never finalises.
+const INTERIM_SILENCE_MS = 2500;
 const MAX_LISTEN_MS = 20000;
 
 function clearSilenceTimer() {
@@ -1779,7 +2095,7 @@ function clearSilenceTimer() {
   silenceTimer = undefined;
 }
 
-function armSilenceTimer() {
+function armSilenceTimer(delayMs = SILENCE_THRESHOLD_MS) {
   clearSilenceTimer();
   silenceTimer = setTimeout(() => {
     const fullText = [accumulatedFinalText, latestInterimText].filter(Boolean).join(" ").trim();
@@ -1799,7 +2115,7 @@ function armSilenceTimer() {
       transitionAudioState("idle");
       if (_state.enabled) void startWakeWordDetection();
     }
-  }, SILENCE_THRESHOLD_MS);
+  }, delayMs);
 }
 
 function startRecognition(): void {
@@ -1830,7 +2146,8 @@ function startRecognition(): void {
 
       // Interrupt detection while speaking
       if (_state.voiceState === "speaking") {
-        if (INTERRUPT_WORDS.some((w) => lower.includes(w))) {
+        const word = INTERRUPT_WORDS.find((w) => lower.includes(w));
+        if (word && !ttsQueue.currentSentence.toLowerCase().includes(word)) {
           ttsQueue.interrupt();
           const interruptMsg: JarvisMessage = {
             id: crypto.randomUUID(),
@@ -1856,6 +2173,7 @@ function startRecognition(): void {
       } else {
         latestInterimText = stripped;
         patch({ transcript: [accumulatedFinalText, latestInterimText].filter(Boolean).join(" ") });
+        armSilenceTimer(INTERIM_SILENCE_MS);
       }
       commandTimeout = setTimeout(() => {
         if (_state.voiceState === "listening") {
@@ -1877,6 +2195,9 @@ function startRecognition(): void {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   rec.onerror = (e: any) => {
     if (recRef !== rec) return;
+    if (e.error !== "no-speech" && e.error !== "aborted") {
+      console.warn("[JARVIS] Speech recognition error:", e.error);
+    }
     if (e.error === "not-allowed" || e.error === "service-not-allowed") {
       stopRecognition();
       patch({ isAwake: false });
@@ -1894,6 +2215,14 @@ function startRecognition(): void {
     if (fullText.length > 1) {
       handleCommand(stripWakeWord(fullText));
       return;
+    }
+    // Ended with nothing heard (Chrome's "no-speech" after ~8s). Go back to
+    // idle now — staying in "listening" made the wake word ignored until the
+    // 20s command timeout.
+    clearTimeout(commandTimeout);
+    if (_state.voiceState === "listening") {
+      patch({ isAwake: false, transcript: "" });
+      transitionAudioState("idle");
     }
     void startWakeWordDetection();
   };
@@ -2108,6 +2437,11 @@ const TOOLS_INTENTS: ReadonlySet<IntentType> = new Set([
   "memory_query",
 ]);
 
+const TASK_KEYWORD_PATTERN = /\b(tasks?|horizon|remind(er)?s?|to-?dos?|schedule)\b/i;
+// When the previous turn went through the tool path, its follow-up must too.
+const TOOL_FOLLOW_UP_WINDOW_MS = 90_000;
+let _lastToolTurnAt = 0;
+
 // ─── Main command handler ─────────────────────────────────────────────────────
 
 async function handleCommand(commandText: string) {
@@ -2194,30 +2528,14 @@ async function handleCommand(commandText: string) {
       }
 
       try {
-        await supabase.from("jarvis_memory").insert({
+        // Captures with a time reference are classified as task_creation and
+        // never reach this branch — Gemini creates those with a real date.
+        const { error: captureError } = await supabase.from("jarvis_memory").insert({
           content,
           memory_type: "general",
           source_session_id: sessionId || null,
         });
-
-        // If it contains a time reference, also create a task
-        const looksLikeTask =
-          /\b(by|before|at|on|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next week|tonight|\d+(am|pm))\b/i.test(
-            content,
-          );
-
-        if (looksLikeTask) {
-          await executeToolCall(
-            "create_task",
-            {
-              title: content,
-              taskDate: new Date().toLocaleDateString("en-CA"),
-              taskTime: "09:00",
-              priority: "medium",
-            },
-            sessionId,
-          );
-        }
+        if (captureError) throw captureError;
 
         const responseText = "Noted.";
         const jarvisMsg: JarvisMessage = {
@@ -2329,7 +2647,15 @@ async function handleCommand(commandText: string) {
       return;
     }
 
-    const needsTools = TOOLS_INTENTS.has(intent);
+    // Tools are needed for task/memory intents, for anything that mentions
+    // tasks at all, and for follow-ups to a tool turn ("make it 5pm", "high") —
+    // the streaming path has no tools, so routing those there silently drops
+    // the action.
+    const needsTools =
+      TOOLS_INTENTS.has(intent) ||
+      TASK_KEYWORD_PATTERN.test(commandText) ||
+      Date.now() - _lastToolTurnAt < TOOL_FOLLOW_UP_WINDOW_MS;
+    _lastToolTurnAt = needsTools ? Date.now() : 0;
     const intentHint = `\nThe user's message has been pre-classified as: ${intent}. Use this as a hint when deciding whether to call a tool.`;
     const fullSystemPrompt = systemPrompt + intentHint;
 
@@ -2376,6 +2702,9 @@ async function handleCommand(commandText: string) {
       // ── Streaming path (pure conversation) ────────────────────────────────────
       const chunker = new SentenceChunker();
       let hasStartedSpeaking = false;
+      // Keep the turn open while tokens are still arriving — otherwise a slow
+      // stream drains the queue mid-reply and the mic re-opens over JARVIS.
+      ttsQueue.hold();
 
       try {
         const stream = geminiAPI.streamGenerate(
@@ -2422,6 +2751,8 @@ async function handleCommand(commandText: string) {
             requiresDeepThinking(commandText) ? 1024 : 0,
           );
         }
+      } finally {
+        ttsQueue.release();
       }
 
       spokenViaStream = hasStartedSpeaking;
@@ -2582,6 +2913,11 @@ export const jarvis = {
       startCommandListening();
       return;
     }
+    // A click is a user gesture: good moment to (re)start a wake word engine
+    // that never started (mic permission was still "prompt" on page load).
+    if (_state.enabled && !_wakeWordActive && !_wakeWordInitializing) {
+      void startWakeWordDetection();
+    }
     stopRecognition();
     accumulatedFinalText = "";
     latestInterimText = "";
@@ -2622,6 +2958,7 @@ export const jarvis = {
 
   clearMessages() {
     conversationHistory = [];
+    _lastToolTurnAt = 0;
     patch({ messages: [] });
   },
 

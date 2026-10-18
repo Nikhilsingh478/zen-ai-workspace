@@ -31,6 +31,7 @@ interface GeminiRequest {
     maxOutputTokens?: number;
     thinkingConfig?: { thinkingBudget: number };
   };
+  toolConfig?: { functionCallingConfig: { mode: "AUTO" | "ANY" | "NONE" } };
   systemInstruction?: { parts: Array<{ text: string }> };
   cachedContent?: string;
 }
@@ -93,17 +94,18 @@ const JARVIS_TOOLS = [
   {
     name: "create_task",
     description:
-      "Creates a task in Horizon when the user mentions something they need to do, a reminder, a deadline, or any actionable item with a time component.",
+      "Creates a task in Horizon (the user's task planner). Call this IMMEDIATELY whenever the user wants something added to Horizon, their tasks, schedule, to-do list or reminders — " +
+      "do not ask follow-up questions first. Only the title is required; missing fields get sensible defaults.",
     parameters: {
       type: "object",
       properties: {
         title: { type: "string", description: "Clear, concise task title" },
-        taskDate: { type: "string", description: "Date in YYYY-MM-DD format" },
-        taskTime: { type: "string", description: "Time in HH:MM 24h format" },
-        priority: { type: "string", enum: ["low", "medium", "high"] },
+        taskDate: { type: "string", description: "Date in YYYY-MM-DD format. Omit to use today." },
+        taskTime: { type: "string", description: "Time in HH:MM 24h format. Omit if the user gave no time." },
+        priority: { type: "string", enum: ["low", "medium", "high"], description: "Omit to use medium." },
         description: { type: "string", description: "Optional extra context" },
       },
-      required: ["title", "taskDate", "taskTime", "priority"],
+      required: ["title"],
     },
   },
   {
@@ -218,12 +220,12 @@ const JARVIS_TOOLS = [
             type: "object",
             properties: {
               title: { type: "string" },
-              taskDate: { type: "string", description: "YYYY-MM-DD" },
-              taskTime: { type: "string", description: "HH:MM 24h format" },
-              priority: { type: "string", enum: ["low", "medium", "high"] },
+              taskDate: { type: "string", description: "YYYY-MM-DD. Omit to use today." },
+              taskTime: { type: "string", description: "HH:MM 24h format. Omit if not given." },
+              priority: { type: "string", enum: ["low", "medium", "high"], description: "Omit to use medium." },
               description: { type: "string" },
             },
-            required: ["title", "taskDate", "taskTime", "priority"],
+            required: ["title"],
           },
         },
       },
@@ -275,6 +277,72 @@ function formatTaskList(tasks: HorizonTask[]): string {
     .join("\n");
 }
 
+// ─── Task argument normalisation ──────────────────────────────────────────────
+// Gemini often omits optional fields or sends near-miss formats ("9:00",
+// "17:00:00", "5 pm", "tomorrow"). Normalise instead of rejecting so a spoken
+// "add X to Horizon" always lands as a task.
+
+type NormalizedTask = {
+  title: string;
+  taskDate: string;
+  taskTime: string;
+  priority: "low" | "medium" | "high";
+  description: string | null;
+};
+
+function localDateKey(d: Date): string {
+  return d.toLocaleDateString("en-CA"); // YYYY-MM-DD in local time
+}
+
+function normalizeTaskDate(raw: unknown): string | null {
+  const today = new Date();
+  if (raw == null || String(raw).trim() === "") return localDateKey(today);
+  const s = String(raw).trim().toLowerCase();
+  if (s === "today" || s === "tonight") return localDateKey(today);
+  if (s === "tomorrow") return localDateKey(new Date(today.getTime() + 86400000));
+  const m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+  return null;
+}
+
+function normalizeTaskTime(raw: unknown, taskDate: string): string | null {
+  if (raw == null || String(raw).trim() === "") {
+    // No time given: today → next full hour (so the reminder isn't already in
+    // the past); any other day → 09:00.
+    const now = new Date();
+    if (taskDate !== localDateKey(now)) return "09:00";
+    const nextHour = Math.min(now.getHours() + 1, 23);
+    return `${String(nextHour).padStart(2, "0")}:00`;
+  }
+  const s = String(raw).trim().toLowerCase().replace(/\./g, "");
+  const m = s.match(/^(\d{1,2})(?::(\d{2}))?(?::\d{2})?\s*(am|pm)?$/);
+  if (!m) return null;
+  let h = Number(m[1]);
+  const min = Number(m[2] ?? "0");
+  if (m[3] === "pm" && h < 12) h += 12;
+  if (m[3] === "am" && h === 12) h = 0;
+  if (h > 23 || min > 59) return null;
+  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+}
+
+function normalizePriority(raw: unknown): "low" | "medium" | "high" {
+  const s = String(raw ?? "").trim().toLowerCase();
+  if (["high", "highest", "urgent", "important", "critical"].includes(s)) return "high";
+  if (["low", "lowest", "minor"].includes(s)) return "low";
+  return "medium";
+}
+
+function normalizeTaskArgs(args: Record<string, unknown>): NormalizedTask | string {
+  const title = String(args.title ?? "").trim();
+  if (!title) return "TASK_CREATION_FAILED: No task title was given.";
+  const taskDate = normalizeTaskDate(args.taskDate ?? args.date);
+  if (!taskDate) return `TASK_CREATION_FAILED: I couldn't understand the date "${String(args.taskDate ?? args.date)}".`;
+  const taskTime = normalizeTaskTime(args.taskTime ?? args.time, taskDate);
+  if (!taskTime) return `TASK_CREATION_FAILED: I couldn't understand the time "${String(args.taskTime ?? args.time)}".`;
+  const description = args.description ? String(args.description).trim() || null : null;
+  return { title, taskDate, taskTime, priority: normalizePriority(args.priority), description };
+}
+
 export async function executeToolCall(
   toolName: string,
   toolArgs: Record<string, unknown>,
@@ -282,30 +350,9 @@ export async function executeToolCall(
 ): Promise<string> {
   try {
     if (toolName === "create_task") {
-      const { title, taskDate, taskTime, priority, description } = toolArgs as {
-        title: string;
-        taskDate: string;
-        taskTime: string;
-        priority: "low" | "medium" | "high";
-        description?: string;
-      };
-
-      // Validate inputs before attempting creation
-      if (!title || !taskDate || !taskTime || !priority) {
-        return "TASK_CREATION_FAILED: Missing required fields. Cannot create task.";
-      }
-
-      // Validate date format
-      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-      if (!dateRegex.test(taskDate)) {
-        return `TASK_CREATION_FAILED: Invalid date format "${taskDate}". Date must be YYYY-MM-DD.`;
-      }
-
-      // Validate time format
-      const timeRegex = /^\d{2}:\d{2}$/;
-      if (!timeRegex.test(taskTime)) {
-        return `TASK_CREATION_FAILED: Invalid time format "${taskTime}". Time must be HH:MM.`;
-      }
+      const normalized = normalizeTaskArgs(toolArgs);
+      if (typeof normalized === "string") return normalized;
+      const { title, taskDate, taskTime, priority, description } = normalized;
 
       try {
         const result = await addTaskDirect({
@@ -313,7 +360,8 @@ export async function executeToolCall(
           taskDate,
           taskTime,
           priority,
-          description: description ?? null,
+          description,
+          notificationEnabled: true,
         });
 
         if (!result) {
@@ -485,26 +533,31 @@ export async function executeToolCall(
     }
 
     if (toolName === "create_tasks_batch") {
-      const { tasks } = toolArgs as {
-        tasks: Array<{
-          title: string;
-          taskDate: string;
-          taskTime: string;
-          priority: "low" | "medium" | "high";
-          description?: string;
-        }>;
-      };
-
-      if (!tasks || tasks.length === 0) {
-        return "No tasks provided.";
+      const rawTasks = Array.isArray(toolArgs.tasks) ? (toolArgs.tasks as Record<string, unknown>[]) : [];
+      if (rawTasks.length === 0) {
+        return "TASK_CREATION_FAILED: No tasks provided.";
       }
 
-      const { created, failed } = await addJarvisTasksBatch(tasks);
-
-      if (failed === 0) {
-        return `Created ${created} task${created > 1 ? "s" : ""} successfully.`;
+      const valid: NormalizedTask[] = [];
+      let invalid = 0;
+      for (const raw of rawTasks) {
+        const n = normalizeTaskArgs(raw ?? {});
+        if (typeof n === "string") invalid++;
+        else valid.push(n);
       }
-      return `Created ${created} tasks. ${failed} failed — check your Horizon page.`;
+
+      const { created, failed } = valid.length
+        ? await addJarvisTasksBatch(valid.map((t) => ({ ...t, description: t.description ?? undefined })))
+        : { created: 0, failed: 0 };
+      const totalFailed = failed + invalid;
+
+      if (created === 0) {
+        return "TASK_CREATION_FAILED: None of the tasks could be saved to Horizon.";
+      }
+      if (totalFailed === 0) {
+        return `TASK_CREATED_SUCCESS: Created ${created} task${created > 1 ? "s" : ""}.`;
+      }
+      return `TASK_CREATED_PARTIAL: Created ${created} task${created > 1 ? "s" : ""}, but ${totalFailed} could not be saved — check your Horizon page.`;
     }
 
     if (toolName === "log_mood") {
@@ -561,6 +614,85 @@ export async function executeToolCall(
     console.error(`[executeToolCall] ${toolName} error:`, err);
     return `Tool execution failed: ${String(err)}`;
   }
+}
+
+// ─── Tool result → spoken text ────────────────────────────────────────────────
+
+function isToolFailure(result: string): boolean {
+  return /FAILED|^(Failed|Tool execution failed)/i.test(result);
+}
+
+function describeToolFailure(
+  failure: string,
+  results: Array<{ name: string; result: string }>,
+): string {
+  const reason = failure
+    .replace(/^TASK_CREATION_FAILED:\s*/i, "")
+    .replace(/\s*Task was NOT created\.?$/i, "")
+    .trim();
+  const createdCount = results.filter((r) => r.result.startsWith("TASK_CREATED_SUCCESS")).length;
+  const prefix = createdCount > 0 ? `I added ${createdCount} task${createdCount > 1 ? "s" : ""}, but one failed. ` : "";
+  if (/^TASK_CREATION_FAILED/i.test(failure)) {
+    return `${prefix}I wasn't able to add that task to Horizon — ${reason || "the save failed"}. Please try again or add it manually in Horizon.`;
+  }
+  return `${prefix}That didn't work — ${reason || "the action failed"}.`;
+}
+
+// Tools whose result is just "it worked" — confirmed without a second model call.
+const ACTION_TOOLS: ReadonlySet<string> = new Set([
+  "create_task",
+  "create_tasks_batch",
+  "save_memory",
+  "delete_task",
+  "update_task",
+  "update_user_context",
+  "log_mood",
+]);
+
+function spokenDate(dateKey: string): string {
+  const today = localDateKey(new Date());
+  const tomorrow = localDateKey(new Date(Date.now() + 86400000));
+  if (dateKey === today) return "today";
+  if (dateKey === tomorrow) return "tomorrow";
+  const [y, m, d] = dateKey.split("-").map(Number);
+  const date = new Date(y, m - 1, d);
+  const sameYear = y === new Date().getFullYear();
+  return date.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    ...(sameYear ? {} : { year: "numeric" }),
+  });
+}
+
+function spokenTime(time: string): string {
+  const [h, m] = time.split(":").map(Number);
+  const suffix = h >= 12 ? "PM" : "AM";
+  return `${h % 12 === 0 ? 12 : h % 12}:${String(m).padStart(2, "0")} ${suffix}`;
+}
+
+function describeToolSuccess(results: Array<{ name: string; result: string }>): string {
+  const created = results
+    .map(({ result }) => result.match(/^TASK_CREATED_SUCCESS: "(.+)" on (\S+) at (\d{1,2}:\d{2})/))
+    .filter((m): m is RegExpMatchArray => m !== null);
+  const others = results.filter(({ result }) => !/^TASK_CREATED_SUCCESS: "/.test(result));
+
+  const lines: string[] = [];
+  if (created.length === 1) {
+    const [, title, date, time] = created[0];
+    lines.push(`Done. I've added "${title}" to Horizon for ${spokenDate(date)} at ${spokenTime(time)}.`);
+  } else if (created.length > 1) {
+    lines.push(`Done. I've added ${created.length} tasks to Horizon: ${created.map((m) => `"${m[1]}"`).join(", ")}.`);
+  }
+  for (const { result } of others) {
+    lines.push(
+      result
+        .replace(/^TASK_CREATED_(SUCCESS|PARTIAL):\s*/, "Done. ")
+        .replace(/^CONTEXT_UPDATED:[^:]*:\s*/, "Noted — ")
+        .replace(/^Memory saved: "(.+)" \(type: \w+\)\.$/, "Got it, I'll remember that $1."),
+    );
+  }
+  return lines.join(" ");
 }
 
 // ─── Context builder ──────────────────────────────────────────────────────────
@@ -764,6 +896,7 @@ class GeminiAPI {
   private readonly primaryKey: string;
   private readonly fallbackKey: string;
   private readonly baseUrl = "https://generativelanguage.googleapis.com/v1beta/models";
+  private cachingUnavailable = false;
 
   constructor() {
     this.primaryKey = import.meta.env.VITE_GEMINI_API_KEY ?? "";
@@ -802,9 +935,11 @@ class GeminiAPI {
       }
 
       const data: GeminiResponse = await res.json();
-      const part = data.candidates?.[0]?.content?.parts?.[0];
-      const text = part && "text" in part ? part.text : "No response received.";
-      return { ok: true, text, status: 200 };
+      const text = (data.candidates?.[0]?.content?.parts ?? [])
+        .map((p) => ("text" in p ? p.text : ""))
+        .join("")
+        .trim();
+      return { ok: true, text: text || "No response received.", status: 200 };
     } catch (err) {
       console.error("[Gemini] Network error:", err);
       return {
@@ -822,8 +957,13 @@ class GeminiAPI {
     thinkingBudget = 0,
   ): Promise<{ ok: boolean; data: GeminiResponse | null; status: number }> {
     try {
-      // Inject context cache (removes systemInstruction if cache hit)
-      const cacheId = cacheManager.getCacheId();
+      // Inject context cache (removes systemInstruction if cache hit).
+      // The API rejects cachedContent combined with tools (400), and the cached
+      // prompt must match this request's prompt exactly — otherwise skip it.
+      const cacheId =
+        !body.tools && cacheManager.isValid(body.systemInstruction?.parts?.[0]?.text ?? "")
+          ? cacheManager.getCacheId()
+          : null;
       const cachedBody: GeminiRequest = cacheId
         ? { ...body, cachedContent: cacheId, systemInstruction: undefined }
         : body;
@@ -930,59 +1070,90 @@ class GeminiAPI {
     const tryRaw = async (key: string) =>
       this._rawRequest(key, body, undefined, thinkingBudget);
 
-    let raw = this.primaryKey ? await tryRaw(this.primaryKey) : null;
-    if (!raw?.ok && this.fallbackKey) {
-      console.warn("[Gemini] Primary key failed — retrying with fallback.");
-      raw = await tryRaw(this.fallbackKey);
+    const requestOnce = async () => {
+      let r = this.primaryKey ? await tryRaw(this.primaryKey) : null;
+      if (!r?.ok && this.fallbackKey) {
+        console.warn("[Gemini] Primary key failed — retrying with fallback.");
+        r = await tryRaw(this.fallbackKey);
+      }
+      return r;
+    };
+
+    let raw = await requestOnce();
+    // gemini-2.5-flash intermittently returns a candidate with no parts at all
+    // (finishReason STOP, zero output tokens). One retry almost always succeeds.
+    if (raw?.ok && !raw.data?.candidates?.[0]?.content?.parts?.length) {
+      console.warn("[Gemini] Empty response — retrying once.");
+      raw = await requestOnce();
     }
 
+    if (raw?.status === 429) {
+      return "Gemini is rate-limiting me right now, so I couldn't do that. Give it a few seconds and try again.";
+    }
     if (!raw?.ok || !raw.data) return "I encountered an error processing that request.";
 
     const candidate = raw.data.candidates?.[0];
     if (!candidate) return "No response received.";
 
-    const parts = candidate.content.parts ?? [];
+    const parts = candidate.content?.parts ?? [];
+    if (parts.length === 0) return "Sorry, I didn't catch a response there. Please say that again.";
 
-    const functionCallPart = parts.find((p) => "functionCall" in p);
+    const functionCallParts = parts.filter(
+      (p): p is { functionCall: { name: string; args: Record<string, unknown> } } =>
+        "functionCall" in p && Boolean(p.functionCall),
+    );
     const codeResultPart = parts.find(
       (p): p is { codeExecutionResult: { outcome: string; output: string } } =>
         "codeExecutionResult" in p,
     );
     const textPart = parts.find((p): p is { text: string } => "text" in p);
 
-    if (functionCallPart && "functionCall" in functionCallPart && functionCallPart.functionCall) {
-      const { name, args } = functionCallPart.functionCall;
-      const toolResult = await executeToolCall(name, args as Record<string, unknown>, sessionId);
+    if (functionCallParts.length > 0) {
+      // Execute every call — Gemini emits parallel calls for "add X and Y".
+      const results: Array<{ name: string; result: string }> = [];
+      for (const part of functionCallParts) {
+        const { name, args } = part.functionCall;
+        const result = await executeToolCall(name, (args ?? {}) as Record<string, unknown>, sessionId);
+        results.push({ name, result });
+      }
 
       // A tool failure is authoritative. Do not give the model a chance to turn
       // it into a friendly-but-false confirmation.
-      if (/FAILED|^(Failed|Tool execution failed)/i.test(toolResult)) return toolResult;
+      const failure = results.find((r) => isToolFailure(r.result));
+      if (failure) return describeToolFailure(failure.result, results);
 
-      const followUpHistory: GeminiMessage[] = [
-        ...messages,
-        { role: "model", parts: [functionCallPart] },
-        { role: "user", parts: [{ functionResponse: { name, response: { result: toolResult } } }] },
-      ];
+      // Pure actions (create task, save memory…) are confirmed locally — a
+      // second Gemini call only adds latency and doubles free-tier quota use.
+      // Read tools (get_today_tasks…) still need the model to speak the data.
+      if (results.every((r) => ACTION_TOOLS.has(r.name))) return describeToolSuccess(results);
 
       const followUpBody: GeminiRequest = {
-        contents: followUpHistory,
+        contents: [
+          ...messages,
+          { role: "model", parts: functionCallParts },
+          {
+            role: "user",
+            parts: results.map(({ name, result }) => ({
+              functionResponse: { name, response: { result } },
+            })),
+          },
+        ],
+        // Tools must still be declared for the history's functionCall turn,
+        // but the model may not call another one — it only confirms.
+        tools,
+        toolConfig: { functionCallingConfig: { mode: "NONE" } },
         systemInstruction: { parts: [{ text: systemPrompt }] },
-        generationConfig: { temperature: 0.7, topK: 40, topP: 0.95, maxOutputTokens: 8192 },
+        generationConfig: { temperature: 0.7, topK: 40, topP: 0.95, maxOutputTokens: 1024 },
       };
 
-      if (this.primaryKey) {
-        const finalResult = await this._request(this.primaryKey, followUpBody);
-        if (finalResult.ok) return finalResult.text;
-        if (this.fallbackKey) {
-          const fb = await this._request(this.fallbackKey, followUpBody);
-          return fb.text;
-        }
-      } else if (this.fallbackKey) {
-        const finalResult = await this._request(this.fallbackKey, followUpBody);
-        return finalResult.text;
+      for (const key of [this.primaryKey, this.fallbackKey]) {
+        if (!key) continue;
+        const finalResult = await this._request(key, followUpBody);
+        if (finalResult.ok && finalResult.text !== "No response received.") return finalResult.text;
       }
 
-      return toolResult;
+      // The action already succeeded — never report an API hiccup as an error.
+      return describeToolSuccess(results);
     }
 
     // Code execution result — append output to any text response
@@ -1028,8 +1199,10 @@ class GeminiAPI {
             `[Gemini] Text-fallback: intercepted "${toolName}()" written as plain text — executing now.`,
           );
           const toolResult = await executeToolCall(toolName, rawArgs, sessionId);
+          const results = [{ name: toolName, result: toolResult }];
 
-          if (/FAILED|^(Failed|Tool execution failed)/i.test(toolResult)) return toolResult;
+          if (isToolFailure(toolResult)) return describeToolFailure(toolResult, results);
+          if (ACTION_TOOLS.has(toolName)) return describeToolSuccess(results);
 
           // Give model one shot to generate a natural confirmation
           const followUpHistory: GeminiMessage[] = [
@@ -1045,9 +1218,9 @@ class GeminiAPI {
           const key = this.primaryKey || this.fallbackKey;
           if (key) {
             const finalResult = await this._request(key, followUpBody);
-            if (finalResult.ok) return finalResult.text;
+            if (finalResult.ok && finalResult.text !== "No response received.") return finalResult.text;
           }
-          return toolResult;
+          return describeToolSuccess(results);
         }
       }
       return text;
@@ -1224,6 +1397,7 @@ class GeminiAPI {
   // ─── Context caching ─────────────────────────────────────────────────────────
 
   async initContextCache(systemPrompt: string): Promise<void> {
+    if (this.cachingUnavailable) return;
     if (cacheManager.isValid(systemPrompt)) return;
     const apiKey = this.primaryKey;
     if (!apiKey) return;
@@ -1240,7 +1414,14 @@ class GeminiAPI {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (!response.ok) return;
+      if (!response.ok) {
+        // Free-tier keys have a cache quota of 0 (429), and short prompts are
+        // below the minimum size (400). Don't spend a request on every mount.
+        if (response.status === 429 || response.status === 400 || response.status === 403) {
+          this.cachingUnavailable = true;
+        }
+        return;
+      }
       const data = (await response.json()) as { name?: string };
       const cacheId = data.name ?? null;
       if (cacheId) {

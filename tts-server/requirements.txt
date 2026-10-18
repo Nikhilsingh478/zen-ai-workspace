@@ -1,0 +1,6 @@
+# Install PyTorch with CUDA FIRST (chatterbox-tts pins torch==2.6.0):
+#   pip install torch==2.6.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu124
+# CPU-only machines can use the default PyPI wheels instead.
+chatterbox-tts==0.1.7
+fastapi==0.146.0
+uvicorn[standard]==0.54.0

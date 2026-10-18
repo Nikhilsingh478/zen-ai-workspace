@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import ExtendedWindow from "@/components/jarvis/extended-window";
 import { cn } from "@/lib/utils";
-import { useJarvis, jarvis, initJarvisSession, endSession, getSessions, deleteSession, getAllMemories, deleteMemory, deliverMorningBriefing, stopWakeWordDetection, getConversationMode, getConversationTurnCount, forceEndConversation, loadSessionMessages } from "@/lib/jarvis";
+import { useJarvis, jarvis, initJarvisSession, endSession, getSessions, deleteSession, getAllMemories, deleteMemory, deliverMorningBriefing, getConversationMode, getConversationTurnCount, forceEndConversation, loadSessionMessages } from "@/lib/jarvis";
 import type { DisplayMessage } from "@/components/jarvis/extended-window";
 import type { JarvisSession, Memory } from "@/lib/jarvis";
 import type { SearchSource, SearchType } from "@/lib/gemini";
@@ -1088,7 +1088,8 @@ function JarvisPage() {
       if (sessionIdRef.current) {
         endSession(sessionIdRef.current);
       }
-      void stopWakeWordDetection();
+      // Wake word is intentionally left running: JARVIS is global (floating
+      // orb on every page) and nothing would restart it after leaving /jarvis.
     };
   }, []);
 

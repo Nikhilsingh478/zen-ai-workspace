@@ -12,7 +12,18 @@ description: Key invariants and patterns across gemini.ts / jarvis.ts / jarvis.t
 - `addProactiveMessage` must NEVER call `ttsQueue.enqueue` — visual-only injection.
 - `addTasksBatch` (bulk insert, returns `number`) already exists in horizon.ts for Timeline. `addJarvisTasksBatch` (Promise.allSettled, returns `{ created, failed }`) is the JARVIS-specific version — don't confuse them.
 
+## Task creation
+
+- `create_task` / `create_tasks_batch` only require `title`; `normalizeTaskArgs` in `gemini.ts` fills/normalises date, time ("5pm", "9:00"), priority. Don't re-add required fields — Gemini then asks "what priority?" instead of calling the tool.
+- The streaming path in `handleCommand` has NO tools. Anything task-related must route to `generateWithTools`: `TOOLS_INTENTS`, `TASK_KEYWORD_PATTERN`, or a follow-up within `TOOL_FOLLOW_UP_WINDOW_MS` of a tool turn.
+- `ACTION_TOOLS` results are confirmed locally via `describeToolSuccess` (no second Gemini call — free-tier quota is ~10 RPM). Read tools still get a follow-up call with `toolConfig` mode NONE.
+- Context caching never works with `tools` (API 400) and is unavailable on free-tier keys.
+
 ## TTS / audio state
+
+- `ttsQueue.hold()` / `release()` wrap streaming so a drained queue mid-stream doesn't end the turn.
+- `ttsQueue.interrupt()` owns the interrupted → listening transition and actually starts command listening — don't add extra timers in callers.
+- Desktop wake word: the engine's AudioContext can start suspended (autoplay policy); `keepWakeWordAudioAlive` resumes it on gestures/visibility. Never stop the wake word on `/jarvis` unmount — JARVIS is global.
 
 - Every `handleCommand` branch must `transitionAudioState` on success and failure paths — leaving it in `processing` hangs the UI.
 - `ttsQueue.enqueue` callback (2nd arg) is called AFTER speech finishes — use it to restart wake word detection.
