@@ -34,295 +34,236 @@ export const Route = createRootRoute({
 
 // ─── Splashscreen ─────────────────────────────────────────────────────────────
 
-// ─── Cinematic Loader ─────────────────────────────────────────────────────────
+// ─── High-Concept Architectural Loader ────────────────────────────────────────
 
-const LOADER_DURATION = 2200; // ms total before onDone fires
+const LOADER_DURATION = 1350; // Snappy, intentional 1.35s duration
 
 function Splash({ onDone }: { onDone: () => void }) {
+  const [progress, setProgress] = useState(0);
+
   useEffect(() => {
-    const id = setTimeout(onDone, LOADER_DURATION);
-    return () => clearTimeout(id);
+    const startTime = performance.now();
+    const duration = LOADER_DURATION - 150; // complete progress just before exit
+
+    let frameId: number;
+    const updateProgress = (now: number) => {
+      const elapsed = now - startTime;
+      const t = Math.min(1, elapsed / duration);
+      // Ease out expo: 1 - 2^(-10t)
+      const eased = t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
+      setProgress(Math.round(eased * 100));
+
+      if (t < 1) {
+        frameId = requestAnimationFrame(updateProgress);
+      }
+    };
+    frameId = requestAnimationFrame(updateProgress);
+
+    const doneTimer = setTimeout(onDone, LOADER_DURATION);
+    return () => {
+      cancelAnimationFrame(frameId);
+      clearTimeout(doneTimer);
+    };
   }, [onDone]);
+
+  const stageText =
+    progress < 35
+      ? "INITIALIZING KERNEL"
+      : progress < 75
+        ? "CONSTRUCTING MATRIX"
+        : "SYSTEM READY";
 
   return (
     <motion.div
       initial={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-      className="fixed inset-0 z-[100] flex flex-col items-center justify-center overflow-hidden"
-      style={{ background: "oklch(0.10 0.02 250)" }}
+      exit={{
+        opacity: 0,
+        scale: 1.03,
+        filter: "blur(12px)",
+        transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] },
+      }}
+      className="fixed inset-0 z-[100] flex flex-col items-center justify-center overflow-hidden select-none"
+      style={{ background: "#050608" }}
     >
-      {/* ─── Deep space ambient noise texture ─── */}
+      {/* ── Subtle architectural radial depth ── */}
       <div
         className="pointer-events-none absolute inset-0"
         style={{
-          background: `
-            radial-gradient(ellipse 70% 55% at 50% 40%, rgba(56,189,248,0.055) 0%, transparent 65%),
-            radial-gradient(ellipse 40% 30% at 30% 70%, rgba(99,102,241,0.04) 0%, transparent 60%),
-            radial-gradient(ellipse 50% 40% at 70% 20%, rgba(56,189,248,0.03) 0%, transparent 60%)
-          `,
+          background:
+            "radial-gradient(circle at 50% 48%, rgba(56,189,248,0.08) 0%, rgba(99,102,241,0.03) 38%, transparent 70%)",
         }}
       />
 
-      {/* ─── Breathing aurora pulse ─── */}
+      {/* ── Microscopic blueprint grid dots ── */}
       <div
-        className="pointer-events-none absolute inset-0"
-        style={{ animation: "aurora-breathe 3.5s ease-in-out infinite" }}
-      >
-        <div
-          style={{
-            position: "absolute",
-            top: "30%",
-            left: "50%",
-            transform: "translateX(-50%)",
-            width: 380,
-            height: 180,
-            borderRadius: "50%",
-            background: "radial-gradient(ellipse, rgba(56,189,248,0.07) 0%, transparent 70%)",
-            filter: "blur(32px)",
-          }}
-        />
+        className="pointer-events-none absolute inset-0 opacity-[0.035]"
+        style={{
+          backgroundImage: "radial-gradient(rgba(255,255,255,0.7) 1px, transparent 1px)",
+          backgroundSize: "28px 28px",
+        }}
+      />
+
+      {/* ── Viewport Framing Brackets (High-End Swiss / HUD) ── */}
+      <div className="pointer-events-none absolute inset-6 md:inset-10 flex flex-col justify-between">
+        {/* Top bar */}
+        <div className="flex items-center justify-between text-[10px] font-mono tracking-[0.2em] text-white/35 uppercase">
+          <div className="flex items-center gap-2">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
+            <span>AI.OS // CORE v4.2</span>
+          </div>
+          <div className="tabular-nums font-semibold text-white/50">
+            {progress.toString().padStart(3, "0")}%
+          </div>
+        </div>
+
+        {/* Bottom bar */}
+        <div className="flex items-center justify-between text-[10px] font-mono tracking-[0.2em] text-white/30 uppercase">
+          <span>SYS.LATENCY // 12MS</span>
+          <span>INITIALIZED</span>
+        </div>
       </div>
 
-      {/* ─── Orbital ring system ─── */}
-      <motion.div
-        initial={{ opacity: 0, scale: 0.7 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1], delay: 0.05 }}
-        className="relative mb-8"
-        style={{ width: 108, height: 108 }}
-      >
-        {/* Outer glow disc */}
-        <div
-          className="absolute inset-0 rounded-full"
-          style={{
-            background: "radial-gradient(circle, rgba(56,189,248,0.08) 0%, transparent 70%)",
-            animation: "glow-pulse 2.4s ease-in-out infinite",
-          }}
-        />
-
-        {/* SVG orbital rings */}
-        <svg
-          width="108"
-          height="108"
-          viewBox="0 0 108 108"
-          fill="none"
-          className="absolute inset-0"
-          style={{ transform: "rotate(-90deg)" }}
-        >
-          {/* Outer static ring */}
-          <circle
-            cx="54" cy="54" r="50"
-            stroke="rgba(56,189,248,0.07)"
-            strokeWidth="1"
-          />
-          {/* Animated arc — draws itself in */}
-          <circle
-            cx="54" cy="54" r="50"
-            stroke="url(#arcGrad)"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeDasharray="314"
-            strokeDashoffset="314"
-            style={{ animation: "arc-draw 1.4s cubic-bezier(0.22,1,0.36,1) 0.15s forwards" }}
-          />
-          {/* Inner ring */}
-          <circle
-            cx="54" cy="54" r="40"
-            stroke="rgba(56,189,248,0.05)"
-            strokeWidth="0.75"
-          />
-          <circle
-            cx="54" cy="54" r="40"
-            stroke="rgba(56,189,248,0.18)"
-            strokeWidth="0.75"
-            strokeLinecap="round"
-            strokeDasharray="251"
-            strokeDashoffset="251"
-            style={{ animation: "arc-draw 1.2s cubic-bezier(0.22,1,0.36,1) 0.3s forwards" }}
-          />
-          <defs>
-            <linearGradient id="arcGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="rgba(56,189,248,0)" />
-              <stop offset="60%" stopColor="rgba(56,189,248,0.85)" />
-              <stop offset="100%" stopColor="rgba(147,197,253,1)" />
-            </linearGradient>
-          </defs>
-        </svg>
-
-        {/* ─── Orbital nodes (4 pulsing dots) ─── */}
-        {[0, 90, 180, 270].map((deg, i) => (
-          <div
-            key={deg}
-            className="absolute"
+      {/* ── Center Stage: Kinetic Matrix Monolith ── */}
+      <div className="relative z-10 flex flex-col items-center">
+        {/* Monolith 4-Quadrant Emblem */}
+        <div className="relative mb-8 flex items-center justify-center">
+          {/* Ambient core glow */}
+          <motion.div
+            initial={{ scale: 0.6, opacity: 0 }}
+            animate={{ scale: [0.9, 1.15, 1], opacity: [0.3, 0.7, 0.4] }}
+            transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+            className="absolute h-28 w-28 rounded-full pointer-events-none"
             style={{
-              width: 5,
-              height: 5,
-              top: "50%",
-              left: "50%",
-              marginTop: -2.5,
-              marginLeft: -2.5,
-              transform: `rotate(${deg}deg) translateX(50px)`,
-              animation: `node-pulse 1.8s ease-in-out ${0.1 * i + 0.4}s infinite`,
+              background: "radial-gradient(circle, rgba(56,189,248,0.2) 0%, rgba(99,102,241,0.06) 50%, transparent 75%)",
+              filter: "blur(16px)",
             }}
-          >
-            <div
+          />
+
+          {/* 2x2 Precision Modular Prisms */}
+          <div className="relative grid grid-cols-2 gap-1.5 p-1">
+            {/* Quadrant 1: Top-Left */}
+            <motion.div
+              initial={{ opacity: 0, x: -16, y: -16, rotate: -8 }}
+              animate={{ opacity: 1, x: 0, y: 0, rotate: 0 }}
+              transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1], delay: 0.05 }}
+              className="h-7 w-7 rounded-lg relative overflow-hidden"
               style={{
-                width: 5,
-                height: 5,
-                borderRadius: "50%",
-                background: i === 0 ? "rgba(147,197,253,0.95)" : "rgba(56,189,248,0.5)",
-                boxShadow: i === 0 ? "0 0 8px rgba(147,197,253,0.8)" : "0 0 4px rgba(56,189,248,0.4)",
+                background: "linear-gradient(135deg, rgba(255,255,255,0.12) 0%, rgba(56,189,248,0.08) 100%)",
+                border: "1px solid rgba(255,255,255,0.18)",
+                boxShadow: "0 4px 16px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.2)",
+              }}
+            >
+              <div
+                className="absolute inset-0 opacity-40"
+                style={{
+                  background: "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.5) 50%, transparent 100%)",
+                  animation: "facet-sweep 1.6s ease-in-out infinite",
+                }}
+              />
+            </motion.div>
+
+            {/* Quadrant 2: Top-Right */}
+            <motion.div
+              initial={{ opacity: 0, x: 16, y: -16, rotate: 8 }}
+              animate={{ opacity: 1, x: 0, y: 0, rotate: 0 }}
+              transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1], delay: 0.1 }}
+              className="h-7 w-7 rounded-lg relative overflow-hidden"
+              style={{
+                background: "linear-gradient(135deg, rgba(56,189,248,0.14) 0%, rgba(99,102,241,0.06) 100%)",
+                border: "1px solid rgba(125,211,252,0.25)",
+                boxShadow: "0 4px 16px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.15)",
+              }}
+            />
+
+            {/* Quadrant 3: Bottom-Left */}
+            <motion.div
+              initial={{ opacity: 0, x: -16, y: 16, rotate: 8 }}
+              animate={{ opacity: 1, x: 0, y: 0, rotate: 0 }}
+              transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1], delay: 0.15 }}
+              className="h-7 w-7 rounded-lg relative overflow-hidden"
+              style={{
+                background: "linear-gradient(135deg, rgba(99,102,241,0.12) 0%, rgba(56,189,248,0.04) 100%)",
+                border: "1px solid rgba(147,197,253,0.18)",
+                boxShadow: "0 4px 16px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.12)",
+              }}
+            />
+
+            {/* Quadrant 4: Bottom-Right */}
+            <motion.div
+              initial={{ opacity: 0, x: 16, y: 16, rotate: -8 }}
+              animate={{ opacity: 1, x: 0, y: 0, rotate: 0 }}
+              transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1], delay: 0.2 }}
+              className="h-7 w-7 rounded-lg relative overflow-hidden"
+              style={{
+                background: "linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(56,189,248,0.16) 100%)",
+                border: "1px solid rgba(255,255,255,0.22)",
+                boxShadow: "0 4px 16px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.18)",
+              }}
+            />
+
+            {/* Center Nexus: Optical Diamond Aperture */}
+            <motion.div
+              initial={{ scale: 0, rotate: 0 }}
+              animate={{ scale: [0, 1.2, 1], rotate: 45 }}
+              transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1], delay: 0.35 }}
+              className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-[2px] bg-white shadow-[0_0_12px_rgba(255,255,255,0.9),0_0_24px_rgba(56,189,248,0.8)] z-10"
+            />
+          </div>
+        </div>
+
+        {/* ── Typographic Stagger Reveal ── */}
+        <div className="flex flex-col items-center overflow-hidden mb-5">
+          <div className="overflow-hidden">
+            <motion.h1
+              initial={{ y: "100%", opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1], delay: 0.25 }}
+              className="text-[15px] font-semibold tracking-[0.34em] text-white/95 uppercase font-sans"
+              style={{ textShadow: "0 2px 10px rgba(0,0,0,0.5)" }}
+            >
+              AI MATRIX
+            </motion.h1>
+          </div>
+
+          <motion.p
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1], delay: 0.45 }}
+            className="text-[10px] tracking-[0.22em] text-sky-400/65 font-mono uppercase mt-1.5"
+          >
+            Neural Operating System
+          </motion.p>
+        </div>
+
+        {/* ── Precision Status & Progress Track ── */}
+        <div className="flex flex-col items-center gap-2 w-48">
+          <div className="flex items-center justify-between w-full text-[9px] font-mono tracking-[0.2em] text-white/40 uppercase">
+            <span>{stageText}</span>
+            <span className="tabular-nums text-white/60">{progress}%</span>
+          </div>
+
+          {/* Hairline track */}
+          <div className="w-full h-[1.5px] bg-white/[0.08] rounded-full overflow-hidden relative">
+            <motion.div
+              className="h-full rounded-full"
+              style={{
+                width: `${progress}%`,
+                background: "linear-gradient(90deg, rgba(56,189,248,0.3) 0%, #38bdf8 80%, #ffffff 100%)",
+                boxShadow: "0 0 8px rgba(56,189,248,0.8)",
               }}
             />
           </div>
-        ))}
+        </div>
+      </div>
 
-        {/* ─── Center logo ─── */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.5 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1], delay: 0.5 }}
-          className="absolute inset-0 flex items-center justify-center"
-        >
-          <div
-            style={{
-              width: 46,
-              height: 46,
-              borderRadius: 14,
-              background: "rgba(255,255,255,0.04)",
-              border: "1px solid rgba(56,189,248,0.18)",
-              boxShadow: "0 0 20px rgba(56,189,248,0.12), inset 0 1px 0 rgba(255,255,255,0.06)",
-              display: "grid",
-              placeItems: "center",
-            }}
-          >
-            <AIMetricsIcon />
-          </div>
-        </motion.div>
-      </motion.div>
-
-      {/* ─── Wordmark + tagline ─── */}
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1], delay: 0.75 }}
-        className="text-center"
-        style={{ overflow: "hidden" }}
-      >
-        <p
-          style={{
-            fontSize: 18,
-            fontWeight: 600,
-            letterSpacing: "-0.02em",
-            color: "rgba(255,255,255,0.92)",
-            lineHeight: 1,
-            position: "relative",
-            display: "inline-block",
-          }}
-        >
-          AI Metrics
-          {/* Shimmer sweep */}
-          <span
-            style={{
-              position: "absolute",
-              inset: 0,
-              background: "linear-gradient(90deg, transparent 0%, rgba(147,197,253,0.5) 50%, transparent 100%)",
-              backgroundSize: "200% 100%",
-              animation: "shimmer-sweep 1.6s ease 0.9s forwards",
-              opacity: 0,
-              mixBlendMode: "screen",
-            }}
-          />
-        </p>
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.4, delay: 1.1 }}
-          style={{
-            fontSize: 11.5,
-            color: "rgba(56,189,248,0.45)",
-            marginTop: 6,
-            letterSpacing: "0.14em",
-            textTransform: "uppercase",
-            fontWeight: 400,
-          }}
-        >
-          Personal AI operating system
-        </motion.p>
-      </motion.div>
-
-      {/* ─── Precision progress line ─── */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.2, delay: 1.0 }}
-        style={{
-          position: "absolute",
-          bottom: 48,
-          left: "50%",
-          transform: "translateX(-50%)",
-          width: 100,
-          height: 1,
-          background: "rgba(56,189,248,0.08)",
-          borderRadius: 1,
-          overflow: "hidden",
-        }}
-      >
-        <div
-          style={{
-            height: "100%",
-            width: "100%",
-            background: "linear-gradient(90deg, transparent, rgba(147,197,253,0.7), rgba(56,189,248,0.5))",
-            borderRadius: 1,
-            transformOrigin: "left center",
-            animation: "progress-fill 1.0s cubic-bezier(0.22,1,0.36,1) 1.05s both",
-          }}
-        />
-      </motion.div>
-
-      {/* ─── Keyframe styles ─── */}
+      {/* Keyframe helpers */}
       <style>{`
-        @keyframes arc-draw {
-          to { stroke-dashoffset: 0; }
-        }
-        @keyframes glow-pulse {
-          0%, 100% { opacity: 0.6; transform: scale(1); }
-          50% { opacity: 1; transform: scale(1.12); }
-        }
-        @keyframes node-pulse {
-          0%, 100% { opacity: 0.45; transform: rotate(var(--r, 0deg)) translateX(50px) scale(1); }
-          50% { opacity: 1; transform: rotate(var(--r, 0deg)) translateX(50px) scale(1.5); }
-        }
-        @keyframes aurora-breathe {
-          0%, 100% { opacity: 0.6; }
-          50% { opacity: 1; }
-        }
-        @keyframes shimmer-sweep {
-          0% { opacity: 1; background-position: -200% 0; }
-          100% { opacity: 0; background-position: 200% 0; }
-        }
-        @keyframes progress-fill {
-          from { transform: scaleX(0); }
-          to { transform: scaleX(1); }
+        @keyframes facet-sweep {
+          0% { transform: translateX(-150%) skewX(-20deg); }
+          50%, 100% { transform: translateX(200%) skewX(-20deg); }
         }
       `}</style>
     </motion.div>
-  );
-}
-
-function AIMetricsIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
-      {/* Top-left — brightest */}
-      <rect x="2" y="2" width="8" height="8" rx="2" fill="rgba(255,255,255,0.65)" />
-      {/* Top-right — dim */}
-      <rect x="12" y="2" width="8" height="8" rx="2" fill="rgba(56,189,248,0.32)" />
-      {/* Bottom-left — dim */}
-      <rect x="2" y="12" width="8" height="8" rx="2" fill="rgba(56,189,248,0.28)" />
-      {/* Bottom-right — medium */}
-      <rect x="12" y="12" width="8" height="8" rx="2" fill="rgba(147,197,253,0.48)" />
-    </svg>
   );
 }
 
