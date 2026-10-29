@@ -17,7 +17,7 @@
 
 // ─── PWA Cache ────────────────────────────────────────────────────────────────
 
-const CACHE_NAME = "ai-metrics-v4";
+const CACHE_NAME = "ai-metrics-v5";
 const PRECACHE = ["/", "/manifest.json", "/icon.svg", "/badge.svg"];
 
 self.addEventListener("install", (event) => {

@@ -1023,7 +1023,7 @@ class GeminiAPI {
   private async _request(
     apiKey: string,
     body: GeminiRequest,
-  ): Promise<{ ok: boolean; text: string; status: number }> {
+  ): Promise<{ ok: boolean; text: string; status: number; errorMsg?: string }> {
     try {
       const res = await fetch(
         `${this.baseUrl}/gemini-2.5-flash:generateContent?key=${apiKey}`,
@@ -1035,14 +1035,18 @@ class GeminiAPI {
       );
 
       if (!res.ok) {
-        const err = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
-        console.error("[Gemini] HTTP error:", err);
+        const err = (await res.json().catch(() => ({}))) as {
+          error?: { message?: string; status?: string; code?: number };
+        };
+        const errMsg = err.error?.message || (typeof err === "object" ? JSON.stringify(err) : String(err));
+        console.error(`[Gemini] HTTP error ${res.status} (${res.statusText}): ${errMsg}`);
         return {
           ok: false,
           text:
             HTTP_ERRORS[res.status] ??
-            `API error (${res.status}): ${err.error?.message ?? "Unknown error"}`,
+            `API error (${res.status}): ${errMsg}`,
           status: res.status,
+          errorMsg: errMsg,
         };
       }
 
@@ -1067,7 +1071,7 @@ class GeminiAPI {
     body: GeminiRequest,
     signal?: AbortSignal,
     thinkingBudget = 0,
-  ): Promise<{ ok: boolean; data: GeminiResponse | null; status: number }> {
+  ): Promise<{ ok: boolean; data: GeminiResponse | null; status: number; errorMsg?: string }> {
     try {
       // Inject context cache (removes systemInstruction if cache hit).
       // The API rejects cachedContent combined with tools (400), and the cached
@@ -1103,16 +1107,19 @@ class GeminiAPI {
       );
 
       if (!res.ok) {
-        const err = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
-        console.error("[Gemini] HTTP error:", err);
-        return { ok: false, data: null, status: res.status };
+        const err = (await res.json().catch(() => ({}))) as {
+          error?: { message?: string; status?: string; code?: number };
+        };
+        const errMsg = err.error?.message || (typeof err === "object" ? JSON.stringify(err) : String(err));
+        console.error(`[Gemini] HTTP error ${res.status} (${res.statusText}): ${errMsg}`);
+        return { ok: false, data: null, status: res.status, errorMsg: errMsg };
       }
 
       const data: GeminiResponse = await res.json();
       return { ok: true, data, status: 200 };
     } catch (err) {
       console.error("[Gemini] Network error:", err);
-      return { ok: false, data: null, status: 0 };
+      return { ok: false, data: null, status: 0, errorMsg: (err as Error)?.message ?? "Network error" };
     }
   }
 
@@ -1202,7 +1209,12 @@ class GeminiAPI {
     if (raw?.status === 429) {
       return "Gemini is rate-limiting me right now, so I couldn't do that. Give it a few seconds and try again.";
     }
-    if (!raw?.ok || !raw.data) return "I encountered an error processing that request.";
+    if (raw?.status === 400 || raw?.status === 403) {
+      return `Gemini API error (${raw.status}): ${raw.errorMsg || "Invalid API key or permission issue"}.`;
+    }
+    if (!raw?.ok || !raw.data) {
+      return `I encountered an error communicating with Gemini${raw?.errorMsg ? `: ${raw.errorMsg}` : ""}.`;
+    }
 
     const candidate = raw.data.candidates?.[0];
     if (!candidate) return "No response received.";
@@ -1463,8 +1475,13 @@ class GeminiAPI {
     });
 
     if (!response.ok) {
+      const errJson = (await response.json().catch(() => ({}))) as {
+        error?: { message?: string; status?: string; code?: number };
+      };
+      const errMsg = errJson.error?.message || `HTTP ${response.status}`;
+      console.error(`[Gemini Streaming] HTTP error ${response.status}: ${errMsg}`);
       const err = Object.assign(
-        new Error(`Gemini streaming error: ${response.status}`),
+        new Error(`Gemini streaming error (${response.status}): ${errMsg}`),
         { status: response.status },
       );
       throw err;
