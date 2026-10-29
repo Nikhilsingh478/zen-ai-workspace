@@ -491,6 +491,10 @@ export async function executeToolCall(
           return `TASK_CREATION_FAILED: Task insert appeared to succeed but verification read failed. Task may NOT have been created. Error: ${verifyError?.message ?? "unknown"}`;
         }
 
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("horizon:tasks-changed"));
+        }
+
         return `TASK_CREATED_SUCCESS: "${verification.title}" on ${verification.task_date} at ${verification.task_time} (${verification.priority} priority). ID: ${verification.id}`;
       } catch (err) {
         const message = err instanceof Error ? err.message : "unknown error";
@@ -599,6 +603,9 @@ export async function executeToolCall(
       const task_id = String(toolArgs.task_id ?? "");
       const { error } = await supabase.from("horizon_tasks").delete().eq("id", task_id);
       if (error) return `Failed to delete task: ${error.message}`;
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("horizon:tasks-changed"));
+      }
       return `Task deleted successfully.`;
     }
 
@@ -611,6 +618,9 @@ export async function executeToolCall(
       if (toolArgs.priority) updates.priority = String(toolArgs.priority);
       const { error } = await supabase.from("horizon_tasks").update(updates).eq("id", task_id);
       if (error) return `Failed to update task: ${error.message}`;
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("horizon:tasks-changed"));
+      }
       return `Task updated successfully.`;
     }
 
@@ -663,6 +673,9 @@ export async function executeToolCall(
         : { created: 0, failed: 0 };
       const totalFailed = failed + invalid;
 
+      if (created > 0 && typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("horizon:tasks-changed"));
+      }
       if (created === 0) {
         return "TASK_CREATION_FAILED: None of the tasks could be saved to Horizon.";
       }

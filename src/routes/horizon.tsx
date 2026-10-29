@@ -398,8 +398,11 @@ function HorizonPage() {
             {cells.map(({ dateStr, currentMonth, day }, cellIndex) => {
               const isToday = dateStr === todayKey;
               const isSelected = dateStr === selectedDate;
-              const hasTasks = datesWithTasks.has(dateStr);
-              const taskCount = hasTasks ? tasksForDate(dateStr).length : 0;
+              const dayTasks = tasksForDate(dateStr);
+              const taskCount = dayTasks.length;
+              const hasTasks = taskCount > 0;
+              const completedCount = dayTasks.filter((t) => t.completed).length;
+              const allCompleted = hasTasks && completedCount === taskCount;
 
               return (
                 <motion.button
@@ -427,25 +430,50 @@ function HorizonPage() {
                       transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
                     />
                   )}
-                  <span className="text-[11px] md:text-[12px] relative z-10 tabular-nums">{day}</span>
+
+                  {/* Task count badge (always visible when taskCount >= 1) */}
+                  {taskCount > 0 && (
+                    <motion.span
+                      initial={{ scale: 0, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      transition={{ type: "spring", stiffness: 450, damping: 20 }}
+                      className={cn(
+                        "absolute top-1 right-1 min-w-[16px] h-[16px] px-1 rounded-full flex items-center justify-center text-[9px] font-bold tabular-nums leading-none z-20 pointer-events-none",
+                        isToday
+                          ? "bg-sky-400 text-slate-950 font-extrabold shadow-[0_0_8px_rgba(56,189,248,0.5)]"
+                          : isSelected
+                            ? "bg-sky-300 text-slate-950 font-bold shadow-[0_0_8px_rgba(125,211,252,0.5)]"
+                            : allCompleted
+                              ? "bg-emerald-500/25 text-emerald-300 border border-emerald-400/40 shadow-[0_0_6px_rgba(52,211,153,0.25)]"
+                              : "bg-sky-500/25 text-sky-200 border border-sky-400/35 shadow-[0_0_6px_rgba(56,189,248,0.25)]",
+                      )}
+                      title={`${taskCount} task${taskCount === 1 ? "" : "s"}${allCompleted ? " (all completed)" : ""}`}
+                    >
+                      {taskCount}
+                    </motion.span>
+                  )}
+
+                  <span className={cn(
+                    "text-[11px] md:text-[12px] relative z-10 tabular-nums",
+                    isToday ? "font-bold text-white" : isSelected ? "font-semibold text-white/90" : ""
+                  )}>
+                    {day}
+                  </span>
+
                   {hasTasks && (
                     <motion.span
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}
                       transition={{ type: "spring", stiffness: 500, damping: 22 }}
                       className={cn(
-                        "mt-[3px] h-[3px] w-[3px] rounded-full relative z-10",
-                        isToday || isSelected ? "bg-sky-300/60" : "bg-sky-400/[0.28]",
+                        "mt-[3px] h-[4px] w-[4px] rounded-full relative z-10",
+                        allCompleted
+                          ? "bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.5)]"
+                          : isToday || isSelected
+                            ? "bg-sky-300 shadow-[0_0_4px_rgba(125,211,252,0.6)]"
+                            : "bg-sky-400/80 shadow-[0_0_3px_rgba(56,189,248,0.4)]",
                       )}
                     />
-                  )}
-                  {taskCount > 1 && (
-                    <span className={cn(
-                      "absolute top-0.5 right-1 text-[8px] font-medium tabular-nums",
-                      isToday || isSelected ? "text-sky-300/70" : "text-sky-400/[0.38]",
-                    )}>
-                      {taskCount}
-                    </span>
                   )}
                 </motion.button>
               );

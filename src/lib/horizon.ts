@@ -78,11 +78,11 @@ function rowToTask(row: Row): HorizonTask {
     id: row.id,
     title: row.title,
     description: row.description,
-    taskDate: row.task_date,
-    taskTime: row.task_time,
+    taskDate: (row.task_date ?? "").trim().split("T")[0],
+    taskTime: (row.task_time ?? "").trim(),
     priority: (row.priority as Priority) ?? "medium",
-    completed: row.completed,
-    notificationEnabled: row.notification_enabled,
+    completed: row.completed ?? false,
+    notificationEnabled: row.notification_enabled ?? false,
     createdAt: row.created_at,
   };
 }
@@ -174,6 +174,27 @@ export function useHorizon() {
 
   useEffect(() => {
     ensureBooted();
+    // Fresh fetch to guarantee latest tasks from database
+    refetch().catch(console.error);
+
+    const onTasksChanged = () => {
+      refetch().catch(console.error);
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refetch().catch(console.error);
+      }
+    };
+
+    window.addEventListener("horizon:tasks-changed", onTasksChanged);
+    window.addEventListener("focus", onTasksChanged);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      window.removeEventListener("horizon:tasks-changed", onTasksChanged);
+      window.removeEventListener("focus", onTasksChanged);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, []);
 
   const add = async (input: HorizonTaskInput): Promise<boolean> => {
@@ -313,10 +334,18 @@ export function useHorizon() {
     }
   };
 
-  const tasksForDate = (dateStr: string): HorizonTask[] =>
-    snap.tasks.filter((t) => t.taskDate === dateStr).sort(sortTasks);
+  const tasksForDate = (dateStr: string): HorizonTask[] => {
+    const cleanDate = (dateStr ?? "").trim().split("T")[0];
+    return snap.tasks
+      .filter((t) => (t.taskDate ?? "").trim().split("T")[0] === cleanDate)
+      .sort(sortTasks);
+  };
 
-  const datesWithTasks = new Set(snap.tasks.map((t) => t.taskDate));
+  const datesWithTasks = new Set(
+    snap.tasks
+      .map((t) => (t.taskDate ?? "").trim().split("T")[0])
+      .filter(Boolean),
+  );
 
   return {
     tasks: snap.tasks,
@@ -452,6 +481,10 @@ export async function addTaskDirect(task: {
     setState({
       tasks: [...state.tasks, createdTask].sort(sortTasks),
     });
+
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("horizon:tasks-changed"));
+    }
 
     // Schedule native reminder immediately
     if (createdTask.notificationEnabled && !createdTask.completed) {
