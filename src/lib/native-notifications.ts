@@ -198,8 +198,9 @@ export async function scheduleHorizonTaskNotification(
   const scheduleDate = parseTaskLocalDateTime(task.taskDate, task.taskTime);
   const now = new Date();
 
-  // If the scheduled time is in the past (more than 30 seconds ago), skip scheduling
-  if (scheduleDate.getTime() <= now.getTime() + 5000) {
+  // If the scheduled time is 30 seconds or less from now (or already past), skip scheduling.
+  // 30s grace avoids edge cases where a freshly created task is just barely in the past.
+  if (scheduleDate.getTime() <= now.getTime() - 30_000) {
     return { success: false, reason: "past_time", scheduledFor: scheduleDate };
   }
 
@@ -268,9 +269,86 @@ export async function scheduleHorizonTaskNotification(
     }
   }
 
-  // Web/PWA fallback: Local in-memory scheduling if tab stays alive
-  console.debug(`[native-notifications] Web environment: Task "${task.title}" reminder at ${scheduleDate.toLocaleString()}`);
+  // ─── Web/PWA fallback: setTimeout-based browser notification scheduler ────
+  // Fires a real browser Notification when the tab is alive. For full background
+  // delivery, the Firebase Cloud Messaging service worker handles push events.
+  scheduleWebNotification(task.id, task.title, bodyText, scheduleDate, notificationId);
   return { success: true, scheduledFor: scheduleDate, notificationId };
+}
+
+// ─── Web notification scheduler (in-memory, setTimeout-based) ─────────────────
+
+// Maps taskId → { timeoutId, notificationId } for web scheduling
+const _webTimers = new Map<string, { timeoutId: ReturnType<typeof setTimeout>; notificationId: number }>();
+
+/**
+ * Schedules a browser Notification for a web/PWA task reminder via setTimeout.
+ * Requests notification permission if not already granted.
+ * Silently skips if permission is denied or Notification API is unavailable.
+ */
+function scheduleWebNotification(
+  taskId: string,
+  title: string,
+  body: string,
+  scheduledAt: Date,
+  notificationId: number,
+): void {
+  if (typeof window === "undefined" || typeof Notification === "undefined") return;
+
+  // Cancel any existing web timer for this task
+  const existing = _webTimers.get(taskId);
+  if (existing) {
+    clearTimeout(existing.timeoutId);
+    _webTimers.delete(taskId);
+  }
+
+  const delayMs = scheduledAt.getTime() - Date.now();
+  if (delayMs <= 0) return; // already past — skip
+
+  const fire = () => {
+    _webTimers.delete(taskId);
+    if (typeof Notification === "undefined") return;
+
+    const showIt = () => {
+      try {
+        if (Notification.permission !== "granted") return;
+        const n = new Notification(title, {
+          body,
+          icon: "/favicon.png",
+          badge: "/favicon.png",
+          tag: `horizon-${notificationId}`,
+          requireInteraction: true,
+          silent: false,
+          data: { taskId },
+        } as NotificationOptions);
+        n.onclick = () => {
+          window.focus();
+          window.location.href = `/horizon?task=${taskId}`;
+          n.close();
+        };
+        console.debug(`[native-notifications] Web reminder fired for task ${taskId}`);
+      } catch (err) {
+        console.warn("[native-notifications] Web Notification display error:", err);
+      }
+    };
+
+    if (Notification.permission === "granted") {
+      showIt();
+    } else if (Notification.permission === "default") {
+      Notification.requestPermission().then((perm) => {
+        if (perm === "granted") showIt();
+      });
+    }
+  };
+
+  // setTimeout is limited to ~24.8 days (2^31 ms), which is fine for task reminders.
+  // For reminders far in the future, the app boot-time reconciliation re-registers them.
+  const timeoutId = setTimeout(fire, Math.min(delayMs, 2_147_483_647));
+  _webTimers.set(taskId, { timeoutId, notificationId });
+
+  console.debug(
+    `[native-notifications] Web reminder scheduled for "${title}" (task ${taskId}) in ${Math.round(delayMs / 1000)}s`,
+  );
 }
 
 /**
@@ -294,6 +372,14 @@ export async function cancelHorizonTaskNotification(taskId: string): Promise<boo
     }
   }
 
+  // Web — cancel in-memory timer
+  const webTimer = _webTimers.get(taskId);
+  if (webTimer) {
+    clearTimeout(webTimer.timeoutId);
+    _webTimers.delete(taskId);
+    console.debug(`[native-notifications] Cancelled web reminder for task ${taskId}`);
+  }
+
   return true;
 }
 
@@ -306,8 +392,27 @@ export async function cancelHorizonTaskNotification(taskId: string): Promise<boo
 export async function syncAllHorizonTaskNotifications(
   tasks: HorizonTask[],
 ): Promise<{ scheduled: number; cancelled: number; total: number }> {
+  // On web/PWA — re-register in-memory setTimeout reminders for all future tasks
   if (!Platform.isAndroid()) {
-    return { scheduled: 0, cancelled: 0, total: tasks.length };
+    let scheduledCount = 0;
+    const now = new Date();
+    for (const task of tasks) {
+      if (!task.notificationEnabled || task.completed) continue;
+      const scheduleDate = parseTaskLocalDateTime(task.taskDate, task.taskTime);
+      if (scheduleDate.getTime() > now.getTime()) {
+        // Only re-register if not already scheduled (to avoid duplicate timers)
+        if (!_webTimers.has(task.id)) {
+          const notificationId = taskIdToNotificationId(task.id);
+          const formattedTime = format12Hour(task.taskTime);
+          const priorityBadge = task.priority === "high" ? "🔴 HIGH" : task.priority === "medium" ? "🟡 MED" : "🔵 LOW";
+          const bodyText = `⏰ Due at ${formattedTime} [${priorityBadge}]${task.description ? ` • ${task.description}` : ""}`;
+          scheduleWebNotification(task.id, task.title, bodyText, scheduleDate, notificationId);
+          scheduledCount++;
+        }
+      }
+    }
+    console.debug(`[native-notifications] Web reconciliation: ${scheduledCount} reminders re-registered`);
+    return { scheduled: scheduledCount, cancelled: 0, total: tasks.length };
   }
 
   try {

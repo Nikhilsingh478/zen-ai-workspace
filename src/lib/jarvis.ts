@@ -1649,22 +1649,35 @@ export function buildJarvisSystemPrompt(
   const currentDayName = now.toLocaleDateString("en-IN", { weekday: "long" });
   const currentHour = now.getHours();
 
+  // Pre-compute the next 14 days so Gemini can resolve any day name reliably
+  const dayTable: string[] = [];
+  for (let d = 0; d <= 13; d++) {
+    const dt = new Date(now.getTime() + d * 86400000);
+    const label = d === 0 ? "TODAY" : d === 1 ? "TOMORROW" : dt.toLocaleDateString("en-IN", { weekday: "long" });
+    dayTable.push(`  ${label}: ${dt.toLocaleDateString("en-CA")}`);
+  }
+
   const dateTimeContext = `CURRENT DATE AND TIME (IST — Indian Standard Time):
 Date: ${currentDateIST} (${currentDayName})
 Time: ${currentTimeIST} (24h format)
 Hour: ${currentHour}
 
+UPCOMING 14 DAYS (for date resolution — use the YYYY-MM-DD value directly as taskDate):
+${dayTable.join("\n")}
+
 DATE RESOLUTION RULES — always use these when creating tasks:
-- "today" = ${currentDateIST}
-- "tonight" = ${currentDateIST} (same day, use the time they specify)
-- "tomorrow" = ${new Date(now.getTime() + 86400000).toLocaleDateString("en-CA")}
-- "this weekend" = nearest Saturday from today
-- "next week" = Monday of next week
-- "in an hour" = current time + 1 hour, today's date
-- When user says a time like "11:30" or "11:30 PM" — convert to 24h format: 23:30
+- ALWAYS pass taskDate as YYYY-MM-DD (e.g. "${currentDateIST}"). NEVER pass "today", "tomorrow", "Monday" etc.
+- "today" / "tonight" → ${currentDateIST}
+- "tomorrow" → ${new Date(now.getTime() + 86400000).toLocaleDateString("en-CA")}
+- For any day name ("next Monday", "this Friday", etc) → look up the table above and copy the YYYY-MM-DD value.
+- "this weekend" → nearest Saturday in table above
+- "next week" → the Monday row in table above
+- "in N days" → count N rows from TODAY in table above
+- When user says a time like "11:30" or "11:30 PM" → convert to 24h format (23:30) and pass as taskTime HH:MM
 - Priority "highest" or "most important" = "high" in the system
-- NEVER default to any hardcoded date. ALWAYS compute from the current date above.
+- NEVER default to any hardcoded date. ALWAYS compute from the table above.
 `;
+
 
   let userContext = "";
   try {

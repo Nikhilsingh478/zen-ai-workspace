@@ -294,14 +294,126 @@ function localDateKey(d: Date): string {
   return d.toLocaleDateString("en-CA"); // YYYY-MM-DD in local time
 }
 
+// Day name → weekday index map
+const DAY_NAMES: Record<string, number> = {
+  sunday: 0, sun: 0,
+  monday: 1, mon: 1,
+  tuesday: 2, tue: 2, tues: 2,
+  wednesday: 3, wed: 3,
+  thursday: 4, thu: 4, thur: 4, thurs: 4,
+  friday: 5, fri: 5,
+  saturday: 6, sat: 6,
+};
+
+// Month name → 0-indexed month
+const MONTH_NAMES: Record<string, number> = {
+  january: 0, jan: 0, february: 1, feb: 1, march: 2, mar: 2,
+  april: 3, apr: 3, may: 4, june: 5, jun: 5, july: 6, jul: 6,
+  august: 7, aug: 7, september: 8, sep: 8, sept: 8, october: 9, oct: 9,
+  november: 10, nov: 10, december: 11, dec: 11,
+};
+
 function normalizeTaskDate(raw: unknown): string | null {
   const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
   if (raw == null || String(raw).trim() === "") return localDateKey(today);
-  const s = String(raw).trim().toLowerCase();
+  const s = String(raw).trim().toLowerCase().replace(/[,]/g, "");
+
+  // Simple keywords
   if (s === "today" || s === "tonight") return localDateKey(today);
-  if (s === "tomorrow") return localDateKey(new Date(today.getTime() + 86400000));
-  const m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-  if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+  if (s === "tomorrow" || s === "tmrw" || s === "tmr") {
+    return localDateKey(new Date(today.getTime() + 86400000));
+  }
+  if (s === "day after tomorrow" || s === "the day after tomorrow") {
+    return localDateKey(new Date(today.getTime() + 2 * 86400000));
+  }
+  if (s === "this weekend" || s === "weekend") {
+    // Next Saturday
+    const daysUntilSat = (6 - today.getDay() + 7) % 7 || 7;
+    return localDateKey(new Date(today.getTime() + daysUntilSat * 86400000));
+  }
+  if (s === "next week") {
+    // Next Monday
+    const daysUntilMon = (1 - today.getDay() + 7) % 7 || 7;
+    return localDateKey(new Date(today.getTime() + daysUntilMon * 86400000));
+  }
+  if (s === "end of week" || s === "end of the week") {
+    const daysUntilFri = (5 - today.getDay() + 7) % 7 || 7;
+    return localDateKey(new Date(today.getTime() + daysUntilFri * 86400000));
+  }
+
+  // YYYY-MM-DD
+  const isoMatch = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2].padStart(2, "0")}-${isoMatch[3].padStart(2, "0")}`;
+
+  // MM/DD/YYYY or MM/DD/YY
+  const mdyMatch = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (mdyMatch) {
+    const year = mdyMatch[3].length === 2 ? `20${mdyMatch[3]}` : mdyMatch[3];
+    return `${year}-${mdyMatch[1].padStart(2, "0")}-${mdyMatch[2].padStart(2, "0")}`;
+  }
+
+  // "in N days/weeks"
+  const inMatch = s.match(/^in\s+(\d+)\s+(day|days|week|weeks)$/);
+  if (inMatch) {
+    const n = parseInt(inMatch[1], 10);
+    const unit = inMatch[2].startsWith("week") ? 7 : 1;
+    return localDateKey(new Date(today.getTime() + n * unit * 86400000));
+  }
+
+  // "next monday", "this friday", "coming thursday"
+  const nextDayMatch = s.match(/^(?:next|this|coming)\s+(\w+)$/);
+  if (nextDayMatch) {
+    const dayIdx = DAY_NAMES[nextDayMatch[1]];
+    if (dayIdx !== undefined) {
+      const todayDay = today.getDay();
+      let diff = dayIdx - todayDay;
+      // "next X" always means at least 1 day ahead
+      if (diff <= 0) diff += 7;
+      return localDateKey(new Date(today.getTime() + diff * 86400000));
+    }
+  }
+
+  // Bare day name: "monday", "friday" etc → nearest future occurrence
+  const bareDayIdx = DAY_NAMES[s];
+  if (bareDayIdx !== undefined) {
+    const todayDay = today.getDay();
+    let diff = bareDayIdx - todayDay;
+    if (diff <= 0) diff += 7;
+    return localDateKey(new Date(today.getTime() + diff * 86400000));
+  }
+
+  // "November 5", "Nov 5th", "5 November", "5th November"
+  const monthDayMatch1 = s.match(/^([a-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?(?:\s+(\d{4}))?$/);
+  if (monthDayMatch1) {
+    const monthIdx = MONTH_NAMES[monthDayMatch1[1]];
+    if (monthIdx !== undefined) {
+      const day = parseInt(monthDayMatch1[2], 10);
+      let year = monthDayMatch1[3] ? parseInt(monthDayMatch1[3], 10) : today.getFullYear();
+      let candidate = new Date(year, monthIdx, day);
+      candidate.setHours(0, 0, 0, 0);
+      if (candidate < today) { year++; candidate = new Date(year, monthIdx, day); }
+      return localDateKey(candidate);
+    }
+  }
+  const monthDayMatch2 = s.match(/^(\d{1,2})(?:st|nd|rd|th)?\s+([a-z]+)(?:\s+(\d{4}))?$/);
+  if (monthDayMatch2) {
+    const monthIdx = MONTH_NAMES[monthDayMatch2[2]];
+    if (monthIdx !== undefined) {
+      const day = parseInt(monthDayMatch2[1], 10);
+      let year = monthDayMatch2[3] ? parseInt(monthDayMatch2[3], 10) : today.getFullYear();
+      let candidate = new Date(year, monthIdx, day);
+      candidate.setHours(0, 0, 0, 0);
+      if (candidate < today) { year++; candidate = new Date(year, monthIdx, day); }
+      return localDateKey(candidate);
+    }
+  }
+
+  // "next monday 5pm" — strip a trailing time component and retry
+  const withTimeStripped = s.replace(/\s+(?:at\s+)?(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)$/, "").trim();
+  if (withTimeStripped !== s) return normalizeTaskDate(withTimeStripped);
+
   return null;
 }
 
