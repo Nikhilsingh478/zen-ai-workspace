@@ -138,9 +138,11 @@ const WAKE_WORDS = ["jarvis", "hey jarvis", "okay jarvis"];
 
 // detectionThreshold: 0.0–1.0
 // 0.5 = default (requires raised voice in noisy environments)
-// 0.45 = current — sensitive enough for normal voice, resistant to ambient false triggers
+// 0.30 = current — measured on the user's laptop mic: a real "Hey Jarvis" was
+//        missed at 0.35, while background speech scored 0.00–0.05. The VAD gate
+//        (score only counts while speech is detected) keeps false triggers rare.
 // 0.2 = very sensitive (may false-trigger on similar words)
-const WAKE_DETECT_THRESHOLD = 0.45;
+const WAKE_DETECT_THRESHOLD = 0.3;
 // Minimum ms between wake-word triggers to prevent double-firing on echo
 const WAKE_COOL_MS = 3500;
 // Module-level debounce — ignores rapid re-detections within the same utterance
@@ -490,7 +492,10 @@ function preloadVoices(): void {
 
 // Unset → browser speechSynthesis only (previous behaviour).
 const CHATTERBOX_URL = (import.meta.env.VITE_CHATTERBOX_URL ?? "").trim().replace(/\/+$/, "");
-const CHATTERBOX_TIMEOUT_MS = 20_000;
+// A sentence normally takes 1–4s on the RTX 2050. Past 8s the laptop is
+// struggling (low RAM/VRAM) — fall back to the browser voice rather than
+// leave the user in silence.
+const CHATTERBOX_TIMEOUT_MS = 8_000;
 // After a failure, use browser speech for a while instead of retrying every sentence.
 const CHATTERBOX_RETRY_MS = 30_000;
 let _chatterboxDownUntil = 0;
@@ -767,12 +772,14 @@ class TTSQueue {
         finishSentence();
       };
 
-      // Safety net for Chrome sometimes never firing onend at all.
+      // Safety net for Chrome sometimes never firing onend at all. Generous:
+      // the online "Google UK English Male" voice can take seconds to start,
+      // and advancing early re-opens the mic while JARVIS is still talking.
       clearTimeout(this.sentenceTimer);
       this.sentenceTimer = setTimeout(() => {
         console.warn("[TTS] onend never fired — advancing queue");
         finishSentence();
-      }, 4000 + sentence.length * 120);
+      }, 8000 + sentence.length * 150);
 
       this.currentUtterance = utterance;
       window.speechSynthesis.speak(utterance);

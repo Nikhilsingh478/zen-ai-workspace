@@ -14,6 +14,7 @@ event loop stays free to answer /health while a sentence is being generated.
 
 from __future__ import annotations
 
+import asyncio
 import io
 import logging
 import os
@@ -25,7 +26,7 @@ from typing import Optional
 
 import numpy as np
 import torch
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
@@ -225,24 +226,40 @@ def health():
     }
 
 
+# Requests queue here (one generation at a time on the GPU). Waiting on an
+# asyncio lock — not the thread lock — lets us notice that the browser gave
+# up while queued and skip it, instead of burning GPU time on audio nobody
+# will play and delaying every request behind it.
+_queue = asyncio.Lock()
+
+
 @app.post("/tts")
-async def tts(req: TTSRequest):
+async def tts(req: TTSRequest, request: Request):
     if engine.model is None:
         raise HTTPException(503, detail=engine.error or "Model is still loading")
     text = req.text.strip()
     if len(text) > MAX_CHARS:
         raise HTTPException(413, detail=f"Text longer than {MAX_CHARS} characters — send one sentence at a time")
 
-    started = time.perf_counter()
-    try:
-        audio = await run_in_threadpool(engine.synthesize, text, req.model_dump(exclude={"text"}))
-    except Exception as exc:
-        log.exception("Generation failed")
-        raise HTTPException(500, detail=f"Generation failed: {exc}") from exc
+    queued = time.perf_counter()
+    async with _queue:
+        if await request.is_disconnected():
+            log.info("Skipped (client gave up after %.1fs in queue): %s", time.perf_counter() - queued, text[:60])
+            return Response(status_code=204)
+        started = time.perf_counter()
+        try:
+            audio = await run_in_threadpool(engine.synthesize, text, req.model_dump(exclude={"text"}))
+        except Exception as exc:
+            log.exception("Generation failed")
+            raise HTTPException(500, detail=f"Generation failed: {exc}") from exc
 
     gen_s = time.perf_counter() - started
+    wait_s = started - queued
     audio_s = (len(audio) - 44) / 2 / engine.sample_rate
-    log.info("%.2fs audio in %.2fs (RTF %.2f): %s", audio_s, gen_s, gen_s / max(audio_s, 1e-6), text[:60])
+    log.info(
+        "%.2fs audio in %.2fs (RTF %.2f, queued %.1fs): %s",
+        audio_s, gen_s, gen_s / max(audio_s, 1e-6), wait_s, text[:60],
+    )
     return Response(content=audio, media_type="audio/wav", headers={"X-Generation-Seconds": f"{gen_s:.3f}"})
 
 
