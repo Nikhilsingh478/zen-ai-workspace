@@ -69,6 +69,22 @@ DEFAULTS = {
 
 # ─── Model ────────────────────────────────────────────────────────────────────
 
+# Files ChatterboxTurboTTS.from_local actually reads.
+TURBO_FILES = ("ve.safetensors", "t3_turbo_v1.safetensors", "s3gen_meanflow.safetensors", "tokenizer_config.json")
+
+
+def _cached_turbo_dir() -> Optional[str]:
+    """Path of a downloaded Turbo snapshot that has every file the loader needs, else None."""
+    hf_home = os.environ.get("HF_HOME") or os.path.join(os.path.expanduser("~"), ".cache", "huggingface")
+    snapshots = os.path.join(hf_home, "hub", "models--ResembleAI--chatterbox-turbo", "snapshots")
+    if not os.path.isdir(snapshots):
+        return None
+    for name in sorted(os.listdir(snapshots), reverse=True):
+        path = os.path.join(snapshots, name)
+        if all(os.path.isfile(os.path.join(path, f)) for f in TURBO_FILES):
+            return path
+    return None
+
 class Engine:
     def __init__(self) -> None:
         self.model = None
@@ -88,7 +104,14 @@ class Engine:
         if MODEL_NAME == "turbo":
             from chatterbox.tts_turbo import ChatterboxTurboTTS
 
-            self.model = ChatterboxTurboTTS.from_pretrained(device=self.device)
+            local_dir = _cached_turbo_dir()
+            if local_dir:
+                # Load straight from disk: no network, and works even though
+                # the unused s3gen.safetensors was removed to save 1 GB.
+                log.info("Using cached model files in %s", local_dir)
+                self.model = ChatterboxTurboTTS.from_local(local_dir, self.device)
+            else:
+                self.model = ChatterboxTurboTTS.from_pretrained(device=self.device)
         elif MODEL_NAME == "original":
             from chatterbox.tts import ChatterboxTTS
 

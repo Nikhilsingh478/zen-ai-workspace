@@ -17,6 +17,13 @@ if (-not $env:HF_HOME) { $env:HF_HOME = Join-Path $Root "hf-cache" }
 # Plain HTTPS downloads: the Xet CDN transfer fails on some networks, and
 # chatterbox-tts 0.1.7 has no retry fallback for it (newer releases do).
 if (-not $env:HF_HUB_DISABLE_XET) { $env:HF_HUB_DISABLE_XET = "1" }
+# Once the model is downloaded, start offline: faster, and no network needed.
+$snapshots = Join-Path $env:HF_HOME "hub\models--ResembleAI--chatterbox-turbo\snapshots"
+if ((Test-Path $snapshots) -and -not $env:HF_HUB_OFFLINE) { $env:HF_HUB_OFFLINE = "1" }
+
+# Use the JARVIS reference voice if one has been set up.
+$defaultVoice = Join-Path $Root "voices\jarvis.wav"
+if (-not $env:CHATTERBOX_VOICE -and (Test-Path $defaultVoice)) { $env:CHATTERBOX_VOICE = $defaultVoice }
 $env:TMP = Join-Path $Root "tmp"; $env:TEMP = $env:TMP   # Windows always sets TMP, so override for this process
 New-Item -ItemType Directory -Force $env:TMP, $env:HF_HOME | Out-Null
 

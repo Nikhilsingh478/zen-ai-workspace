@@ -54,3 +54,9 @@ tts-server/**/*.wav
 tts-server/**/*.mp3
 tts-server/**/*.flac
 tts-server/__pycache__/
+# Private voice recordings — keep them in D:\jarvis-tts\voices, never in git
+/voice.*
+/voices/
+/*.wav
+/*.mp3
+/*.m4a
