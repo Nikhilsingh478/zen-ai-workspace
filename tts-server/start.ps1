@@ -24,7 +24,7 @@ if ((Test-Path $snapshots) -and -not $env:HF_HUB_OFFLINE) { $env:HF_HUB_OFFLINE 
 # Web pages allowed to use this server: local dev (any localhost port) and the
 # Vercel deployment opened on this laptop. Everything else is refused.
 if (-not $env:CHATTERBOX_ALLOWED_ORIGIN_REGEX) {
-    $env:CHATTERBOX_ALLOWED_ORIGIN_REGEX = '^(https?://(localhost|127\.0\.0\.1)(:\d+)?|https://aimatrix-eta\.vercel\.app)$'
+    $env:CHATTERBOX_ALLOWED_ORIGIN_REGEX = '^(https?://(localhost|127\.0\.0\.1)(:\d+)?|https://nikhilaimatrix-eta\.vercel\.app)$'
 }
 
 # Use the JARVIS reference voice if one has been set up.

@@ -1939,6 +1939,7 @@ async function startWakeWordDetection(): Promise<void> {
     _wakeWordInitializing = false;
 
     keepWakeWordAudioAlive(engine);
+    startWakeWordDiagnostics(engine);
 
     console.log('[JARVIS] Wake word detection active — say "Hey Jarvis"');
   } catch (err) {
@@ -1961,6 +1962,64 @@ type WakeWordEngineInternals = {
 
 let _wakeWordFailureNotified = false;
 let _gestureResumeInstalled = false;
+
+type WakeWordDiagInternals = WakeWordEngineInternals & {
+  _processChunk?: (chunk: Float32Array, opts?: unknown) => Promise<void>;
+  _isSpeechActive?: boolean;
+  _keywordModels?: Record<string, { scores: number[] }>;
+};
+
+const WAKE_DIAG_WINDOW_MS = 3 * 60_000;
+const WAKE_DIAG_INTERVAL_MS = 10_000;
+const WAKE_CHUNK_SECONDS = 1280 / 16000; // engine frame: 1280 samples @ 16 kHz
+
+/**
+ * For the first few minutes after start, log what the wake-word engine
+ * actually hears every 10s: audio state, which mic, input level, how much
+ * speech the VAD detected and the best "hey jarvis" score. Tells apart
+ * "no audio", "wrong/muted mic", "too quiet" and "heard but scored too low".
+ */
+function startWakeWordDiagnostics(engine: InstanceType<typeof WakeWordEngine>): void {
+  const e = engine as unknown as WakeWordDiagInternals;
+  const original = e._processChunk?.bind(engine);
+  if (!original) return;
+
+  let chunks = 0;
+  let peak = 0;
+  let speechChunks = 0;
+  let bestScore = 0;
+  e._processChunk = async (chunk, opts) => {
+    chunks++;
+    for (let i = 0; i < chunk.length; i++) {
+      const level = Math.abs(chunk[i]);
+      if (level > peak) peak = level;
+    }
+    await original(chunk, opts);
+    if (e._isSpeechActive) speechChunks++;
+    const scores = e._keywordModels?.hey_jarvis?.scores;
+    const latest = scores?.[scores.length - 1] ?? 0;
+    if (latest > bestScore) bestScore = latest;
+  };
+
+  const startedAt = Date.now();
+  const timer = setInterval(() => {
+    if (_wakeWordEngine !== engine || Date.now() - startedAt > WAKE_DIAG_WINDOW_MS) {
+      clearInterval(timer);
+      return;
+    }
+    const track = e._mediaStream?.getAudioTracks()[0];
+    const micState = !track ? "no track" : track.muted ? "MUTED" : track.readyState;
+    console.log(
+      `[WakeWord] diag: audio ${e._audioContext?.state ?? "none"} | mic "${track?.label ?? "?"}" ${micState} | ` +
+        `frames ${chunks} | peak level ${peak.toFixed(3)} | speech ${(speechChunks * WAKE_CHUNK_SECONDS).toFixed(1)}s | ` +
+        `best "hey jarvis" score ${bestScore.toFixed(2)} (triggers at ${WAKE_DETECT_THRESHOLD})`,
+    );
+    chunks = 0;
+    peak = 0;
+    speechChunks = 0;
+    bestScore = 0;
+  }, WAKE_DIAG_INTERVAL_MS);
+}
 
 /**
  * Chrome's autoplay policy creates an AudioContext "suspended" when it is made
