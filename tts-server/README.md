@@ -80,11 +80,24 @@ D:\jarvis-tts\.venv\Scripts\python -m pip install -r tts-server\requirements.txt
 
 ## Limitations
 
-- Works only on the PC running the server. The deployed (Vercel) site and phones fall back to the
+- Works only on the PC running the server. Other devices (phones, other laptops) fall back to the
   browser voice; the Android app keeps its own Kokoro voice.
-- To use it from the deployed site on this PC, set `VITE_CHATTERBOX_URL` in Vercel and add the site
-  to `CHATTERBOX_ALLOWED_ORIGIN_REGEX`.
 - English only (Turbo). Generated audio carries Resemble AI's inaudible PerTh watermark.
+
+## Using it from the deployed site (https://aimatrix-eta.vercel.app)
+
+The voice code runs in the browser, so the Vercel site opened **on this laptop** talks straight to
+the server on `127.0.0.1` — Vercel itself never runs the model.
+
+1. Vercel → Project → Settings → Environment Variables: add
+   `VITE_CHATTERBOX_URL` = `http://127.0.0.1:8765` (Production), then redeploy. It's read at build
+   time, so a redeploy is required after adding or changing it.
+2. Start the server here (`.\tts-server\start.ps1`). `start.ps1` already allows
+   `https://aimatrix-eta.vercel.app` and answers Chrome's private-network check.
+3. First visit: if Chrome asks to let the site access devices on your local network, click Allow.
+
+Only localhost and that exact domain are accepted — preview deployments and other sites are refused.
+If the domain changes, update `CHATTERBOX_ALLOWED_ORIGIN_REGEX` in `start.ps1`.
 
 ## API
 

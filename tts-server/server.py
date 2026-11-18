@@ -194,6 +194,9 @@ app.add_middleware(
     allow_origin_regex=ALLOWED_ORIGIN_REGEX,
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
+    # Chrome's Private Network Access: lets the public Vercel site (HTTPS)
+    # call this server on 127.0.0.1. Still limited to the allowed origins.
+    allow_private_network=True,
 )
 
 

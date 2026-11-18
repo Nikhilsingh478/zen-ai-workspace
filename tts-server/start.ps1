@@ -21,6 +21,12 @@ if (-not $env:HF_HUB_DISABLE_XET) { $env:HF_HUB_DISABLE_XET = "1" }
 $snapshots = Join-Path $env:HF_HOME "hub\models--ResembleAI--chatterbox-turbo\snapshots"
 if ((Test-Path $snapshots) -and -not $env:HF_HUB_OFFLINE) { $env:HF_HUB_OFFLINE = "1" }
 
+# Web pages allowed to use this server: local dev (any localhost port) and the
+# Vercel deployment opened on this laptop. Everything else is refused.
+if (-not $env:CHATTERBOX_ALLOWED_ORIGIN_REGEX) {
+    $env:CHATTERBOX_ALLOWED_ORIGIN_REGEX = '^(https?://(localhost|127\.0\.0\.1)(:\d+)?|https://aimatrix-eta\.vercel\.app)$'
+}
+
 # Use the JARVIS reference voice if one has been set up.
 $defaultVoice = Join-Path $Root "voices\jarvis.wav"
 if (-not $env:CHATTERBOX_VOICE -and (Test-Path $defaultVoice)) { $env:CHATTERBOX_VOICE = $defaultVoice }
