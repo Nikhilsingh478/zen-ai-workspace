@@ -492,10 +492,10 @@ function preloadVoices(): void {
 
 // Unset → browser speechSynthesis only (previous behaviour).
 const CHATTERBOX_URL = (import.meta.env.VITE_CHATTERBOX_URL ?? "").trim().replace(/\/+$/, "");
-// A sentence normally takes 1–4s on the RTX 2050. Past 8s the laptop is
-// struggling (low RAM/VRAM) — fall back to the browser voice rather than
-// leave the user in silence.
-const CHATTERBOX_TIMEOUT_MS = 8_000;
+// A long sentence takes ~4s on the RTX 2050 when the laptop is quiet and
+// 10–14s under load. 15s keeps the voice consistent through a reply instead
+// of switching to the browser voice mid-way; past that, fall back.
+const CHATTERBOX_TIMEOUT_MS = 15_000;
 // After a failure, use browser speech for a while instead of retrying every sentence.
 const CHATTERBOX_RETRY_MS = 30_000;
 let _chatterboxDownUntil = 0;
